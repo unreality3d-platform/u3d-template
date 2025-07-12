@@ -501,7 +501,6 @@ namespace U3D.Editor
                 }
             }
         }
-
         private void DrawGitHubSetup()
         {
             EditorGUILayout.LabelField("🚀 Connect to GitHub", EditorStyles.boldLabel);
@@ -912,7 +911,7 @@ namespace U3D.Editor
 
             try
             {
-                // Save to EditorPrefs for now - you may want to save to Firebase later
+                // Save to EditorPrefs using standard Unity EditorPrefs instead of U3DCreatorPrefs
                 SavePayPalEmailToPrefs(paypalEmail);
                 paypalEmailSaved = true;
 
@@ -1029,7 +1028,7 @@ namespace U3D.Editor
         public static string GetCreatorPayPalEmail()
         {
             if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
-                return null;
+                return "";
 
             string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
             return EditorPrefs.GetString(key, "");
