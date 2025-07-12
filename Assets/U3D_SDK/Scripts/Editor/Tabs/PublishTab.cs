@@ -58,15 +58,19 @@ namespace U3D.Editor
 
         public void Initialize()
         {
-            // CRITICAL: Skip initialization during builds
+            // Cache product name on main thread to avoid threading issues
+            cachedProductName = Application.productName;
+            lastCheckedProductName = cachedProductName; // Initialize tracking
+
+            // CRITICAL: Skip other initialization during builds, but ALWAYS cache Product Name
             if (ShouldSkipDuringBuild())
             {
-                Debug.Log("🚫 PublishTab: Skipping initialization during build process");
+                Debug.Log("🚫 PublishTab: Skipping editor updates during build process");
                 return;
             }
 
-            // Cache product name on main thread to avoid threading issues
-            cachedProductName = Application.productName;
+            publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
+
             lastCheckedProductName = cachedProductName; // Initialize tracking
 
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
