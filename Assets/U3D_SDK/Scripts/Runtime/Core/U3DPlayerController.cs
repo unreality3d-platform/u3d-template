@@ -644,8 +644,32 @@ public class U3DPlayerController : NetworkBehaviour
         isRightMouseDragging = input.RightMouseHeld;
         isBothMouseForward = input.BothMouseHeld;
 
+        // BOTH mouse buttons: Move forward with mouse steering (NEW - AAA style)
+        if (isBothMouseForward)
+        {
+            // Allow mouse steering while moving forward with both buttons
+            if (Mathf.Abs(lookInput.x) > 0.01f)
+            {
+                // Rotate character around Y-axis for steering
+                float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                transform.Rotate(Vector3.up, yawDelta);
+
+                // Keep camera yaw in sync with character
+                cameraYaw += yawDelta;
+
+                NetworkRotation = transform.rotation;
+            }
+
+            if (Mathf.Abs(lookInput.y) > 0.01f)
+            {
+                // Camera pitch follows mouse for look up/down while moving
+                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
+                NetworkCameraPitch = cameraPitchAdvanced;
+            }
+        }
         // Right-click drag: Rotate character AND camera together (Advanced AAA style)
-        if (isRightMouseDragging && !isLeftMouseDragging)
+        else if (isRightMouseDragging && !isLeftMouseDragging)
         {
             if (Mathf.Abs(lookInput.x) > 0.01f)
             {
