@@ -29,21 +29,24 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float cameraCollisionRadius = 0.2f;
     [HideInInspector][SerializeField] private float cameraCollisionBuffer = 0.1f;
 
-    [Header("Advanced AAA Camera System")]
+    [Header("AAA Camera System")]
     [SerializeField] private bool enableAdvancedCamera = true;
     [SerializeField] private float cameraOrbitSensitivity = 2f;
     [SerializeField] private float characterTurnSpeed = 90f;
 
+    [Header("Mouse Look Behavior")]
+    [SerializeField] private bool enableAlwaysFreeLook = true;
+
     [Header("Smooth Camera Transition")]
     [SerializeField]
     private AnimationCurve cameraDistanceCurve = new AnimationCurve(
-    new Keyframe(0f, 0f),     // First person: no distance
-    new Keyframe(1f, 5f)      // Third person: full distance
-);
+        new Keyframe(0f, 0f),     // First person: no distance
+        new Keyframe(1f, 5f)      // Third person: full distance
+    );
     [SerializeField]
     private AnimationCurve cameraHeightCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),     // First person: eye level
-        new Keyframe(1f, 1.5f)    // Third person: elevated view
+        new Keyframe(0f, 1.5f),   // FIXED: First person at eye level (1.5 units)
+        new Keyframe(1f, 1.5f)    // FIXED: Third person also at eye level (1.5 units)
     );
     [SerializeField] private float transitionTime = 1.5f;
 
@@ -168,11 +171,13 @@ public class U3DPlayerController : NetworkBehaviour
         // Store original first person position at eye level
         originalFirstPersonPosition = firstPersonPosition;
 
-        // Create camera pivot at player center (NOT at head level)
+        // FIXED: Create camera pivot at eye level, NOT at ground level
         GameObject pivotGO = new GameObject("CameraPivot");
         cameraPivot = pivotGO.transform;
         cameraPivot.SetParent(transform);
-        cameraPivot.localPosition = Vector3.zero; // At player center, not head level
+
+        // CRITICAL FIX: Position pivot at eye level for proper rotation
+        cameraPivot.localPosition = firstPersonPosition; // Eye level, not Vector3.zero
         cameraPivot.localRotation = Quaternion.identity;
 
         // Make camera child of pivot
@@ -180,7 +185,7 @@ public class U3DPlayerController : NetworkBehaviour
         {
             playerCamera.transform.SetParent(cameraPivot);
 
-            // Start in first person position
+            // Start in first person position (relative to the now eye-level pivot)
             UpdateCameraTransitionPosition();
 
             // Store initial yaw from character rotation
@@ -188,7 +193,7 @@ public class U3DPlayerController : NetworkBehaviour
             cameraPitchAdvanced = 0f;
         }
 
-        Debug.Log("✅ Advanced AAA camera pivot system initialized with smooth transitions");
+        Debug.Log("✅ Advanced AAA camera pivot system initialized at eye level with smooth transitions");
     }
 
     void UpdateCameraTransitionPosition()
@@ -199,18 +204,20 @@ public class U3DPlayerController : NetworkBehaviour
         float distance = cameraDistanceCurve.Evaluate(currentTransitionValue);
         float heightOffset = cameraHeightCurve.Evaluate(currentTransitionValue);
 
-        // Position camera relative to pivot
+        // Position camera relative to the eye-level pivot
         Vector3 targetPosition;
 
         if (currentTransitionValue <= 0.01f)
         {
-            // Pure first person - use original first person position
-            targetPosition = originalFirstPersonPosition;
+            // Pure first person - camera at pivot origin (which is now at eye level)
+            targetPosition = Vector3.zero; // Relative to eye-level pivot
         }
         else
         {
-            // Transitioning or third person - use curve-based positioning
-            targetPosition = new Vector3(0f, heightOffset, -distance);
+            // Transitioning or third person - offset from eye-level pivot
+            // Height offset is now relative to eye level, not ground
+            float relativeHeight = heightOffset - firstPersonPosition.y; // Convert to relative offset
+            targetPosition = new Vector3(0f, relativeHeight, -distance);
         }
 
         // Apply crouch offset
@@ -613,13 +620,62 @@ public class U3DPlayerController : NetworkBehaviour
         if (lookInverted)
             lookInput.y = -lookInput.y;
 
-        // Handle Advanced AAA-style mouse controls
+        // Handle Advanced AAA-style mouse controls first (takes priority)
         HandleAdvancedMouseControls(input);
 
-        // Standard camera control (when not using mouse drag)
-        if (!isLeftMouseDragging && !isRightMouseDragging && !enableAdvancedCamera)
+        // NEW: Always-on free look (AAA standard) when no advanced controls are active
+        if (enableAlwaysFreeLook && !isLeftMouseDragging && !isRightMouseDragging && !isBothMouseForward)
         {
-            // Legacy camera system for compatibility
+            if (enableAdvancedCamera && cameraPivot != null)
+            {
+                // Advanced camera system: Always-on free look
+                if (Mathf.Abs(lookInput.x) > 0.01f)
+                {
+                    // Rotate character around Y-axis (like right-click mode but always on)
+                    float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                    transform.Rotate(Vector3.up, yawDelta);
+
+                    // Keep camera yaw in sync with character
+                    cameraYaw += yawDelta;
+
+                    NetworkRotation = transform.rotation;
+                }
+
+                if (Mathf.Abs(lookInput.y) > 0.01f)
+                {
+                    // Camera pitch follows mouse
+                    cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                    cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
+                    NetworkCameraPitch = cameraPitchAdvanced;
+                }
+
+                // Apply camera pivot rotation
+                if (cameraPivot != null)
+                {
+                    cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
+                }
+            }
+            else
+            {
+                // Legacy camera system: Always-on free look
+                if (Mathf.Abs(lookInput.x) > 0.01f)
+                {
+                    transform.Rotate(Vector3.up, lookInput.x);
+                    NetworkRotation = transform.rotation;
+                }
+
+                if (Mathf.Abs(lookInput.y) > 0.01f)
+                {
+                    cameraPitch -= lookInput.y;
+                    cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
+                    NetworkCameraPitch = cameraPitch;
+                }
+            }
+        }
+        // Fallback: Legacy standard camera control (when always-on is disabled)
+        else if (!enableAlwaysFreeLook && !isLeftMouseDragging && !isRightMouseDragging && !enableAdvancedCamera)
+        {
+            // Original legacy camera system for compatibility
             if (Mathf.Abs(lookInput.x) > 0.01f)
             {
                 transform.Rotate(Vector3.up, lookInput.x);
