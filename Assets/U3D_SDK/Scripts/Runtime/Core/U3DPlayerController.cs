@@ -34,6 +34,25 @@ public class U3DPlayerController : NetworkBehaviour
     [SerializeField] private float cameraOrbitSensitivity = 2f;
     [SerializeField] private float characterTurnSpeed = 90f;
 
+    [Header("Smooth Camera Transition")]
+    [SerializeField]
+    private AnimationCurve cameraDistanceCurve = new AnimationCurve(
+    new Keyframe(0f, 0f),     // First person: no distance
+    new Keyframe(1f, 5f)      // Third person: full distance
+);
+    [SerializeField]
+    private AnimationCurve cameraHeightCurve = new AnimationCurve(
+        new Keyframe(0f, 0f),     // First person: eye level
+        new Keyframe(1f, 1.5f)    // Third person: elevated view
+    );
+    [SerializeField] private float transitionTime = 1.5f;
+
+    // Camera transition state
+    private float currentTransitionValue = 0f; // 0 = first person, 1 = third person
+    private float targetTransitionValue = 0f;
+    private bool isTransitioning = false;
+    private Vector3 originalFirstPersonPosition;
+
     // Camera pivot system
     private Transform cameraPivot;
     private float cameraYaw = 0f;  // Horizontal orbit angle
@@ -146,31 +165,68 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!enableAdvancedCamera) return;
 
-        // Create camera pivot at player center
+        // Store original first person position at eye level
+        originalFirstPersonPosition = firstPersonPosition;
+
+        // Create camera pivot at player center (NOT at head level)
         GameObject pivotGO = new GameObject("CameraPivot");
         cameraPivot = pivotGO.transform;
         cameraPivot.SetParent(transform);
-        cameraPivot.localPosition = firstPersonPosition; // Center at head level
+        cameraPivot.localPosition = Vector3.zero; // At player center, not head level
         cameraPivot.localRotation = Quaternion.identity;
 
-        // Make camera child of pivot instead of player
+        // Make camera child of pivot
         if (playerCamera != null)
         {
             playerCamera.transform.SetParent(cameraPivot);
 
-            // Position camera behind pivot for third person
-            Vector3 cameraPos = Vector3.back * thirdPersonDistance;
-            playerCamera.transform.localPosition = cameraPos;
-            playerCamera.transform.localRotation = Quaternion.identity;
+            // Start in first person position
+            UpdateCameraTransitionPosition();
 
             // Store initial yaw from character rotation
             cameraYaw = transform.eulerAngles.y;
             cameraPitchAdvanced = 0f;
         }
 
-        Debug.Log("✅ Advanced AAA camera pivot system initialized");
+        Debug.Log("✅ Advanced AAA camera pivot system initialized with smooth transitions");
     }
 
+    void UpdateCameraTransitionPosition()
+    {
+        if (cameraPivot == null || playerCamera == null) return;
+
+        // Evaluate curves based on current transition value
+        float distance = cameraDistanceCurve.Evaluate(currentTransitionValue);
+        float heightOffset = cameraHeightCurve.Evaluate(currentTransitionValue);
+
+        // Position camera relative to pivot
+        Vector3 targetPosition;
+
+        if (currentTransitionValue <= 0.01f)
+        {
+            // Pure first person - use original first person position
+            targetPosition = originalFirstPersonPosition;
+        }
+        else
+        {
+            // Transitioning or third person - use curve-based positioning
+            targetPosition = new Vector3(0f, heightOffset, -distance);
+        }
+
+        // Apply crouch offset
+        if (isCrouching)
+        {
+            targetPosition.y += crouchCameraOffset;
+        }
+
+        // Apply camera collision detection in third person
+        if (currentTransitionValue > 0.01f && enableCameraCollision)
+        {
+            targetPosition = GetCollisionSafeCameraPosition(targetPosition);
+        }
+
+        playerCamera.transform.localPosition = targetPosition;
+    }
 
     void Awake()
     {
@@ -691,6 +747,12 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
+        // Auto-run toggle (NumLock key)
+        if (pressed.IsSet(U3DInputButtons.AutoRunToggle))
+        {
+            isAutoRunning = !isAutoRunning;
+        }
+
         // Interact
         if (pressed.IsSet(U3DInputButtons.Interact))
         {
@@ -850,27 +912,52 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleCameraPositioning()
     {
-        if (!enableSmoothTransitions || !_isLocalPlayer) return;
+        if (!_isLocalPlayer) return;
 
-        Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
-
-        // Apply crouch offset to camera position
-        if (isCrouching)
+        // Handle perspective mode transitions
+        if (perspectiveMode == PerspectiveMode.SmoothScroll)
         {
-            targetPosition.y += crouchCameraOffset;
-        }
+            // Update transition value smoothly
+            if (Mathf.Abs(currentTransitionValue - targetTransitionValue) > 0.001f)
+            {
+                currentTransitionValue = Mathf.MoveTowards(
+                    currentTransitionValue,
+                    targetTransitionValue,
+                    Runner.DeltaTime / transitionTime
+                );
 
-        if (enableCameraCollision && !isFirstPerson)
+                isTransitioning = true;
+            }
+            else
+            {
+                currentTransitionValue = targetTransitionValue;
+                isTransitioning = false;
+            }
+
+            // Update camera position based on transition
+            UpdateCameraTransitionPosition();
+        }
+        else if (enableSmoothTransitions)
         {
-            targetPosition = GetCollisionSafeCameraPosition(targetPosition);
-        }
+            // Legacy smooth transitions for fixed modes
+            Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
 
-        // Smooth camera position transition
-        playerCamera.transform.localPosition = Vector3.Lerp(
-            playerCamera.transform.localPosition,
-            targetPosition,
-            Runner.DeltaTime * perspectiveTransitionSpeed
-        );
+            if (isCrouching)
+            {
+                targetPosition.y += crouchCameraOffset;
+            }
+
+            if (enableCameraCollision && !isFirstPerson)
+            {
+                targetPosition = GetCollisionSafeCameraPosition(targetPosition);
+            }
+
+            playerCamera.transform.localPosition = Vector3.Lerp(
+                playerCamera.transform.localPosition,
+                targetPosition,
+                Runner.DeltaTime * perspectiveTransitionSpeed
+            );
+        }
     }
 
     void HandleZoom()
@@ -925,12 +1012,22 @@ public class U3DPlayerController : NetworkBehaviour
     {
         isFirstPerson = true;
         currentCameraDistance = 0f;
+
+        if (perspectiveMode == PerspectiveMode.SmoothScroll)
+        {
+            targetTransitionValue = 0f; // Smooth transition to first person
+        }
     }
 
     void SetThirdPerson()
     {
         isFirstPerson = false;
         currentCameraDistance = thirdPersonDistance;
+
+        if (perspectiveMode == PerspectiveMode.SmoothScroll)
+        {
+            targetTransitionValue = 1f; // Smooth transition to third person
+        }
     }
 
     void LoadPlayerPreferences()
