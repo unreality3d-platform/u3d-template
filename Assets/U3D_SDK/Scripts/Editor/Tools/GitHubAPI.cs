@@ -125,7 +125,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var errorMessage = await ParseGitHubError(responseText);
+                        var errorMessage = ParseGitHubError(responseText);
                         return new GitHubRepositoryResult
                         {
                             Success = false,
@@ -202,7 +202,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var errorMessage = await ParseGitHubError(responseText);
+                        var errorMessage = ParseGitHubError(responseText);
                         return new GitHubRepositoryResult
                         {
                             Success = false,
@@ -371,7 +371,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var errorMessage = await ParseGitHubError(responseText);
+                        var errorMessage = ParseGitHubError(responseText);
                         return new GitHubRepositoryResult
                         {
                             Success = false,
@@ -430,7 +430,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var errorMessage = await ParseGitHubError(responseText);
+                        var errorMessage = ParseGitHubError(responseText);
                         return new GitOperationResult
                         {
                             Success = false,
@@ -492,7 +492,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var errorMessage = await ParseGitHubError(responseText);
+                        var errorMessage = ParseGitHubError(responseText);
                         return new GitOperationResult
                         {
                             Success = false,
@@ -542,7 +542,7 @@ namespace U3D.Editor
 
                         if (!response.IsSuccessStatusCode)
                         {
-                            var errorMessage = await ParseGitHubError(responseText);
+                            var errorMessage = ParseGitHubError(responseText);
                             return new GitHubRepositoryListResult
                             {
                                 Success = false,
@@ -696,7 +696,7 @@ namespace U3D.Editor
             return client;
         }
 
-        private static async Task<string> ParseGitHubError(string responseText)
+        private static string ParseGitHubError(string responseText)
         {
             try
             {
