@@ -68,6 +68,27 @@ namespace U3D.Networking
         private float _perspectiveScrollValue;
         private float _lastTeleportClickTime = 0f;
 
+        // Advanced AAA-style mouse input tracking
+        private bool _leftMouseHeld = false;
+        private bool _rightMouseHeld = false;
+        private bool _bothMouseHeld = false;
+
+        // Advanced movement input tracking
+        private bool _strafeLeftPressed = false;
+        private bool _strafeRightPressed = false;
+        private bool _turnLeftPressed = false;
+        private bool _turnRightPressed = false;
+        private bool _autoRunTogglePressed = false;
+
+        // Additional input actions for Advanced controls
+        private InputAction _mouseLeftAction;
+        private InputAction _mouseRightAction;
+        private InputAction _strafeLeftAction;
+        private InputAction _strafeRightAction;
+        private InputAction _turnLeftAction;
+        private InputAction _turnRightAction;
+        private InputAction _autoRunToggleAction;
+
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
         public static event Action<PlayerRef> OnPlayerJoinedEvent;
@@ -151,6 +172,15 @@ namespace U3D.Networking
             _pauseAction = actionMap.FindAction("Pause");
             _escapeAction = actionMap.FindAction("Escape");
 
+            // Advanced AAA-style controls
+            _mouseLeftAction = actionMap.FindAction("MouseLeft");
+            _mouseRightAction = actionMap.FindAction("MouseRight");
+            _strafeLeftAction = actionMap.FindAction("StrafeLeft");
+            _strafeRightAction = actionMap.FindAction("StrafeRight");
+            _turnLeftAction = actionMap.FindAction("TurnLeft");
+            _turnRightAction = actionMap.FindAction("TurnRight");
+            _autoRunToggleAction = actionMap.FindAction("AutoRunToggle");
+
             // CRITICAL: Enable the action map for input polling
             actionMap.Enable();
 
@@ -213,6 +243,27 @@ namespace U3D.Networking
                 if (Mathf.Abs(scroll) > 0.1f)
                     _perspectiveScrollValue = scroll;
             }
+
+            // Advanced AAA-style mouse controls
+            if (_mouseLeftAction != null)
+                _leftMouseHeld = _mouseLeftAction.IsPressed();
+            if (_mouseRightAction != null)
+                _rightMouseHeld = _mouseRightAction.IsPressed();
+            _bothMouseHeld = _leftMouseHeld && _rightMouseHeld;
+
+            // Advanced keyboard movement
+            if (_strafeLeftAction != null)
+                _strafeLeftPressed = _strafeLeftAction.IsPressed();
+            if (_strafeRightAction != null)
+                _strafeRightPressed = _strafeRightAction.IsPressed();
+            if (_turnLeftAction != null)
+                _turnLeftPressed = _turnLeftAction.IsPressed();
+            if (_turnRightAction != null)
+                _turnRightPressed = _turnRightAction.IsPressed();
+
+            // NumLock auto-run toggle (one-shot press)
+            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
+                _autoRunTogglePressed = true;
         }
 
         /// <summary>
@@ -484,6 +535,24 @@ namespace U3D.Networking
                 data.Buttons.Set(U3DInputButtons.Interact, true);
             if (_zoomPressed)
                 data.Buttons.Set(U3DInputButtons.Zoom, true);
+
+            // Advanced AAA-style mouse button states
+            data.LeftMouseHeld = _leftMouseHeld;
+            data.RightMouseHeld = _rightMouseHeld;
+            data.BothMouseHeld = _bothMouseHeld;
+
+            // Advanced movement states  
+            data.StrafeLeft = _strafeLeftPressed;
+            data.StrafeRight = _strafeRightPressed;
+            data.TurnLeft = _turnLeftPressed;
+            data.TurnRight = _turnRightPressed;
+
+            // Set auto-run toggle button
+            if (_autoRunTogglePressed)
+                data.Buttons.Set(U3DInputButtons.AutoRunToggle, true);
+
+            // Reset auto-run toggle (add to existing reset section)
+            _autoRunTogglePressed = false;
 
             // Send input to Fusion
             input.Set(data);
