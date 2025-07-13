@@ -17,13 +17,21 @@ namespace U3D.Editor
         private Texture2D logoTexture;
 
         /// <summary>
-        /// CRITICAL: Check if we should skip operations during builds
+        /// CRITICAL: Check if we should skip operations during actual builds (not editor startup)
         /// </summary>
         private static bool ShouldSkipDuringBuild()
         {
+            // Only skip for actual build operations, not editor initialization
             return BuildPipeline.isBuildingPlayer ||
-                   EditorApplication.isCompiling ||
-                   EditorApplication.isUpdating;
+                   EditorApplication.isCompiling;
+        }
+
+        /// <summary>
+        /// Check if editor is still initializing (separate from build operations)
+        /// </summary>
+        private static bool IsEditorInitializing()
+        {
+            return EditorApplication.isUpdating;
         }
 
         [MenuItem("U3D/Creator Dashboard")]
@@ -37,10 +45,17 @@ namespace U3D.Editor
         [InitializeOnLoadMethod]
         static void OpenOnStartup()
         {
-            // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
+            // CRITICAL: Skip initialization during actual builds to prevent IndexOutOfRangeException
             if (ShouldSkipDuringBuild())
             {
                 Debug.Log("🚫 U3DCreatorWindow: Skipping startup during build process");
+                return;
+            }
+
+            // Wait for editor to finish initializing, but don't log message for normal startup
+            if (IsEditorInitializing())
+            {
+                EditorApplication.delayCall += OpenOnStartup;
                 return;
             }
 
