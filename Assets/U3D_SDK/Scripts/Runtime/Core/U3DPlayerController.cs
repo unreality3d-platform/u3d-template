@@ -29,6 +29,22 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float cameraCollisionRadius = 0.2f;
     [HideInInspector][SerializeField] private float cameraCollisionBuffer = 0.1f;
 
+    [Header("Advanced AAA Camera System")]
+    [SerializeField] private bool enableAdvancedCamera = true;
+    [SerializeField] private float cameraOrbitSensitivity = 2f;
+    [SerializeField] private float characterTurnSpeed = 90f;
+
+    // Camera pivot system
+    private Transform cameraPivot;
+    private float cameraYaw = 0f;  // Horizontal orbit angle
+    private float cameraPitchAdvanced = 0f;  // Vertical orbit angle (separate from existing cameraPitch)
+    private bool isLeftMouseDragging = false;
+    private bool isRightMouseDragging = false;
+    private bool isBothMouseForward = false;
+
+    // Advanced movement state
+    private bool advancedModeActive = false;
+
     [Header("Advanced Movement")]
     [SerializeField] private bool enableSprintToggle = true;
     [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
@@ -126,6 +142,36 @@ public class U3DPlayerController : NetworkBehaviour
         ConfigurePlayerForNetworking();
     }
 
+    void InitializeCameraPivot()
+    {
+        if (!enableAdvancedCamera) return;
+
+        // Create camera pivot at player center
+        GameObject pivotGO = new GameObject("CameraPivot");
+        cameraPivot = pivotGO.transform;
+        cameraPivot.SetParent(transform);
+        cameraPivot.localPosition = firstPersonPosition; // Center at head level
+        cameraPivot.localRotation = Quaternion.identity;
+
+        // Make camera child of pivot instead of player
+        if (playerCamera != null)
+        {
+            playerCamera.transform.SetParent(cameraPivot);
+
+            // Position camera behind pivot for third person
+            Vector3 cameraPos = Vector3.back * thirdPersonDistance;
+            playerCamera.transform.localPosition = cameraPos;
+            playerCamera.transform.localRotation = Quaternion.identity;
+
+            // Store initial yaw from character rotation
+            cameraYaw = transform.eulerAngles.y;
+            cameraPitchAdvanced = 0f;
+        }
+
+        Debug.Log("✅ Advanced AAA camera pivot system initialized");
+    }
+
+
     void Awake()
     {
         // Get required components
@@ -146,6 +192,8 @@ public class U3DPlayerController : NetworkBehaviour
         currentCameraDistance = 0f;
         targetFOV = defaultFOV;
         playerCamera.fieldOfView = defaultFOV;
+     
+        InitializeCameraPivot();
 
         // Load player preferences
         LoadPlayerPreferences();
@@ -365,18 +413,42 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
-        // Get movement input from Fusion
+        // Get base movement input
         moveInput = input.MovementInput;
+
+        // Handle Advanced AAA-style keyboard controls
+        Vector2 advancedMovement = HandleAdvancedKeyboardMovement(input);
+
+        // Both mouse buttons = move forward (Advanced AAA style)
+        if (isBothMouseForward)
+        {
+            advancedMovement.y = 1f; // Force forward movement
+        }
 
         // Handle auto-run
         if (isAutoRunning)
         {
-            moveInput.y = 1f;
+            advancedMovement.y = 1f;
         }
 
-        // Calculate movement direction relative to camera
-        Vector3 forward = playerCamera.transform.forward;
-        Vector3 right = playerCamera.transform.right;
+        // Use Advanced movement if any Advanced controls are active
+        Vector2 finalMovement = (advancedMovement.magnitude > 0.1f) ? advancedMovement : moveInput;
+
+        // Calculate movement direction relative to camera or character
+        Vector3 forward, right;
+
+        if (enableAdvancedCamera && cameraPivot != null)
+        {
+            // Use camera pivot forward for movement direction (Advanced AAA style)
+            forward = cameraPivot.forward;
+            right = cameraPivot.right;
+        }
+        else
+        {
+            // Use player camera forward (legacy)
+            forward = playerCamera.transform.forward;
+            right = playerCamera.transform.right;
+        }
 
         // Remove Y component for ground movement (unless flying)
         if (!isFlying)
@@ -387,7 +459,7 @@ public class U3DPlayerController : NetworkBehaviour
             right.Normalize();
         }
 
-        Vector3 moveDirection = (forward * moveInput.y + right * moveInput.x).normalized;
+        Vector3 moveDirection = (forward * finalMovement.y + right * finalMovement.x).normalized;
 
         // Apply speed based on current state
         float currentSpeed = GetCurrentSpeed();
@@ -417,29 +489,153 @@ public class U3DPlayerController : NetworkBehaviour
         NetworkIsMoving = moveVelocity.magnitude > 0.1f;
     }
 
+    // ADD THIS NEW METHOD FOR ADVANCED AAA KEYBOARD MOVEMENT
+
+    Vector2 HandleAdvancedKeyboardMovement(U3DNetworkInputData input)
+    {
+        Vector2 advancedMovement = Vector2.zero;
+
+        // Forward/Backward (W/S) - unchanged behavior
+        if (moveInput.y != 0)
+        {
+            advancedMovement.y = moveInput.y;
+        }
+
+        // Handle A/D as character turning (Advanced AAA style) OR legacy strafing
+        if (enableAdvancedCamera)
+        {
+            // Advanced Mode: A/D turn character (only when not holding right mouse)
+            if (!isRightMouseDragging)
+            {
+                if (input.TurnLeft)
+                {
+                    transform.Rotate(Vector3.up, -characterTurnSpeed * Runner.DeltaTime);
+                    NetworkRotation = transform.rotation;
+
+                    // Update camera yaw to follow character turning
+                    if (cameraPivot != null)
+                    {
+                        cameraYaw = transform.eulerAngles.y;
+                    }
+                }
+                if (input.TurnRight)
+                {
+                    transform.Rotate(Vector3.up, characterTurnSpeed * Runner.DeltaTime);
+                    NetworkRotation = transform.rotation;
+
+                    // Update camera yaw to follow character turning
+                    if (cameraPivot != null)
+                    {
+                        cameraYaw = transform.eulerAngles.y;
+                    }
+                }
+            }
+
+            // Q/E strafe (Advanced AAA style)
+            if (input.StrafeLeft)
+                advancedMovement.x = -1f;
+            if (input.StrafeRight)
+                advancedMovement.x = 1f;
+        }
+        else
+        {
+            // Legacy mode: A/D strafe (existing behavior)
+            advancedMovement.x = moveInput.x;
+        }
+
+        return advancedMovement;
+    }
+
     void HandleLookFusionFixed(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
-        // Get look input from Fusion
+        // Get mouse input
         lookInput = input.LookInput;
 
         // Apply look inversion if enabled
         if (lookInverted)
             lookInput.y = -lookInput.y;
 
-        // Store rotation values for network sync
-        if (Mathf.Abs(lookInput.x) > 0.01f)
+        // Handle Advanced AAA-style mouse controls
+        HandleAdvancedMouseControls(input);
+
+        // Standard camera control (when not using mouse drag)
+        if (!isLeftMouseDragging && !isRightMouseDragging && !enableAdvancedCamera)
         {
-            transform.Rotate(Vector3.up, lookInput.x);
-            NetworkRotation = transform.rotation;
+            // Legacy camera system for compatibility
+            if (Mathf.Abs(lookInput.x) > 0.01f)
+            {
+                transform.Rotate(Vector3.up, lookInput.x);
+                NetworkRotation = transform.rotation;
+            }
+
+            if (Mathf.Abs(lookInput.y) > 0.01f)
+            {
+                cameraPitch -= lookInput.y;
+                cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
+                NetworkCameraPitch = cameraPitch;
+            }
+        }
+    }
+
+    void HandleAdvancedMouseControls(U3DNetworkInputData input)
+    {
+        if (!enableAdvancedCamera || cameraPivot == null) return;
+
+        // Update mouse button states
+        isLeftMouseDragging = input.LeftMouseHeld;
+        isRightMouseDragging = input.RightMouseHeld;
+        isBothMouseForward = input.BothMouseHeld;
+
+        // Right-click drag: Rotate character AND camera together (Advanced AAA style)
+        if (isRightMouseDragging && !isLeftMouseDragging)
+        {
+            if (Mathf.Abs(lookInput.x) > 0.01f)
+            {
+                // Rotate character around Y-axis
+                float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                transform.Rotate(Vector3.up, yawDelta);
+
+                // Keep camera yaw in sync with character
+                cameraYaw += yawDelta;
+
+                NetworkRotation = transform.rotation;
+            }
+
+            if (Mathf.Abs(lookInput.y) > 0.01f)
+            {
+                // Camera pitch follows mouse
+                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
+                NetworkCameraPitch = cameraPitchAdvanced;
+            }
+        }
+        // Left-click drag: Orbit camera around character WITHOUT turning character
+        else if (isLeftMouseDragging && !isRightMouseDragging)
+        {
+            if (Mathf.Abs(lookInput.x) > 0.01f)
+            {
+                // Orbit camera horizontally around character
+                cameraYaw += lookInput.x * cameraOrbitSensitivity;
+            }
+
+            if (Mathf.Abs(lookInput.y) > 0.01f)
+            {
+                // Orbit camera vertically around character
+                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
+            }
+
+            // Don't sync character rotation - only camera orbits
+            NetworkCameraPitch = cameraPitchAdvanced;
         }
 
-        if (Mathf.Abs(lookInput.y) > 0.01f)
+        // Apply camera pivot rotation (this creates the orbit effect)
+        if (cameraPivot != null)
         {
-            cameraPitch -= lookInput.y;
-            cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
-            NetworkCameraPitch = cameraPitch;
+            // Set pivot rotation for camera orbit
+            cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
         }
     }
 
