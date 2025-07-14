@@ -7,6 +7,7 @@ namespace U3D.Editor
     public class MigrationToolsCategory : IToolCategory
     {
         public string CategoryName => "Asset Cleanup";
+        public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
 
         public MigrationToolsCategory()

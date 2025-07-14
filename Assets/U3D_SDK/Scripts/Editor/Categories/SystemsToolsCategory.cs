@@ -7,6 +7,7 @@ namespace U3D.Editor
     public class SystemsToolsCategory : IToolCategory
     {
         public string CategoryName => "Game Systems";
+        public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
 
         public SystemsToolsCategory()

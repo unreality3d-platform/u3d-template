@@ -9,6 +9,8 @@ namespace U3D.Editor
     public class MonetizationToolsCategory : IToolCategory
     {
         public string CategoryName => "Monetization";
+        public System.Action<int> OnRequestTabSwitch { get; set; } 
+
         private List<CreatorTool> tools;
 
         public MonetizationToolsCategory()
@@ -60,7 +62,7 @@ namespace U3D.Editor
 
                 if (GUILayout.Button("🔧 Go to Setup Tab", GUILayout.Height(30)))
                 {
-                    Debug.Log("Navigate to Setup tab to configure PayPal");
+                    OnRequestTabSwitch?.Invoke(0); // ✅ FIX: Use navigation callback like PublishTab
                 }
 
                 EditorGUILayout.Space(10);

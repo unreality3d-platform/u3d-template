@@ -81,11 +81,23 @@ namespace U3D.Editor
                 new MigrationToolsCategory(),
                 new MonetizationToolsCategory()
             };
+
+            // Pass navigation callback to all categories
+            foreach (var category in categories)
+            {
+                category.OnRequestTabSwitch = OnRequestTabSwitch;
+            }
         }
 
-        public void DrawTab()
+public void DrawTab()
         {
             InitializeStyles();
+
+            // ✅ FIX: Ensure navigation callbacks are always set
+            foreach (var category in categories)
+            {
+                category.OnRequestTabSwitch = OnRequestTabSwitch;
+            }
 
             EditorGUILayout.Space(10);
 
