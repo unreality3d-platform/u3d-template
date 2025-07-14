@@ -88,6 +88,42 @@ namespace U3D.Editor
             EditorApplication.update += CheckForProductNameChanges;
         }
 
+        private bool ValidateProductName(string productName, out string error)
+        {
+            error = null;
+
+            // Handle null/empty
+            if (string.IsNullOrWhiteSpace(productName))
+            {
+                error = "Product Name cannot be empty";
+                return false;
+            }
+
+            // Handle length (GitHub repo limit is 100, leave room for sanitization)
+            if (productName.Length > 80)
+            {
+                error = "Product Name too long (max 80 characters)";
+                return false;
+            }
+
+            // Handle reserved names that conflict with infrastructure
+            var reservedNames = new[] { "admin", "api", "www", "test", "app", "web", "dev", "staging" };
+            if (reservedNames.Contains(productName.ToLower()))
+            {
+                error = "Product Name conflicts with reserved words";
+                return false;
+            }
+
+            // Handle characters that cause encoding issues
+            if (productName.Any(c => c > 127)) // Non-ASCII characters
+            {
+                error = "Product Name should use only standard English characters for best compatibility";
+                return false;
+            }
+
+            return true;
+        }
+
         private void CheckForProductNameChanges()
         {
             // CRITICAL: Skip during builds
@@ -493,8 +529,9 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Determine if Make It Live button should be enabled
+            // ✅ FIXED: Single canPublish declaration with all validation logic
             bool canPublish = selectedOptionIndex >= 0;
+            string validationError = null;
 
             // Additional validation for Create New Project option with name conflict
             if (canPublish && selectedOptionIndex < availableOptions.Count)
@@ -508,40 +545,58 @@ namespace U3D.Editor
                 }
             }
 
-            // Publish button
+            // Validate Product Name before allowing publish
+            if (canPublish && !ValidateProductName(cachedProductName, out validationError))
+            {
+                canPublish = false;
+            }
+
             GUI.enabled = canPublish;
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
                 var selectedOption = availableOptions[selectedOptionIndex];
 
-                // CRITICAL FIX: Properly set shouldCreateNewRepository based on selection
-                shouldCreateNewRepository = selectedOption.Type == ProjectOption.OptionType.CreateNew;
+                // ✅ FIX: Never override cachedProductName - use separate variable for repository targeting
+                string targetRepositoryName;
 
-                // CRITICAL FIX: Handle different types of Create New options
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
                     if (selectedOption.RepositoryName == "new-project")
                     {
-                        // This is the "Create New Project" option - use current Product Name
-                        Debug.Log($"🎯 CREATE NEW PROJECT selected with Product Name: {cachedProductName}");
+                        // Use current Product Name as-is for completely new projects
+                        targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                        shouldCreateNewRepository = true;
+                        Debug.Log($"🎯 CREATE NEW PROJECT: '{targetRepositoryName}' from Product Name: '{cachedProductName}'");
                     }
                     else
                     {
-                        // This is the incremental version option - use the generated incremental name
-                        cachedProductName = selectedOption.RepositoryName;
-                        Debug.Log($"🎯 CREATE INCREMENTAL VERSION selected: {cachedProductName}");
+                        // Use the pre-generated incremental name but preserve Product Name
+                        targetRepositoryName = selectedOption.RepositoryName;
+                        shouldCreateNewRepository = true;
+                        Debug.Log($"🎯 CREATE INCREMENTAL VERSION: '{targetRepositoryName}' (Product Name stays: '{cachedProductName}')");
                     }
                 }
                 else
                 {
-                    // Override the cached product name if using existing repo with different name
-                    cachedProductName = selectedOption.RepositoryName;
-                    Debug.Log($"🎯 UPDATE EXISTING selected for repository: {cachedProductName}");
+                    // Update existing repository but preserve Product Name
+                    targetRepositoryName = selectedOption.RepositoryName;
+                    shouldCreateNewRepository = false;
+                    Debug.Log($"🎯 UPDATE EXISTING: '{targetRepositoryName}' (Product Name stays: '{cachedProductName}')");
                 }
+
+                // Store the target repository name separately for deployment
+                EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
 
                 _ = StartFirebasePublishProcessAsync();
             }
-            GUI.enabled = true; // FIXED: Always reset GUI.enabled
+            GUI.enabled = true;
+
+            // Show validation errors
+            if (!canPublish && !string.IsNullOrEmpty(validationError))
+            {
+                EditorGUILayout.Space(5);
+                EditorGUILayout.HelpBox($"⚠️ {validationError}", MessageType.Warning);
+            }
 
             // Show helpful message when button is disabled due to name conflict
             if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
@@ -549,7 +604,7 @@ namespace U3D.Editor
                 var selectedOption = availableOptions[selectedOptionIndex];
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew &&
                     selectedOption.RepositoryName == "new-project" &&
-                    hasNameConflict && !canPublish)
+                    hasNameConflict && string.IsNullOrEmpty(validationError))
                 {
                     EditorGUILayout.Space(5);
                     EditorGUILayout.HelpBox(
@@ -762,14 +817,21 @@ namespace U3D.Editor
         {
             try
             {
-                currentStatus = "Determining project name...";
+                currentStatus = "Determining repository name...";
 
-                // Send base name and intent to Firebase
-                var baseName = string.IsNullOrEmpty(cachedProductName) ? "unity-webgl-project" : cachedProductName;
-                var sanitizedBaseName = GitHubAPI.SanitizeRepositoryName(baseName);
+                // ✅ FIX: Use the target repository name we set in the button logic
+                string targetRepositoryName = EditorPrefs.GetString("U3D_TargetRepository", "");
+
+                if (string.IsNullOrEmpty(targetRepositoryName))
+                {
+                    // Fallback to sanitized Product Name for safety
+                    targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                    Debug.LogWarning($"No target repository stored, using fallback: {targetRepositoryName}");
+                }
+
                 var deploymentIntent = shouldCreateNewRepository ? "create_new" : "update_existing";
 
-                Debug.Log($"🎯 Deployment intent: {deploymentIntent}, Base name: {sanitizedBaseName}");
+                Debug.Log($"🎯 Deployment: {deploymentIntent}, Target: '{targetRepositoryName}', Product Name preserved: '{cachedProductName}'");
 
                 currentStatus = "Uploading build to Firebase Storage...";
                 var storageBucket = FirebaseConfigManager.CurrentConfig?.storageBucket ?? "unreality3d.firebasestorage.app";
@@ -778,13 +840,13 @@ namespace U3D.Editor
                     storageBucket = "unreality3d.firebasestorage.app";
                 }
 
-                // Create uploader with updated method
                 var uploader = new FirebaseStorageUploader(storageBucket, U3DAuthenticator.GetIdToken());
 
+                // ✅ FIX: Use targetRepositoryName for deployment, preserve cachedProductName for UI
                 var result = await uploader.UploadBuildToStorageWithIntent(
                     buildPath,
                     U3DAuthenticator.CreatorUsername,
-                    sanitizedBaseName,
+                    targetRepositoryName,  // Use target repo name
                     deploymentIntent
                 );
 
@@ -792,22 +854,22 @@ namespace U3D.Editor
 
                 if (result.Success)
                 {
-                    // Use the actual project name returned from Firebase
-                    var actualProjectName = result.ActualProjectName ?? sanitizedBaseName;
+                    var actualRepositoryName = result.ActualProjectName ?? targetRepositoryName;
 
-                    // FIXED: Use build guards for EditorPrefs access
                     if (!ShouldSkipDuringBuild())
                     {
-                        EditorPrefs.SetString("U3D_LastProjectName", actualProjectName);
+                        EditorPrefs.SetString("U3D_LastRepositoryName", actualRepositoryName);
+                        EditorPrefs.DeleteKey("U3D_TargetRepository"); // Clean up
                     }
-                    shouldCreateNewRepository = false; // Reset flag
+
+                    shouldCreateNewRepository = false;
 
                     return new FirebaseDeployResult
                     {
                         Success = true,
-                        RepositoryName = actualProjectName,
-                        ProjectName = actualProjectName,
-                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{actualProjectName}/",
+                        RepositoryName = actualRepositoryName,
+                        ProjectName = actualRepositoryName,
+                        ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{actualRepositoryName}/",
                         Message = "Deployment successful via Firebase Storage"
                     };
                 }
