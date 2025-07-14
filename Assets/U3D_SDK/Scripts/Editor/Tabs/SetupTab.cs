@@ -57,65 +57,88 @@ namespace U3D.Editor
         {
             EnsureFirebaseConfiguration();
 
+            // ✅ IMPROVEMENT: Always try auto-login first, regardless of current state
             if (!U3DAuthenticator.IsLoggedIn)
             {
                 await U3DAuthenticator.TryAutoLogin();
+
+                // Give auto-login a moment to complete profile loading
+                if (U3DAuthenticator.IsLoggedIn)
+                {
+                    await Task.Delay(100); // Brief pause for profile data
+                }
             }
 
-            // DEBUG: Let's see what's actually happening
-            UnityDebug.Log($"🔍 Debug - IsLoggedIn: {U3DAuthenticator.IsLoggedIn}");
-            UnityDebug.Log($"🔍 Debug - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
-            UnityDebug.Log($"🔍 Debug - GitHubToken exists: {!string.IsNullOrEmpty(GitHubTokenManager.Token)}");
-            UnityDebug.Log($"🔍 Debug - GitHubTokenValidated: {GitHubTokenManager.HasValidToken}");
+            await DetermineInitialState();
+        }
 
-            if (U3DAuthenticator.IsLoggedIn)
+        private async Task DetermineInitialState()
+        {
+            UnityDebug.Log($"🔍 State determination - IsLoggedIn: {U3DAuthenticator.IsLoggedIn}");
+
+            if (!U3DAuthenticator.IsLoggedIn)
             {
-                // CRITICAL FIX: If logged in but username missing, force profile reload
-                if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-                {
-                    UnityDebug.Log("🔄 Username missing, forcing profile reload...");
+                currentState = AuthState.MethodSelection;
+                UnityDebug.Log("🔍 State: MethodSelection (not logged in)");
+                ResetTemporaryFields();
+                UpdateCompletion();
+                return;
+            }
 
-                    // Force a profile reload by calling the internal method
-                    await U3DAuthenticator.ForceProfileReload();
+            // User is logged in - check profile completeness with reload if needed
+            if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                UnityDebug.Log("🔄 Username missing, forcing profile reload...");
+                await U3DAuthenticator.ForceProfileReload();
+                UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+            }
 
-                    UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
-                }
-
-                // Now make the state decision with (hopefully) complete data
-                if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-                {
-                    currentState = AuthState.UsernameReservation;
-                    UnityDebug.Log("🔍 State: UsernameReservation");
-                }
-                else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
-                {
-                    currentState = AuthState.PayPalSetup;
-                    paypalEmail = GetSavedPayPalEmail() ?? "";
-                }
-                else if (!GitHubTokenManager.HasValidToken)
-                {
-                    currentState = AuthState.GitHubSetup;
-                    UnityDebug.Log("🔍 State: GitHubSetup");
-                    githubToken = "";
-                    tokenValidated = false;
-                    validationMessage = "";
-                }
-                else
-                {
-                    currentState = AuthState.LoggedIn;
-                    UnityDebug.Log("🔍 State: LoggedIn");
-                }
+            // Now determine state based on complete data
+            if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                currentState = AuthState.UsernameReservation;
+                UnityDebug.Log("🔍 State: UsernameReservation");
+            }
+            else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
+            {
+                currentState = AuthState.PayPalSetup;
+                paypalEmail = GetSavedPayPalEmail() ?? "";
+                UnityDebug.Log("🔍 State: PayPalSetup");
+            }
+            else if (!GitHubTokenManager.HasValidToken)
+            {
+                currentState = AuthState.GitHubSetup;
+                UnityDebug.Log("🔍 State: GitHubSetup");
+                ResetGitHubFields();
             }
             else
             {
-                currentState = AuthState.MethodSelection;
-                UnityDebug.Log("🔍 State: MethodSelection");
-                githubToken = "";
-                tokenValidated = false;
-                validationMessage = "";
+                currentState = AuthState.LoggedIn;
+                UnityDebug.Log("🔍 State: LoggedIn (complete)");
             }
 
             UpdateCompletion();
+        }
+
+        private void ResetTemporaryFields()
+        {
+            githubToken = "";
+            tokenValidated = false;
+            validationMessage = "";
+            paypalEmail = "";
+            paypalEmailSaved = false;
+
+            desiredUsername = "";
+            usernameChecked = false;
+            usernameAvailable = false;
+            usernameSuggestions = new string[0];
+        }
+
+        private void ResetGitHubFields()
+        {
+            githubToken = "";
+            tokenValidated = false;
+            validationMessage = "";
         }
 
         public void DrawTab()
