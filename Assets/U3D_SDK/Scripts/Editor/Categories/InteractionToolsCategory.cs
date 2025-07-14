@@ -7,6 +7,7 @@ namespace U3D.Editor
     public class InteractionToolsCategory : IToolCategory
     {
         public string CategoryName => "Interactions";
+        public System.Action<int> OnRequestTabSwitch { get; set; } 
         private List<CreatorTool> tools;
 
         public InteractionToolsCategory()

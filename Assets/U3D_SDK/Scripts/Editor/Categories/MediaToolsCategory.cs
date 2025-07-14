@@ -7,6 +7,7 @@ namespace U3D.Editor
     public class MediaToolsCategory : IToolCategory
     {
         public string CategoryName => "Media & Content";
+        public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
 
         public MediaToolsCategory()

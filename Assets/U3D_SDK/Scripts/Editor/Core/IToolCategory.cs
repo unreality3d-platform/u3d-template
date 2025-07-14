@@ -7,5 +7,8 @@ namespace U3D.Editor
         string CategoryName { get; }
         List<CreatorTool> GetTools();
         void DrawCategory();
+
+        // Add navigation support
+        System.Action<int> OnRequestTabSwitch { get; set; }
     }
 }
