@@ -53,8 +53,17 @@ namespace U3D.Editor
 
         private bool showOnStartup = true;
 
+        // CRITICAL FIX: Add initialization tracking to prevent repeated state resets
+        private bool hasInitialized = false;
+
         public async void Initialize()
         {
+            // CRITICAL FIX: Only run full initialization once per session
+            if (hasInitialized)
+            {
+                return;
+            }
+
             EnsureFirebaseConfiguration();
 
             // ✅ IMPROVEMENT: Always try auto-login first, regardless of current state
@@ -70,6 +79,21 @@ namespace U3D.Editor
             }
 
             await DetermineInitialState();
+
+            // CRITICAL FIX: Mark as initialized to prevent repeated calls
+            hasInitialized = true;
+        }
+
+        private void LogoutAndReset()
+        {
+            U3DAuthenticator.Logout();
+            GitHubTokenManager.ClearToken();
+
+            // CRITICAL FIX: Reset initialization state so setup can run again
+            hasInitialized = false;
+
+            currentState = AuthState.MethodSelection;
+            UpdateCompletion();
         }
 
         private async Task DetermineInitialState()
@@ -269,18 +293,13 @@ namespace U3D.Editor
                 currentState = AuthState.MethodSelection;
             }
 
-            // ADD THIS: Logout button for users who are logged in but want to switch accounts
-            EditorGUILayout.Space(15);
             if (U3DAuthenticator.IsLoggedIn && GUILayout.Button("🚪 Logout", EditorStyles.miniButton))
             {
                 if (EditorUtility.DisplayDialog("Logout Confirmation",
                     "This will log you out completely. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    U3DAuthenticator.Logout();
-                    GitHubTokenManager.ClearToken();
-                    currentState = AuthState.MethodSelection;
-                    UpdateCompletion();
+                    LogoutAndReset(); // CHANGED: Use new method
                 }
             }
         }
@@ -430,10 +449,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    U3DAuthenticator.Logout();
-                    GitHubTokenManager.ClearToken();
-                    currentState = AuthState.MethodSelection;
-                    UpdateCompletion();
+                    LogoutAndReset(); // CHANGED: Use new method
                 }
             }
         }
@@ -517,10 +533,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    U3DAuthenticator.Logout();
-                    GitHubTokenManager.ClearToken();
-                    currentState = AuthState.MethodSelection;
-                    UpdateCompletion();
+                    LogoutAndReset(); // CHANGED: Use new method
                 }
             }
         }
@@ -633,15 +646,18 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Skip button for later setup
-            if (GUILayout.Button("⏭️ I'll Set This Up Later", EditorStyles.miniButton))
+            // Skip button for later setup (only show if NOT validated)
+            if (!tokenValidated)
             {
-                if (EditorUtility.DisplayDialog("Setup Later?",
-                    "No problem! You can explore other features now.\n\nJust remember you'll need to come back here before you can publish your creations online.\n\nContinue?",
-                    "Yes, Skip for Now", "Wait, Let Me Finish"))
+                if (GUILayout.Button("⏭️ I'll Set This Up Later", EditorStyles.miniButton))
                 {
-                    currentState = AuthState.LoggedIn;
-                    UpdateCompletion();
+                    if (EditorUtility.DisplayDialog("Setup Later?",
+                        "No problem! You can explore other features now.\n\nJust remember you'll need to come back here before you can publish your creations online.\n\nContinue?",
+                        "Yes, Skip for Now", "Wait, Let Me Finish"))
+                    {
+                        currentState = AuthState.LoggedIn;
+                        UpdateCompletion();
+                    }
                 }
             }
 
@@ -652,10 +668,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    U3DAuthenticator.Logout();
-                    GitHubTokenManager.ClearToken();
-                    currentState = AuthState.MethodSelection;
-                    UpdateCompletion();
+                    LogoutAndReset(); // CHANGED: Use new method
                 }
             }
         }
@@ -757,17 +770,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    U3DAuthenticator.Logout();
-                    GitHubTokenManager.ClearToken();
-
-                    githubToken = "";
-                    tokenValidated = false;
-                    validationMessage = "";
-                    paypalEmail = "";
-                    paypalEmailSaved = false;
-
-                    currentState = AuthState.MethodSelection;
-                    UpdateCompletion();
+                    LogoutAndReset(); // CHANGED: Use new method
                 }
             }
         }
