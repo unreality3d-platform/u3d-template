@@ -52,6 +52,12 @@ namespace U3D.Editor
             SaveCredentials();
         }
 
+        public static void RefreshFromEditorPrefs()
+        {
+            LoadCredentials();
+            Debug.Log($"🔄 GitHub credentials refreshed - HasValidToken: {HasValidToken}, Username: {GitHubUsername}");
+        }
+
         public static async Task<GitHubValidationResult> ValidateAndSetToken(string token)
         {
             if (string.IsNullOrWhiteSpace(token))

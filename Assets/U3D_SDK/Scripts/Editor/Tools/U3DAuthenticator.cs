@@ -23,25 +23,14 @@ public static class U3DAuthenticator
     private static bool _networkConfigured = false;
     private static bool _credentialsLoaded = false; // Track if we've loaded credentials
 
-    // Project-specific key prefix to avoid conflicts between projects
-    private static string ProjectPrefix
-    {
-        get
-        {
-            // Use creator username if available (most stable), fallback to company name
-            var identifier = !string.IsNullOrEmpty(_creatorUsername)
-                ? _creatorUsername
-                : PlayerSettings.companyName;
-
-            // Ensure we have a valid identifier
-            if (string.IsNullOrEmpty(identifier))
-            {
-                identifier = "UnknownCreator";
-            }
-
-            return $"U3D_Creator_{identifier}_";
-        }
-    }
+    // Static credential keys - no dependencies on user data
+    private const string ID_TOKEN_KEY = "U3D_IdToken";
+    private const string REFRESH_TOKEN_KEY = "U3D_RefreshToken";
+    private const string USER_EMAIL_KEY = "U3D_UserEmail";
+    private const string DISPLAY_NAME_KEY = "U3D_DisplayName";
+    private const string CREATOR_USERNAME_KEY = "U3D_CreatorUsername";
+    private const string PAYPAL_CONNECTED_KEY = "U3D_PayPalConnected";
+    private const string STAY_LOGGED_IN_KEY = "U3D_StayLoggedIn";
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
@@ -67,7 +56,7 @@ public static class U3DAuthenticator
         set
         {
             _stayLoggedIn = value;
-            EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", value);
+            EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, value);
 
             // If user unchecks "stay logged in", clear stored credentials
             if (!value)
@@ -174,29 +163,31 @@ public static class U3DAuthenticator
 
         if (string.IsNullOrEmpty(_idToken))
         {
-            Debug.Log("No stored credentials found");
+            Debug.Log("No stored credentials found - manual login required");
             return false;
         }
 
         try
         {
+            Debug.Log("🔄 Attempting auto-login with stored credentials...");
             bool isValid = await ValidateStoredToken();
+
             if (isValid)
             {
                 await LoadUserProfile();
-                Debug.Log("Auto-login successful");
+                Debug.Log("✅ Auto-login successful");
                 return true;
             }
             else
             {
-                Debug.Log("Stored token is invalid");
-                ClearCredentials();
+                Debug.Log("ℹ️ Auto-login not possible - manual login required");
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Auto-login failed: {ex.Message}");
+            // CRITICAL: Never throw scary errors during auto-login
+            Debug.Log($"ℹ️ Auto-login failed gracefully: {ex.Message}");
             ClearCredentials();
             return false;
         }
@@ -945,12 +936,46 @@ public static class U3DAuthenticator
     {
         try
         {
+            // Don't validate if we don't have a token
+            if (string.IsNullOrEmpty(_idToken))
+            {
+                Debug.Log("No stored token to validate");
+                return false;
+            }
+
+            Debug.Log("🔍 Validating stored authentication token...");
             var result = await CallFirebaseFunction("getUserProfile", new { });
-            return result.ContainsKey("userId");
+
+            if (result.ContainsKey("userId"))
+            {
+                Debug.Log("✅ Stored token is valid");
+                return true;
+            }
+            else
+            {
+                Debug.Log("⚠️ Token validation returned unexpected response");
+                return false;
+            }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Token validation failed: {ex.Message}");
+            // Handle authentication errors gracefully - NO SCARY RED ERRORS
+            var message = ex.Message?.ToLower() ?? "";
+            if (message.Contains("unauthenticated") || message.Contains("unauthorized"))
+            {
+                Debug.Log("ℹ️ Stored token has expired - will prompt for login");
+                ClearCredentials();
+                return false;
+            }
+
+            // Handle network issues gracefully
+            if (IsRetriableNetworkError(ex))
+            {
+                Debug.LogWarning($"🌐 Network issue during token validation - will try manual login: {ex.Message}");
+                return false;
+            }
+
+            Debug.LogWarning($"⚠️ Token validation failed: {ex.Message}");
             ClearCredentials();
             return false;
         }
@@ -992,103 +1017,130 @@ public static class U3DAuthenticator
 
     private static void SaveCredentials()
     {
-        // Only save credentials if user wants to stay logged in
         if (_stayLoggedIn)
         {
             if (!string.IsNullOrEmpty(_idToken))
-            {
-                EditorPrefs.SetString(ProjectPrefix + "idToken", _idToken);
-            }
+                EditorPrefs.SetString(ID_TOKEN_KEY, _idToken);
             if (!string.IsNullOrEmpty(_refreshToken))
-            {
-                EditorPrefs.SetString(ProjectPrefix + "refreshToken", _refreshToken);
-            }
+                EditorPrefs.SetString(REFRESH_TOKEN_KEY, _refreshToken);
             if (!string.IsNullOrEmpty(_userEmail))
-            {
-                EditorPrefs.SetString(ProjectPrefix + "userEmail", _userEmail);
-            }
+                EditorPrefs.SetString(USER_EMAIL_KEY, _userEmail);
             if (!string.IsNullOrEmpty(_displayName))
-            {
-                EditorPrefs.SetString(ProjectPrefix + "displayName", _displayName);
-            }
+                EditorPrefs.SetString(DISPLAY_NAME_KEY, _displayName);
             if (!string.IsNullOrEmpty(_creatorUsername))
-            {
-                EditorPrefs.SetString(ProjectPrefix + "creatorUsername", _creatorUsername);
-            }
-            EditorPrefs.SetBool(ProjectPrefix + "paypalConnected", _paypalConnected);
+                EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername);
+            EditorPrefs.SetBool(PAYPAL_CONNECTED_KEY, _paypalConnected);
         }
-
-        // Always save the preference itself
-        EditorPrefs.SetBool(ProjectPrefix + "stayLoggedIn", _stayLoggedIn);
+        EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, _stayLoggedIn);
     }
 
     private static void LoadCredentials()
     {
-        if (_credentialsLoaded) return; // Prevent double-loading
+        if (_credentialsLoaded) return;
 
-        _idToken = EditorPrefs.GetString(ProjectPrefix + "idToken", "");
-        _refreshToken = EditorPrefs.GetString(ProjectPrefix + "refreshToken", "");
-        _userEmail = EditorPrefs.GetString(ProjectPrefix + "userEmail", "");
-        _displayName = EditorPrefs.GetString(ProjectPrefix + "displayName", "");
-        _creatorUsername = EditorPrefs.GetString(ProjectPrefix + "creatorUsername", "");
-        _paypalConnected = EditorPrefs.GetBool(ProjectPrefix + "paypalConnected", false);
-        _stayLoggedIn = EditorPrefs.GetBool(ProjectPrefix + "stayLoggedIn", true); // Default to true
+        _idToken = EditorPrefs.GetString(ID_TOKEN_KEY, "");
+        _refreshToken = EditorPrefs.GetString(REFRESH_TOKEN_KEY, "");
+        _userEmail = EditorPrefs.GetString(USER_EMAIL_KEY, "");
+        _displayName = EditorPrefs.GetString(DISPLAY_NAME_KEY, "");
+        _creatorUsername = EditorPrefs.GetString(CREATOR_USERNAME_KEY, "");
+        _paypalConnected = EditorPrefs.GetBool(PAYPAL_CONNECTED_KEY, false);
+        _stayLoggedIn = EditorPrefs.GetBool(STAY_LOGGED_IN_KEY, true);
         _credentialsLoaded = true;
 
-        Debug.Log($"🔑 Credentials loaded with stable key: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, Username={_creatorUsername}, StayLoggedIn={_stayLoggedIn}");
+        Debug.Log($"🔑 Credentials loaded: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, Username={_creatorUsername}, StayLoggedIn={_stayLoggedIn}");
     }
 
     private static void MigrateFromOldKeys()
     {
-        // Try to find credentials from old Product Name-based keys
-        var oldKey = $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_";
-
-        if (EditorPrefs.HasKey(oldKey + "idToken") && !EditorPrefs.HasKey(ProjectPrefix + "idToken"))
+        // Try to find credentials from various old key patterns
+        var possiblePrefixes = new[]
         {
-            Debug.Log("🔄 Migrating credentials from old Product Name-based keys...");
+        $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_",
+        $"U3D_Creator_{PlayerSettings.companyName}_"
+    };
 
-            // Migrate existing credentials to new stable keys
-            var oldToken = EditorPrefs.GetString(oldKey + "idToken", "");
-            var oldRefresh = EditorPrefs.GetString(oldKey + "refreshToken", "");
-            var oldEmail = EditorPrefs.GetString(oldKey + "userEmail", "");
-            var oldDisplay = EditorPrefs.GetString(oldKey + "displayName", "");
-            var oldUsername = EditorPrefs.GetString(oldKey + "creatorUsername", "");
-            var oldPayPal = EditorPrefs.GetBool(oldKey + "paypalConnected", false);
-            var oldStayLoggedIn = EditorPrefs.GetBool(oldKey + "stayLoggedIn", true);
+        foreach (var oldPrefix in possiblePrefixes)
+        {
+            if (EditorPrefs.HasKey(oldPrefix + "idToken") && string.IsNullOrEmpty(_idToken))
+            {
+                Debug.Log($"🔄 Migrating credentials from old keys: {oldPrefix}");
 
-            // Set values and save with new keys
-            _idToken = oldToken;
-            _refreshToken = oldRefresh;
-            _userEmail = oldEmail;
-            _displayName = oldDisplay;
-            _creatorUsername = oldUsername;
-            _paypalConnected = oldPayPal;
-            _stayLoggedIn = oldStayLoggedIn;
+                _idToken = EditorPrefs.GetString(oldPrefix + "idToken", "");
+                _refreshToken = EditorPrefs.GetString(oldPrefix + "refreshToken", "");
+                _userEmail = EditorPrefs.GetString(oldPrefix + "userEmail", "");
+                _displayName = EditorPrefs.GetString(oldPrefix + "displayName", "");
+                _creatorUsername = EditorPrefs.GetString(oldPrefix + "creatorUsername", "");
+                _paypalConnected = EditorPrefs.GetBool(oldPrefix + "paypalConnected", false);
+                _stayLoggedIn = EditorPrefs.GetBool(oldPrefix + "stayLoggedIn", true);
 
-            SaveCredentials();
+                // Save with new simple keys
+                SaveCredentials();
 
-            // Clean up old keys
-            EditorPrefs.DeleteKey(oldKey + "idToken");
-            EditorPrefs.DeleteKey(oldKey + "refreshToken");
-            EditorPrefs.DeleteKey(oldKey + "userEmail");
-            EditorPrefs.DeleteKey(oldKey + "displayName");
-            EditorPrefs.DeleteKey(oldKey + "creatorUsername");
-            EditorPrefs.DeleteKey(oldKey + "paypalConnected");
-            // Keep old stayLoggedIn preference for reference
+                // Clean up old keys
+                EditorPrefs.DeleteKey(oldPrefix + "idToken");
+                EditorPrefs.DeleteKey(oldPrefix + "refreshToken");
+                EditorPrefs.DeleteKey(oldPrefix + "userEmail");
+                EditorPrefs.DeleteKey(oldPrefix + "displayName");
+                EditorPrefs.DeleteKey(oldPrefix + "creatorUsername");
+                EditorPrefs.DeleteKey(oldPrefix + "paypalConnected");
 
-            Debug.Log("✅ Credential migration completed successfully");
+                Debug.Log("✅ Migration completed successfully");
+                break;
+            }
+        }
+
+        // Migrate PayPal email from old email-dependent keys
+        MigratePayPalEmailKeys();
+    }
+
+    private static void MigratePayPalEmailKeys()
+    {
+        // Check if PayPal email is already migrated
+        if (EditorPrefs.HasKey("U3D_PayPalEmail"))
+            return;
+
+        // Try to find PayPal email from old email-dependent keys
+        var possibleEmails = new[] { _userEmail };
+
+        // Also try loading email from old keys if not loaded yet
+        if (string.IsNullOrEmpty(_userEmail))
+        {
+            possibleEmails = new[]
+            {
+            EditorPrefs.GetString("U3D_UserEmail", ""),
+            EditorPrefs.GetString($"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_userEmail", "")
+        };
+        }
+
+        foreach (var email in possibleEmails)
+        {
+            if (!string.IsNullOrEmpty(email))
+            {
+                string oldKey = $"U3D_PayPalEmail_{email}";
+                if (EditorPrefs.HasKey(oldKey))
+                {
+                    string paypalEmail = EditorPrefs.GetString(oldKey, "");
+                    if (!string.IsNullOrEmpty(paypalEmail))
+                    {
+                        EditorPrefs.SetString("U3D_PayPalEmail", paypalEmail);
+                        EditorPrefs.DeleteKey(oldKey);
+                        Debug.Log($"🔄 Migrated PayPal email from {oldKey}");
+                        break;
+                    }
+                }
+            }
         }
     }
 
     private static void ClearCredentials()
     {
-        EditorPrefs.DeleteKey(ProjectPrefix + "idToken");
-        EditorPrefs.DeleteKey(ProjectPrefix + "refreshToken");
-        EditorPrefs.DeleteKey(ProjectPrefix + "userEmail");
-        EditorPrefs.DeleteKey(ProjectPrefix + "displayName");
-        EditorPrefs.DeleteKey(ProjectPrefix + "creatorUsername");
-        EditorPrefs.DeleteKey(ProjectPrefix + "paypalConnected");
-        // Note: Don't clear stayLoggedIn - preserve user's preference
+        EditorPrefs.DeleteKey(ID_TOKEN_KEY);
+        EditorPrefs.DeleteKey(REFRESH_TOKEN_KEY);
+        EditorPrefs.DeleteKey(USER_EMAIL_KEY);
+        EditorPrefs.DeleteKey(DISPLAY_NAME_KEY);
+        EditorPrefs.DeleteKey(CREATOR_USERNAME_KEY);
+        EditorPrefs.DeleteKey(PAYPAL_CONNECTED_KEY);
+        // Don't clear STAY_LOGGED_IN_KEY - preserve user preference
 
         _idToken = "";
         _refreshToken = "";
@@ -1097,7 +1149,7 @@ public static class U3DAuthenticator
         _creatorUsername = "";
         _paypalConnected = false;
 
-        Debug.Log("🗑️ Credentials cleared from EditorPrefs");
+        Debug.Log("🗑️ U3D authentication credentials cleared");
     }
 }
 
