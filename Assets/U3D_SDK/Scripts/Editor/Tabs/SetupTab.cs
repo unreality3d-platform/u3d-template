@@ -87,7 +87,10 @@ namespace U3D.Editor
         private void LogoutAndReset()
         {
             U3DAuthenticator.Logout();
-            GitHubTokenManager.ClearToken();
+            // DON'T clear GitHub token - it should persist across U3D sessions
+            // GitHubTokenManager.ClearToken(); // ← REMOVE THIS LINE
+
+            // DON'T clear PayPal email - it should persist independently
 
             // CRITICAL FIX: Reset initialization state so setup can run again
             hasInitialized = false;
@@ -109,15 +112,24 @@ namespace U3D.Editor
                 return;
             }
 
-            // User is logged in - check profile completeness with reload if needed
+            // CRITICAL FIX: Only force reload if profile data is actually missing
+            // Don't reload if auto-login just succeeded and populated the data
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 UnityDebug.Log("🔄 Username missing, forcing profile reload...");
-                await U3DAuthenticator.ForceProfileReload();
-                UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+                try
+                {
+                    await U3DAuthenticator.ForceProfileReload();
+                    UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
+                }
+                catch (Exception ex)
+                {
+                    UnityDebug.LogWarning($"⚠️ Profile reload failed: {ex.Message}");
+                    // Continue with setup anyway - user can try manual login
+                }
             }
 
-            // Now determine state based on complete data
+            // Now determine state based on available data
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 currentState = AuthState.UsernameReservation;
@@ -968,17 +980,12 @@ namespace U3D.Editor
 
         private void SavePayPalEmailToPrefs(string email)
         {
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            EditorPrefs.SetString(key, email);
+            EditorPrefs.SetString("U3D_PayPalEmail", email);
         }
 
         private string GetSavedPayPalEmail()
         {
-            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
-                return null;
-
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            return EditorPrefs.GetString(key, "");
+            return EditorPrefs.GetString("U3D_PayPalEmail", "");
         }
 
         // GitHub token validation
@@ -1053,11 +1060,7 @@ namespace U3D.Editor
 
         public static string GetCreatorPayPalEmail()
         {
-            if (string.IsNullOrEmpty(U3DAuthenticator.UserEmail))
-                return "";
-
-            string key = $"U3D_PayPalEmail_{U3DAuthenticator.UserEmail}";
-            return EditorPrefs.GetString(key, "");
+            return EditorPrefs.GetString("U3D_PayPalEmail", "");
         }
 
         private void UpdateCompletion()
