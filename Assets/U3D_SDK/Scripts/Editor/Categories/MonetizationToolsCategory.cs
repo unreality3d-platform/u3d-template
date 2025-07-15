@@ -120,15 +120,119 @@ namespace U3D.Editor
         {
             if (!ValidatePayPalSetup()) return;
 
-            GameObject tipJarObject = CreatePaymentUI("Tip Jar", "🎁", CreateTipJarUI);
+            // Find or create Canvas using Unity 6+ method
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+            {
+                var canvasObject = new GameObject("Canvas");
+                canvas = canvasObject.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.WorldSpace;
+                canvasObject.AddComponent<CanvasScaler>();
+                canvasObject.AddComponent<GraphicRaycaster>();
 
-            var dualTransaction = tipJarObject.AddComponent<PayPalDualTransaction>();
+                // FIXED: Proper World Space scaling
+                canvas.transform.localScale = Vector3.one * 0.01f;
+            }
 
-            // Configure for variable donations
+            var uiResources = new DefaultControls.Resources();
+            GameObject container = DefaultControls.CreatePanel(uiResources);
+            container.name = "Tip Jar";
+            container.transform.SetParent(canvas.transform, false);
+
+            // Configure container
+            var containerRect = container.GetComponent<RectTransform>();
+            containerRect.sizeDelta = new Vector2(300, 200);
+            containerRect.anchoredPosition = Vector2.zero;
+
+            // Create header using Unity built-in method
+            CreateHeaderUI(container, "Tip Jar");  // REMOVED EMOJI
+
+            // Create amount input field
+            GameObject inputField = DefaultControls.CreateInputField(uiResources);
+            inputField.name = "AmountInput";
+            inputField.transform.SetParent(container.transform, false);
+
+            var inputRect = inputField.GetComponent<RectTransform>();
+            inputRect.anchorMin = new Vector2(0.1f, 0.6f);
+            inputRect.anchorMax = new Vector2(0.9f, 0.75f);
+            inputRect.offsetMin = Vector2.zero;
+            inputRect.offsetMax = Vector2.zero;
+
+            // FIXED: Ensure TMP_InputField is used
+            var inputComponent = inputField.GetComponent<TMP_InputField>();
+            if (inputComponent == null)
+            {
+                var legacyInput = inputField.GetComponent<InputField>();
+                if (legacyInput != null)
+                    Object.DestroyImmediate(legacyInput);
+                inputComponent = inputField.AddComponent<TMP_InputField>();
+            }
+
+            inputComponent.text = "5.00";
+            inputComponent.contentType = TMP_InputField.ContentType.DecimalNumber;
+
+            // Create tip button
+            GameObject button = DefaultControls.CreateButton(uiResources);
+            button.name = "TipButton";
+            button.transform.SetParent(container.transform, false);
+
+            var buttonRect = button.GetComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0.1f, 0.35f);
+            buttonRect.anchorMax = new Vector2(0.9f, 0.55f);
+            buttonRect.offsetMin = Vector2.zero;
+            buttonRect.offsetMax = Vector2.zero;
+
+            // FIXED: Convert button text to TextMeshPro without emoji
+            SetupTextMeshPro(button.transform.GetChild(0).gameObject, "Send Tip", 14);
+
+            // Create status text
+            CreateStatusText(container);
+
+            // Add dual transaction component AFTER UI creation
+            var dualTransaction = container.AddComponent<PayPalDualTransaction>();
             dualTransaction.SetItemDetails("Creator Tip", "Support this creator's work", 5.00f);
             dualTransaction.SetVariableAmount(true, 1.00f, 100.00f);
 
+            Selection.activeGameObject = container;
             LogToolCreation("Tip Jar", "Variable donation system with 95%/5% split");
+        }
+
+        // FIXED: Updated header creation method
+        private void CreateHeaderUI(GameObject parent, string title)
+        {
+            var uiResources = new DefaultControls.Resources();
+
+            // Create header panel
+            GameObject header = DefaultControls.CreatePanel(uiResources);
+            header.name = "Header";
+            header.transform.SetParent(parent.transform, false);
+
+            var headerRect = header.GetComponent<RectTransform>();
+            headerRect.anchorMin = new Vector2(0, 0.8f);
+            headerRect.anchorMax = new Vector2(1, 1);
+            headerRect.offsetMin = Vector2.zero;
+            headerRect.offsetMax = Vector2.zero;
+
+            // Set header color
+            var headerImage = header.GetComponent<Image>();
+            if (headerImage != null)
+                headerImage.color = new Color(0.2f, 0.3f, 0.4f, 0.8f);
+
+            // Create title text using Unity built-in method
+            GameObject titleText = DefaultControls.CreateText(uiResources);
+            titleText.name = "Title";
+            titleText.transform.SetParent(header.transform, false);
+
+            var titleRect = titleText.GetComponent<RectTransform>();
+            titleRect.anchorMin = Vector2.zero;
+            titleRect.anchorMax = Vector2.one;
+            titleRect.offsetMin = new Vector2(10, 0);
+            titleRect.offsetMax = new Vector2(-10, 0);
+
+            // FIXED: Convert to TextMeshPro properly
+            var titleTMP = SetupTextMeshPro(titleText, title, 16);
+            titleTMP.alignment = TextAlignmentOptions.Center;
+            titleTMP.color = Color.white;
         }
 
         private void CreateSceneGate()
