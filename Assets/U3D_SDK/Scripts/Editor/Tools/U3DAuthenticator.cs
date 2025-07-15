@@ -895,7 +895,6 @@ public static class U3DAuthenticator
                             appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
                             measurementId = "G-YXC3XB3PFL"
                         };
-                        Debug.LogWarning("Development config endpoint unavailable, using fallback");
                     }
                 }
                 catch (Exception devEx)
