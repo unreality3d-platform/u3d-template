@@ -943,38 +943,69 @@ public static class U3DAuthenticator
             }
 
             Debug.Log("🔍 Validating stored authentication token...");
-            var result = await CallFirebaseFunction("getUserProfile", new { });
 
-            if (result.ContainsKey("userId"))
+            // First attempt with current token
+            try
             {
-                Debug.Log("✅ Stored token is valid");
-                return true;
+                var result = await CallFirebaseFunction("getUserProfile", new { });
+
+                if (result.ContainsKey("userId"))
+                {
+                    Debug.Log("✅ Stored token is valid");
+                    return true;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Debug.Log("⚠️ Token validation returned unexpected response");
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            // Handle authentication errors gracefully - NO SCARY RED ERRORS
-            var message = ex.Message?.ToLower() ?? "";
-            if (message.Contains("unauthenticated") || message.Contains("unauthorized"))
-            {
-                Debug.Log("ℹ️ Stored token has expired - will prompt for login");
+                var message = ex.Message?.ToLower() ?? "";
+
+                // If token is expired/unauthenticated, try to refresh
+                if (message.Contains("unauthenticated") || message.Contains("unauthorized"))
+                {
+                    Debug.Log("⏰ Token appears expired - attempting refresh...");
+
+                    bool refreshed = await RefreshIdTokenIfNeeded();
+                    if (refreshed)
+                    {
+                        // Try validation again with refreshed token
+                        try
+                        {
+                            var retryResult = await CallFirebaseFunction("getUserProfile", new { });
+                            if (retryResult.ContainsKey("userId"))
+                            {
+                                Debug.Log("✅ Token refreshed and validated successfully");
+                                return true;
+                            }
+                        }
+                        catch (Exception retryEx)
+                        {
+                            Debug.LogWarning($"⚠️ Validation failed even after refresh: {retryEx.Message}");
+                        }
+                    }
+
+                    Debug.Log("ℹ️ Token refresh failed - manual login required");
+                    ClearCredentials();
+                    return false;
+                }
+
+                // Handle network issues gracefully
+                if (IsRetriableNetworkError(ex))
+                {
+                    Debug.LogWarning($"🌐 Network issue during token validation: {ex.Message}");
+                    return false;
+                }
+
+                Debug.LogWarning($"⚠️ Token validation failed: {ex.Message}");
                 ClearCredentials();
                 return false;
             }
 
-            // Handle network issues gracefully
-            if (IsRetriableNetworkError(ex))
-            {
-                Debug.LogWarning($"🌐 Network issue during token validation - will try manual login: {ex.Message}");
-                return false;
-            }
-
-            Debug.LogWarning($"⚠️ Token validation failed: {ex.Message}");
+            Debug.Log("⚠️ Token validation returned unexpected response");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"⚠️ Token validation error: {ex.Message}");
             ClearCredentials();
             return false;
         }
