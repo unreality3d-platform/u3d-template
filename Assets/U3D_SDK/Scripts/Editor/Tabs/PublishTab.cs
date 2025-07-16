@@ -35,8 +35,6 @@ namespace U3D.Editor
         private bool loadingOptions = false;
         private int selectedOptionIndex = -1;
 
-        private string lastCheckedProductName; // Track when Product Name changes
-
         private enum PublishStep
         {
             Ready,
@@ -60,18 +58,13 @@ namespace U3D.Editor
         {
             // Cache product name on main thread to avoid threading issues
             cachedProductName = Application.productName;
-            lastCheckedProductName = cachedProductName; // Initialize tracking
 
-            // CRITICAL: Skip other initialization during builds, but ALWAYS cache Product Name
+            // CRITICAL: Skip other initialization during builds
             if (ShouldSkipDuringBuild())
             {
                 Debug.Log("🚫 PublishTab: Skipping editor updates during build process");
                 return;
             }
-
-            publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
-
-            lastCheckedProductName = cachedProductName; // Initialize tracking
 
             publishUrl = EditorPrefs.GetString("U3D_PublishedURL", "");
 
@@ -84,8 +77,7 @@ namespace U3D.Editor
                 deploymentComplete = true;
             }
 
-            // Subscribe to editor updates for real-time Product Name monitoring
-            EditorApplication.update += CheckForProductNameChanges;
+            // NO MORE EditorApplication.update subscription
         }
 
         private bool ValidateProductName(string productName, out string error)
@@ -124,36 +116,6 @@ namespace U3D.Editor
             return true;
         }
 
-        private void CheckForProductNameChanges()
-        {
-            // CRITICAL: Skip during builds
-            if (ShouldSkipDuringBuild())
-            {
-                return;
-            }
-
-            // Only monitor for external changes (like from Project Settings window)
-            // Don't interfere with internal editing in our UI
-            if (currentStep == PublishStep.Ready && optionsLoaded)
-            {
-                var currentProductName = Application.productName;
-                if (currentProductName != lastCheckedProductName && currentProductName != cachedProductName)
-                {
-                    // Only update if this was an external change (not from our UI)
-                    lastCheckedProductName = currentProductName;
-                    cachedProductName = currentProductName;
-
-                    Debug.Log($"Product Name changed externally to: {currentProductName}");
-                    // Don't reload options - just update our cached value
-                }
-            }
-        }
-
-        private void OnDestroy()
-        {
-            EditorApplication.update -= CheckForProductNameChanges;
-        }
-
         private void ResetPublishState()
         {
             EditorPrefs.DeleteKey("U3D_PublishedURL");
@@ -170,10 +132,24 @@ namespace U3D.Editor
             Debug.Log("Publish state reset - ready to publish again");
         }
 
+        public void OnFocus()
+        {
+            // Check for external Product Name changes when tab gains focus
+            var currentProductName = Application.productName;
+            if (currentProductName != cachedProductName)
+            {
+                Debug.Log($"Product Name changed externally: '{cachedProductName}' → '{currentProductName}'");
+                cachedProductName = currentProductName;
+
+                // Reset options so they reload with new name
+                optionsLoaded = false;
+                loadingOptions = false;
+            }
+        }
+
         public void DrawTab()
         {
             EditorGUILayout.Space(10);
-
             EditorGUILayout.LabelField("Publish Your Content", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Share your creation with the world! This will make your content live on the internet.", MessageType.Info);
             EditorGUILayout.Space(15);
@@ -486,7 +462,6 @@ namespace U3D.Editor
                         // Update Unity's PlayerSettings
                         PlayerSettings.productName = newProductName;
                         cachedProductName = newProductName;
-                        lastCheckedProductName = newProductName;
 
                         Debug.Log($"Product Name updated to: {newProductName}");
 
