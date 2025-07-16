@@ -33,7 +33,8 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Monetization Tools", EditorStyles.boldLabel);
 
             // Check PayPal setup status
-            string paypalEmail = SetupTab.GetCreatorPayPalEmail();
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            string paypalEmail = (creatorData != null) ? creatorData.PayPalEmail : "";
             bool paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
 
             if (paypalConfigured)
@@ -636,8 +637,15 @@ namespace U3D.Editor
             var priceText = container.transform.Find("PriceText")?.GetComponent<TextMeshProUGUI>();
             var amountInput = container.transform.Find("AmountInput")?.GetComponent<TMP_InputField>();
 
-            // Use the new public method to assign references
+            // Use the public method to assign references
             dualTransaction.AssignUIReferences(paymentButton, statusText, priceText, amountInput);
+
+            // Set PayPal email directly from ScriptableObject
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+            {
+                dualTransaction.SetCreatorPayPalEmail(creatorData.PayPalEmail);
+            }
 
             Debug.Log($"UI References assigned to {container.name}: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInput != null}");
         }
@@ -873,7 +881,10 @@ namespace U3D.Editor
 
         private bool ValidatePayPalSetup()
         {
-            string paypalEmail = SetupTab.GetCreatorPayPalEmail();
+            // Only use ScriptableObject approach - no EditorPrefs
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            string paypalEmail = (creatorData != null) ? creatorData.PayPalEmail : "";
+
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 EditorUtility.DisplayDialog(
