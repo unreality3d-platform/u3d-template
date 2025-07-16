@@ -17,7 +17,6 @@ namespace U3D.Editor
 
         private enum AuthState
         {
-            MethodSelection,
             ManualLogin,
             ManualRegister,
             UsernameReservation,
@@ -26,8 +25,7 @@ namespace U3D.Editor
             LoggedIn
         }
 
-        private AuthState currentState = AuthState.MethodSelection;
-        private bool paypalSelected = true;
+        private AuthState currentState = AuthState.ManualLogin;
         private string email = "";
         private string password = "";
         private string confirmPassword = "";
@@ -96,7 +94,7 @@ namespace U3D.Editor
             // CRITICAL FIX: Reset initialization state so setup can run again
             hasInitialized = false;
 
-            currentState = AuthState.MethodSelection;
+            currentState = AuthState.ManualLogin;
             UpdateCompletion();
         }
 
@@ -106,8 +104,8 @@ namespace U3D.Editor
 
             if (!U3DAuthenticator.IsLoggedIn)
             {
-                currentState = AuthState.MethodSelection;
-                UnityDebug.Log("🔍 State: MethodSelection (not logged in)");
+                currentState = AuthState.ManualLogin;
+                UnityDebug.Log("🔍 State: ManualLogin (not logged in)");
                 ResetTemporaryFields();
                 UpdateCompletion();
                 return;
@@ -184,9 +182,6 @@ namespace U3D.Editor
 
             switch (currentState)
             {
-                case AuthState.MethodSelection:
-                    DrawMethodSelection();
-                    break;
                 case AuthState.ManualLogin:
                     DrawManualLogin();
                     break;
@@ -208,60 +203,6 @@ namespace U3D.Editor
             }
 
             EditorGUILayout.EndVertical();
-        }
-
-        private void DrawMethodSelection()
-        {
-            EditorGUILayout.LabelField("Welcome to Unreality3D", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("Choose how you'd like to get started:", EditorStyles.label);
-            EditorGUILayout.Space(15);
-
-            // PayPal option (recommended)
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            var newPayPalSelected = EditorGUILayout.Toggle(paypalSelected, GUILayout.Width(20));
-            if (newPayPalSelected != paypalSelected)
-            {
-                paypalSelected = true;
-            }
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(25);
-            EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField("Email & PayPal Setup (Recommended)", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Instant monetization - sell your content", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Keep 95% of earnings", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Professional creator URLs", EditorStyles.miniLabel);
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
-
-            EditorGUILayout.Space(10);
-
-            // Manual option
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            var newManualSelected = EditorGUILayout.Toggle(!paypalSelected, GUILayout.Width(20));
-            if (newManualSelected != !paypalSelected)
-            {
-                paypalSelected = false;
-            }
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(25);
-            EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField("Email Only", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Professional creator URLs", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("• Add monetization later (optional)", EditorStyles.miniLabel);
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
-
-            EditorGUILayout.Space(20);
-
-            // Continue button
-            if (GUILayout.Button(paypalSelected ? "Continue with Email & PayPal" : "Continue with Email", GUILayout.Height(35)))
-            {
-                currentState = AuthState.ManualLogin;
-            }
         }
 
         private void DrawManualLogin()
@@ -303,7 +244,7 @@ namespace U3D.Editor
 
             if (GUILayout.Button("← Back to Method Selection"))
             {
-                currentState = AuthState.MethodSelection;
+                currentState = AuthState.ManualRegister;
             }
 
             if (U3DAuthenticator.IsLoggedIn && GUILayout.Button("🚪 Logout", EditorStyles.miniButton))
@@ -372,7 +313,7 @@ namespace U3D.Editor
 
             if (GUILayout.Button("← Back to Method Selection"))
             {
-                currentState = AuthState.MethodSelection;
+                currentState = AuthState.ManualLogin;
             }
         }
 
@@ -473,11 +414,12 @@ namespace U3D.Editor
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "Connect PayPal to enable monetization:\n" +
+                "Optional: Connect PayPal to enable monetization:\n" +
                 "• Sell content (scenes, avatars, props, access)\n" +
                 "• Receive payments directly to your account\n" +
                 "• Keep 95% of your earnings\n" +
-                "• Automatic dual-transaction system",
+                "• Automatic dual-transaction system\n\n" +
+                "You can skip this and publish content without monetization.",
                 MessageType.Info);
 
             EditorGUILayout.Space(10);
@@ -805,7 +747,7 @@ namespace U3D.Editor
                     {
                         currentState = AuthState.UsernameReservation;
                     }
-                    else if (paypalSelected && string.IsNullOrEmpty(GetSavedPayPalEmail()))
+                    else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
                         paypalEmail = GetSavedPayPalEmail() ?? "";
@@ -848,7 +790,7 @@ namespace U3D.Editor
                     {
                         currentState = AuthState.UsernameReservation;
                     }
-                    else if (paypalSelected && string.IsNullOrEmpty(GetSavedPayPalEmail()))
+                    else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
                         paypalEmail = GetSavedPayPalEmail() ?? "";
@@ -910,7 +852,7 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.ReserveUsername(desiredUsername);
                 if (success)
                 {
-                    if (paypalSelected && string.IsNullOrEmpty(GetSavedPayPalEmail()))
+                    if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
                         paypalEmail = "";
@@ -984,15 +926,15 @@ namespace U3D.Editor
 
         private void UpdateRuntimeDataAsset()
         {
-            var assetPath = "Assets/U3D_SDK/Resources/U3DCreatorData.asset";
+            var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
 
             var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
             if (data == null)
             {
                 data = ScriptableObject.CreateInstance<U3DCreatorData>();
-                if (!AssetDatabase.IsValidFolder("Assets/U3D_SDK/Resources"))
+                if (!AssetDatabase.IsValidFolder("Assets/U3D/Resources"))
                 {
-                    AssetDatabase.CreateFolder("Assets/U3D_SDK", "Resources");
+                    AssetDatabase.CreateFolder("Assets/U3D", "Resources");
                 }
                 AssetDatabase.CreateAsset(data, assetPath);
             }
