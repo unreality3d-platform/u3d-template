@@ -383,6 +383,68 @@ namespace U3D
             return totalAmount * 0.05f;
         }
 
+        /// <summary>
+        /// Assigns UI references programmatically after component creation
+        /// </summary>
+        public void AssignUIReferences(Button payButton, TMP_Text statusTextComponent, TMP_Text priceTextComponent = null, TMP_InputField amountInput = null)
+        {
+            paymentButton = payButton;
+            statusText = statusTextComponent;
+            priceText = priceTextComponent;
+            amountInputField = amountInput;
+
+            // Re-initialize with new references
+            if (paymentButton != null)
+            {
+                paymentButton.onClick.RemoveAllListeners();
+                paymentButton.onClick.AddListener(StartPayment);
+            }
+
+            if (amountInputField != null)
+            {
+                amountInputField.gameObject.SetActive(allowVariableAmount);
+                amountInputField.onValueChanged.RemoveAllListeners();
+                amountInputField.onValueChanged.AddListener(OnAmountChanged);
+                amountInputField.text = itemPrice.ToString("F2");
+            }
+
+            // Update UI with current settings
+            UpdateUI();
+            ValidateSetup();
+
+            Debug.Log($"UI References assigned to PayPalDualTransaction: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInputField != null}");
+        }
+
+        /// <summary>
+        /// Quick method to assign just the essential button and status text
+        /// </summary>
+        public void AssignEssentialReferences(Button payButton, TMP_Text statusTextComponent)
+        {
+            AssignUIReferences(payButton, statusTextComponent, null, null);
+        }
+
+        /// <summary>
+        /// Automatically find and assign UI references by searching child components
+        /// </summary>
+        public void AutoAssignUIReferences()
+        {
+            // Search for components in children
+            var foundButton = GetComponentInChildren<Button>();
+            var foundStatusText = transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
+            var foundPriceText = transform.Find("PriceText")?.GetComponent<TextMeshProUGUI>();
+            var foundAmountInput = GetComponentInChildren<TMP_InputField>();
+
+            AssignUIReferences(foundButton, foundStatusText, foundPriceText, foundAmountInput);
+        }
+
+        /// <summary>
+        /// Check if UI references are properly assigned
+        /// </summary>
+        public bool HasValidUIReferences()
+        {
+            return paymentButton != null && statusText != null;
+        }
+
         // Helper class for transaction data
         [Serializable]
         private class TransactionDetails
