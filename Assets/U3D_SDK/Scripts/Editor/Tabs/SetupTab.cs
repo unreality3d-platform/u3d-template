@@ -58,9 +58,10 @@ namespace U3D.Editor
 
         public async void Initialize()
         {
-            // CRITICAL FIX: Only run full initialization once per session
+            // Only run full initialization once per session
             if (hasInitialized)
             {
+                UpdateCompletion();
                 return;
             }
 
@@ -1101,8 +1102,15 @@ namespace U3D.Editor
 
         public void OnEnable()
         {
-            Initialize();
-            EditorApplication.update += OnEditorUpdate;
+            // Only initialize if not already done
+            if (!hasInitialized)
+            {
+                Initialize();
+            }
+
+            // Clean subscription (no polling needed)
+            EditorApplication.update -= OnEditorUpdate;
+            // Don't re-subscribe since OnEditorUpdate is empty
         }
 
         public void OnDisable()
