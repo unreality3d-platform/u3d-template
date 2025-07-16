@@ -358,6 +358,18 @@ public class U3DPlayerController : NetworkBehaviour
         nametag.Initialize(this);
     }
 
+    bool IsCursorLocked()
+    {
+        // Check cursor manager first (WebGL)
+        if (_cursorManager != null)
+        {
+            return _cursorManager.IsCursorLocked;
+        }
+
+        // Fallback to Unity cursor state (non-WebGL)
+        return Cursor.lockState == CursorLockMode.Locked;
+    }
+
     // CORRECTED: Method called by NetworkManager after spawning
     public void RefreshInputActionsFromNetworkManager(U3D.Networking.U3DFusionNetworkManager networkManager)
     {
@@ -452,6 +464,9 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleLocalCameraRender()
     {
         if (!enableMovement || !_isLocalPlayer || playerCamera == null) return;
+
+        // Stop camera rotation updates when cursor is released
+        if (!IsCursorLocked()) return;
 
         // Apply smooth camera rotation in Render for consistent timing
         Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
@@ -612,6 +627,9 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleLookFusionFixed(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
+
+        // Stop camera movement when cursor is released for UI interaction
+        if (!IsCursorLocked()) return;
 
         // Get mouse input
         lookInput = input.LookInput;
