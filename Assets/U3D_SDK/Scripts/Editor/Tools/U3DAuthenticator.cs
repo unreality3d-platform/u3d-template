@@ -931,6 +931,76 @@ public static class U3DAuthenticator
         }
     }
 
+    private static async Task<bool> RefreshIdTokenIfNeeded()
+    {
+        // Don't attempt refresh if we don't have a refresh token
+        if (string.IsNullOrEmpty(_refreshToken))
+        {
+            Debug.Log("ℹ️ No refresh token available - manual login required");
+            return false;
+        }
+
+        try
+        {
+            Debug.Log("🔄 Attempting to refresh ID token...");
+
+            var refreshData = new
+            {
+                grant_type = "refresh_token",
+                refresh_token = _refreshToken
+            };
+
+            var json = JsonConvert.SerializeObject(refreshData);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _sharedHttpClient.PostAsync(
+                $"https://securetoken.googleapis.com/v1/token?key={FirebaseConfigManager.CurrentConfig.apiKey}",
+                content);
+
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                if (result.ContainsKey("id_token"))
+                {
+                    _idToken = result["id_token"].ToString();
+
+                    // Update refresh token if provided
+                    if (result.ContainsKey("refresh_token"))
+                    {
+                        _refreshToken = result["refresh_token"].ToString();
+                    }
+
+                    SaveCredentials();
+                    Debug.Log("✅ ID token refreshed successfully");
+                    return true;
+                }
+            }
+            else
+            {
+                Debug.Log($"⚠️ Token refresh failed: {response.StatusCode} - {responseText}");
+
+                // If refresh token is invalid, clear credentials
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    Debug.Log("🗑️ Refresh token expired - clearing credentials");
+                    ClearCredentials();
+                }
+
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"⚠️ Token refresh error: {ex.Message}");
+            return false;
+        }
+
+        return false;
+    }
+
     private static async Task<bool> ValidateStoredToken()
     {
         try
