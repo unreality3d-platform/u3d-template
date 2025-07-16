@@ -953,6 +953,9 @@ namespace U3D.Editor
                 SavePayPalEmailToPrefs(paypalEmail);
                 paypalEmailSaved = true;
 
+                // NEW: Also sync to ScriptableObject for Runtime access
+                UpdateRuntimeDataAsset();
+
                 EditorUtility.DisplayDialog("PayPal Email Saved!",
                     $"PayPal email '{paypalEmail}' saved successfully!\n\n" +
                     "You can now sell content and receive 95% of earnings directly to this PayPal account.",
@@ -976,6 +979,26 @@ namespace U3D.Editor
             {
                 savingPayPalEmail = false;
             }
+        }
+
+        private void UpdateRuntimeDataAsset()
+        {
+            var assetPath = "Assets/U3D_SDK/Resources/U3DCreatorData.asset";
+
+            var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
+            if (data == null)
+            {
+                data = ScriptableObject.CreateInstance<U3DCreatorData>();
+                if (!AssetDatabase.IsValidFolder("Assets/U3D_SDK/Resources"))
+                {
+                    AssetDatabase.CreateFolder("Assets/U3D_SDK", "Resources");
+                }
+                AssetDatabase.CreateAsset(data, assetPath);
+            }
+
+            data.PayPalEmail = paypalEmail;
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
         }
 
         private void SavePayPalEmailToPrefs(string email)

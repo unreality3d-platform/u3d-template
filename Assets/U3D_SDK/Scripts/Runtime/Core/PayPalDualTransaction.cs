@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using TMPro;
-using U3D.Editor;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -52,8 +51,9 @@ namespace U3D
 
         private void InitializeComponent()
         {
-            // Get creator PayPal email from setup
-            creatorPayPalEmail = SetupTab.GetCreatorPayPalEmail();
+            // FIXED: Get PayPal email from Resources instead of SetupTab
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            string creatorPayPalEmail = creatorData != null ? creatorData.PayPalEmail : "";
 
             // Setup UI
             if (paymentButton != null)
