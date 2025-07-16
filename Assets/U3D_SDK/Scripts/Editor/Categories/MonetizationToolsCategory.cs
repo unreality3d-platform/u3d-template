@@ -106,9 +106,11 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Premium Content", "Creator content purchase", 5.00f);
             dualTransaction.SetVariableAmount(false);
 
+            // NEW: Auto-assign UI references
+            AssignUIReferences(buttonObject, dualTransaction);
+
             LogToolCreation("Purchase Button", "Single-purchase payment button with 95%/5% split");
         }
-
         private void CreateTipJar()
         {
             if (!ValidatePayPalSetup()) return;
@@ -180,6 +182,9 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Creator Tip", "Support this creator's work", 5.00f);
             dualTransaction.SetVariableAmount(true, 1.00f, 100.00f);
 
+            // NEW: Auto-assign UI references
+            AssignUIReferences(container, dualTransaction);
+
             Selection.activeGameObject = container;
             LogToolCreation("Tip Jar", "Variable donation system with 95%/5% split");
         }
@@ -196,6 +201,9 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Scene Access", "Premium scene entry fee", 3.00f);
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(gateController.OpenGate);
+
+            // NEW: Auto-assign UI references
+            AssignUIReferences(gateObject, dualTransaction);
 
             LogToolCreation("Scene Gate", "Entry payment gate with automatic unlocking");
         }
@@ -223,6 +231,9 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Event Access", "Special event ticket", 10.00f);
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(eventController.GrantAccess);
+
+            // NEW: Auto-assign UI references
+            AssignUIReferences(eventObject, dualTransaction);
 
             LogToolCreation("Event Gate", "Timed event access with payment verification");
         }
@@ -604,6 +615,33 @@ namespace U3D.Editor
             CreateCleanStatusText(container);
         }
 
+        private void AssignUIReferences(GameObject container, PayPalDualTransaction dualTransaction)
+        {
+            // Find UI components by name
+            var paymentButton = container.transform.Find("PaymentButton")?.GetComponent<Button>();
+            if (paymentButton == null)
+            {
+                paymentButton = container.transform.Find("TipButton")?.GetComponent<Button>();
+            }
+            if (paymentButton == null)
+            {
+                paymentButton = container.transform.Find("UnlockButton")?.GetComponent<Button>();
+            }
+            if (paymentButton == null)
+            {
+                paymentButton = container.transform.Find("AccessButton")?.GetComponent<Button>();
+            }
+
+            var statusText = container.transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
+            var priceText = container.transform.Find("PriceText")?.GetComponent<TextMeshProUGUI>();
+            var amountInput = container.transform.Find("AmountInput")?.GetComponent<TMP_InputField>();
+
+            // Use the new public method to assign references
+            dualTransaction.AssignUIReferences(paymentButton, statusText, priceText, amountInput);
+
+            Debug.Log($"UI References assigned to {container.name}: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInput != null}");
+        }
+
         #endregion
 
         #region Helper Components
@@ -693,6 +731,12 @@ namespace U3D.Editor
                 var dualTransaction = itemButton.AddComponent<PayPalDualTransaction>();
                 dualTransaction.SetItemDetails(item.itemName, item.description, item.price);
                 dualTransaction.SetVariableAmount(false);
+
+                // NEW: Auto-assign UI references for shop item buttons
+                dualTransaction.AssignEssentialReferences(
+                    itemButton.GetComponent<Button>(),
+                    null // Shop items don't have individual status text
+                );
 
                 var buttonText = itemButton.GetComponentInChildren<TextMeshProUGUI>();
                 if (buttonText != null)
