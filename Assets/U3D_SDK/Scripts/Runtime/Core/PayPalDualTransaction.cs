@@ -51,9 +51,18 @@ namespace U3D
 
         private void InitializeComponent()
         {
-            // FIXED: Get PayPal email from Resources instead of SetupTab
+            // Runtime access: Get PayPal email from ScriptableObject in Resources
             var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string creatorPayPalEmail = creatorData != null ? creatorData.PayPalEmail : "";
+            if (creatorData != null)
+            {
+                this.creatorPayPalEmail = creatorData.PayPalEmail;
+                Debug.Log($"PayPal email loaded from Resources: {this.creatorPayPalEmail}");
+            }
+            else
+            {
+                Debug.LogWarning("U3DCreatorData asset not found in Resources folder. Please ensure Setup is completed.");
+                this.creatorPayPalEmail = "";
+            }
 
             // Setup UI
             if (paymentButton != null)
@@ -75,7 +84,7 @@ namespace U3D
         {
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
-                SetStatus("⚠️ PayPal email not configured. Please complete setup first.");
+                SetStatus("PayPal email not configured. Please complete setup first.");
                 if (paymentButton != null)
                     paymentButton.interactable = false;
                 return;
@@ -83,13 +92,13 @@ namespace U3D
 
             if (itemPrice < 0.01f)
             {
-                SetStatus("⚠️ Invalid price configuration.");
+                SetStatus("Invalid price configuration.");
                 if (paymentButton != null)
                     paymentButton.interactable = false;
                 return;
             }
 
-            SetStatus("💳 Ready to accept payments");
+            SetStatus("Ready to accept payments");
         }
 
         private void UpdateUI()
@@ -139,7 +148,7 @@ namespace U3D
 
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
-                SetStatus("❌ Creator PayPal email not configured");
+                SetStatus("Creator PayPal email not configured");
                 return;
             }
 
@@ -147,7 +156,7 @@ namespace U3D
             currentTransactionId = Guid.NewGuid().ToString();
 
             SetProcessingState(true);
-            SetStatus("🔄 Initializing payment...");
+            SetStatus("Initializing payment...");
 
             try
             {
@@ -168,7 +177,7 @@ namespace U3D
             catch (Exception ex)
             {
                 Debug.LogError($"Payment initialization failed: {ex.Message}");
-                SetStatus("❌ Payment initialization failed");
+                SetStatus("Payment initialization failed");
                 SetProcessingState(false);
             }
         }
@@ -198,19 +207,19 @@ namespace U3D
             {
                 if (amount < minimumAmount)
                 {
-                    SetStatus($"❌ Minimum amount is ${minimumAmount:F2}");
+                    SetStatus($"Minimum amount is ${minimumAmount:F2}");
                     return false;
                 }
                 if (amount > maximumAmount)
                 {
-                    SetStatus($"❌ Maximum amount is ${maximumAmount:F2}");
+                    SetStatus($"Maximum amount is ${maximumAmount:F2}");
                     return false;
                 }
             }
 
             if (amount < 0.01f)
             {
-                SetStatus("❌ Amount must be at least $0.01");
+                SetStatus("Amount must be at least $0.01");
                 return false;
             }
 
@@ -234,7 +243,7 @@ namespace U3D
             }
             else
             {
-                SetStatus("❌ Please log in to make payments");
+                SetStatus("Please log in to make payments");
                 SetProcessingState(false);
             }
         }
@@ -243,7 +252,7 @@ namespace U3D
         {
             float finalAmount = GetFinalAmount();
 
-            SetStatus("💳 Starting PayPal payment...");
+            SetStatus("Starting PayPal payment...");
 
             try
             {
@@ -259,7 +268,7 @@ namespace U3D
             catch (Exception ex)
             {
                 Debug.LogError($"PayPal payment failed: {ex.Message}");
-                SetStatus("❌ Payment failed to start");
+                SetStatus("Payment failed to start");
                 SetProcessingState(false);
             }
         }
@@ -271,7 +280,7 @@ namespace U3D
 
             if (success == "true")
             {
-                SetStatus("✅ Payment successful!");
+                SetStatus("Payment successful!");
                 OnPaymentSuccess?.Invoke();
 
                 // Disable payment button if this is a one-time purchase
@@ -281,7 +290,7 @@ namespace U3D
                     var buttonText = paymentButton.GetComponentInChildren<TMP_Text>();
                     if (buttonText != null)
                     {
-                        buttonText.text = "✅ Paid";
+                        buttonText.text = "Paid";
                     }
                 }
 
@@ -289,7 +298,7 @@ namespace U3D
             }
             else
             {
-                SetStatus("❌ Payment failed. Please try again.");
+                SetStatus("Payment failed. Please try again.");
                 OnPaymentFailed?.Invoke();
                 Debug.LogWarning($"Dual transaction failed for {itemName}");
             }

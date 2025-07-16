@@ -124,6 +124,8 @@ firebase-config.json
 ProjectSettings/ProjectSettings.asset
 Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
 *.asset
+# CRITICAL: Allow creator PayPal configuration to be committed
+!Assets/U3D_SDK/Resources/U3DCreatorData.asset
 /Assets/Settings
 ##WEBGL_DEPLOY_IGNORE_END##
 
