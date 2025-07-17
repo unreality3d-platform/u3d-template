@@ -100,12 +100,9 @@ namespace U3D.Editor
 
         private async Task DetermineInitialState()
         {
-            UnityDebug.Log($"🔍 State determination - IsLoggedIn: {U3DAuthenticator.IsLoggedIn}");
-
             if (!U3DAuthenticator.IsLoggedIn)
             {
                 currentState = AuthState.ManualLogin;
-                UnityDebug.Log("🔍 State: ManualLogin (not logged in)");
                 ResetTemporaryFields();
                 UpdateCompletion();
                 return;
@@ -115,11 +112,9 @@ namespace U3D.Editor
             // Don't reload if auto-login just succeeded and populated the data
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
-                UnityDebug.Log("🔄 Username missing, forcing profile reload...");
                 try
                 {
                     await U3DAuthenticator.ForceProfileReload();
-                    UnityDebug.Log($"🔍 After reload - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
                 }
                 catch (Exception ex)
                 {
@@ -132,24 +127,20 @@ namespace U3D.Editor
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 currentState = AuthState.UsernameReservation;
-                UnityDebug.Log("🔍 State: UsernameReservation");
             }
             else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
             {
                 currentState = AuthState.PayPalSetup;
-                paypalEmail = GetSavedPayPalEmail() ?? "";
-                UnityDebug.Log("🔍 State: PayPalSetup");
+                paypalEmail = GetSavedPayPalEmail();
             }
             else if (!GitHubTokenManager.HasValidToken)
             {
                 currentState = AuthState.GitHubSetup;
-                UnityDebug.Log("🔍 State: GitHubSetup");
                 ResetGitHubFields();
             }
             else
             {
                 currentState = AuthState.LoggedIn;
-                UnityDebug.Log("🔍 State: LoggedIn (complete)");
             }
 
             UpdateCompletion();
@@ -242,11 +233,6 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(5);
 
-            if (GUILayout.Button("← Back to Method Selection"))
-            {
-                currentState = AuthState.ManualRegister;
-            }
-
             if (U3DAuthenticator.IsLoggedIn && GUILayout.Button("🚪 Logout", EditorStyles.miniButton))
             {
                 if (EditorUtility.DisplayDialog("Logout Confirmation",
@@ -305,13 +291,6 @@ namespace U3D.Editor
             EditorGUILayout.Space(10);
 
             if (GUILayout.Button("Already have an account? Login"))
-            {
-                currentState = AuthState.ManualLogin;
-            }
-
-            EditorGUILayout.Space(5);
-
-            if (GUILayout.Button("← Back to Method Selection"))
             {
                 currentState = AuthState.ManualLogin;
             }
@@ -492,6 +471,7 @@ namespace U3D.Editor
                 }
             }
         }
+
         private void DrawGitHubSetup()
         {
             EditorGUILayout.LabelField("🚀 Connect to GitHub", EditorStyles.boldLabel);
@@ -690,7 +670,7 @@ namespace U3D.Editor
                 if (GUILayout.Button("🔗 Connect PayPal Account", GUILayout.Height(30)))
                 {
                     currentState = AuthState.PayPalSetup;
-                    paypalEmail = GetSavedPayPalEmail() ?? "";
+                    paypalEmail = GetSavedPayPalEmail();
                     paypalEmailSaved = false;
                 }
 
@@ -711,7 +691,7 @@ namespace U3D.Editor
             if (!string.IsNullOrEmpty(GetSavedPayPalEmail()) && GUILayout.Button("💳 Update PayPal"))
             {
                 currentState = AuthState.PayPalSetup;
-                paypalEmail = GetSavedPayPalEmail() ?? "";
+                paypalEmail = GetSavedPayPalEmail();
                 paypalEmailSaved = false;
             }
 
@@ -738,9 +718,7 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.LoginWithEmailPassword(email, password);
                 if (success)
                 {
-                    UnityDebug.Log("🔄 Manual login successful, ensuring profile data is loaded...");
                     await U3DAuthenticator.ForceProfileReload();
-                    UnityDebug.Log($"🔍 After manual login - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
 
                     // Now make state decision with complete profile data
                     if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
@@ -750,7 +728,7 @@ namespace U3D.Editor
                     else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
-                        paypalEmail = GetSavedPayPalEmail() ?? "";
+                        paypalEmail = GetSavedPayPalEmail();
                     }
                     else if (!GitHubTokenManager.HasValidToken)
                     {
@@ -780,9 +758,7 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.RegisterWithEmailPassword(email, password);
                 if (success)
                 {
-                    UnityDebug.Log("🔄 Registration successful, ensuring profile data is loaded...");
                     await U3DAuthenticator.ForceProfileReload();
-                    UnityDebug.Log($"🔍 After registration - CreatorUsername: '{U3DAuthenticator.CreatorUsername}'");
 
                     // For new registrations, user typically won't have a username yet
                     // But we check anyway in case they're re-registering an existing account
@@ -793,7 +769,7 @@ namespace U3D.Editor
                     else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
-                        paypalEmail = GetSavedPayPalEmail() ?? "";
+                        paypalEmail = GetSavedPayPalEmail();
                     }
                     else if (!GitHubTokenManager.HasValidToken)
                     {
@@ -1049,20 +1025,6 @@ namespace U3D.Editor
             {
                 Initialize();
             }
-
-            // Clean subscription (no polling needed)
-            EditorApplication.update -= OnEditorUpdate;
-            // Don't re-subscribe since OnEditorUpdate is empty
-        }
-
-        public void OnDisable()
-        {
-            EditorApplication.update -= OnEditorUpdate;
-        }
-
-        private void OnEditorUpdate()
-        {
-            // Remove PayPal polling since we're not using OAuth anymore
         }
     }
 }
