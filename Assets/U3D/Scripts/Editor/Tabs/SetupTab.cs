@@ -108,8 +108,8 @@ namespace U3D.Editor
                 return;
             }
 
-            // CRITICAL FIX: Only force reload if profile data is actually missing
-            // Don't reload if auto-login just succeeded and populated the data
+            // CRITICAL FIX: Wait for auto-login to complete profile loading
+            // Don't assume CreatorUsername is missing - it might just be loading
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 try
@@ -118,14 +118,21 @@ namespace U3D.Editor
                 }
                 catch (Exception ex)
                 {
+                    // If profile reload fails with auth error, user needs to re-login
+                    if (ex.Message.Contains("Unauthenticated"))
+                    {
+                        currentState = AuthState.ManualLogin;
+                        UpdateCompletion();
+                        return;
+                    }
                     UnityDebug.LogWarning($"⚠️ Profile reload failed: {ex.Message}");
-                    // Continue with setup anyway - user can try manual login
                 }
             }
 
-            // Now determine state based on available data
+            // NEW: Check again after profile reload attempt
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
+                // If still empty after reload attempt, user needs to complete username setup
                 currentState = AuthState.UsernameReservation;
             }
             else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
