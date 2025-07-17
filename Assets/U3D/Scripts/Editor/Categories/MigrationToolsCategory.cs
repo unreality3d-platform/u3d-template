@@ -14,10 +14,16 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
-                new CreatorTool("🟢 Remove Placeholder Components", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
-                new CreatorTool("🟢 Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
-                new CreatorTool("🟢 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder)
+                // Missing Script Tools
+                new CreatorTool("🔧 Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
+                new CreatorTool("🧼 Remove Script Placeholders", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
+                new CreatorTool("🗑️ Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
+                new CreatorTool("🧹 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder),
+                
+                // Missing Reference Tools
+                new CreatorTool("🔍 Replace Missing References", "Detect missing object references in components and add placeholder tracking components", AssetCleanupTools.ReplaceMissingReferencesWithPlaceholders),
+                new CreatorTool("🎯 Find Reference Placeholders", "Locate and select all GameObjects with missing reference placeholders for easy rewiring", AssetCleanupTools.FindMissingReferencePlaceholders),
+                new CreatorTool("🧼 Remove Reference Placeholders", "Remove all missing reference placeholder components from the scene", AssetCleanupTools.RemoveMissingReferencePlaceholders)
             };
         }
 
@@ -26,21 +32,39 @@ namespace U3D.Editor
         public void DrawCategory()
         {
             EditorGUILayout.LabelField("Asset Cleanup Tools", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Clean up missing script references and broken components from your project. These tools help maintain a healthy codebase when migrating or updating assets.", MessageType.Info);
+            EditorGUILayout.HelpBox("Clean up missing script references and broken object references from your project. These tools help maintain a healthy codebase when migrating or updating assets.", MessageType.Info);
             EditorGUILayout.Space(10);
 
-            // Add workflow guidance
+            // Missing Scripts Section
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("🔄 Recommended Workflow:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("🔄 Missing Scripts Workflow:", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("1. Replace Missing Scripts → Creates placeholders for safety", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("2. Fix/restore your scripts as needed", EditorStyles.miniLabel);
-            EditorGUILayout.LabelField("3. Remove Placeholder Components → Clean up when done", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("3. Remove Script Placeholders → Clean up when done", EditorStyles.miniLabel);
             EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(5);
+
+            // Draw missing script tools
+            for (int i = 0; i < 4; i++)
+            {
+                DrawTool(tools[i]);
+            }
+
             EditorGUILayout.Space(10);
 
-            foreach (var tool in tools)
+            // Missing References Section
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("🔗 Missing References Workflow:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("1. Replace Missing References → Track missing object references", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("2. Find Reference Placeholders → Locate and rewire references", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("3. Remove Reference Placeholders → Clean up when done", EditorStyles.miniLabel);
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(5);
+
+            // Draw missing reference tools
+            for (int i = 4; i < tools.Count; i++)
             {
-                DrawTool(tool);
+                DrawTool(tools[i]);
             }
         }
 
