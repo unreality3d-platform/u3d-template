@@ -680,7 +680,7 @@ public static class U3DAuthenticator
                 }
                 else
                 {
-                    Debug.LogError($"❌ HTTP Error: {response.StatusCode} - {responseText}");
+                    Debug.LogWarning($"❌ HTTP Error: {response.StatusCode} - {responseText}");
                     var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
                     var errorMessage = "Function call failed";
 
@@ -751,11 +751,6 @@ public static class U3DAuthenticator
                                 "4. Try from a different network";
 
                 throw new Exception($"Network connection failed: {ex.Message}\n\n{guidance}");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"🚨 Unexpected error on final attempt: {ex.GetType().Name} - {ex.Message}");
-                throw;
             }
         }
 
@@ -1111,7 +1106,7 @@ public static class U3DAuthenticator
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Profile load failed: {ex.Message}");
+            Debug.LogWarning($"Profile load failed: {ex.Message}");
         }
     }
 
