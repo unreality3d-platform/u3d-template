@@ -1,7 +1,8 @@
-﻿using U3D;
+﻿using Fusion;
+using System.Collections.Generic;
+using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Fusion;
 
 [RequireComponent(typeof(U3DPlayerController))]
 public class U3DAvatarManager : NetworkBehaviour
@@ -20,6 +21,11 @@ public class U3DAvatarManager : NetworkBehaviour
     [SerializeField] private Vector3 avatarOffset = Vector3.zero;
     [SerializeField] private bool followPlayerRotation = true;
     [SerializeField] private bool hideInFirstPerson = true;
+
+    [Header("Animation System Integration")]
+    [SerializeField] private AvatarAnimationSet defaultAnimationSet;
+    [SerializeField] private bool enableAdvancedAnimations = true;
+    [SerializeField] private bool autoGenerateAnimatorController = true;
 
     // Networked Avatar State
     [Networked] public bool NetworkIsMoving { get; set; }
@@ -42,6 +48,8 @@ public class U3DAvatarManager : NetworkBehaviour
     private Vector3 lastPosition;
     private float currentMoveSpeed;
     private Vector2 currentMoveDirection;
+
+    private U3DAvatarAnimationController animationController;
 
     // Animation Parameter IDs (Unity 6+ optimization)
     private int animIdIsMoving;
@@ -99,30 +107,89 @@ public class U3DAvatarManager : NetworkBehaviour
                 avatarAnimator = avatarInstance.AddComponent<Animator>();
             }
 
-            // Apply default animator controller
-            if (defaultAnimatorController != null)
+            // NEW: Initialize advanced animation system
+            if (enableAdvancedAnimations)
             {
-                avatarAnimator.runtimeAnimatorController = defaultAnimatorController;
+                InitializeAdvancedAnimationSystem();
             }
-
-            // Configure Animator for networking
-            if (avatarAnimator != null)
+            else
             {
-                avatarAnimator.applyRootMotion = false; // Prevent animation from overriding network movement
-                avatarAnimator.updateMode = AnimatorUpdateMode.Normal;
-                avatarAnimator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+                // Fallback to basic animation setup
+                InitializeBasicAnimationSystem();
             }
 
             // Get all SkinnedMeshRenderers for visibility control
             avatarRenderers = avatarInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
 
             isInitialized = true;
-            Debug.Log("✅ Avatar initialized successfully");
+            Debug.Log("✅ Avatar initialized successfully with advanced animation system");
         }
         catch (System.Exception e)
         {
             Debug.LogError($"❌ Failed to initialize avatar: {e.Message}");
         }
+    }
+
+    void InitializeAdvancedAnimationSystem()
+    {
+        // Create animation controller component
+        animationController = gameObject.AddComponent<U3DAvatarAnimationController>();
+
+        // Set default animation set if none provided
+        if (defaultAnimationSet == null)
+        {
+            Debug.LogWarning("⚠️ No default animation set assigned. Looking for one in project...");
+            defaultAnimationSet = FindDefaultAnimationSet();
+        }
+
+        if (defaultAnimationSet != null)
+        {
+            // Initialize animation controller with our components
+            animationController.Initialize(avatarAnimator, this, playerController);
+
+            // Subscribe to animation events
+            animationController.OnAnimationStateChanged += OnAnimationStateChanged;
+            animationController.OnCustomAnimationTriggered += OnCustomAnimationTriggered;
+
+            Debug.Log("✅ Advanced animation system initialized");
+        }
+        else
+        {
+            Debug.LogWarning("⚠️ No animation set found. Falling back to basic animation system");
+            InitializeBasicAnimationSystem();
+        }
+    }
+
+    void InitializeBasicAnimationSystem()
+    {
+        // Apply default animator controller if available
+        if (defaultAnimatorController != null)
+        {
+            avatarAnimator.runtimeAnimatorController = defaultAnimatorController;
+        }
+
+        // Configure Animator for networking
+        if (avatarAnimator != null)
+        {
+            avatarAnimator.applyRootMotion = false;
+            avatarAnimator.updateMode = AnimatorUpdateMode.Normal;
+            avatarAnimator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+        }
+
+        Debug.Log("✅ Basic animation system initialized");
+    }
+
+    AvatarAnimationSet FindDefaultAnimationSet()
+    {
+        // Try to find a default animation set in Resources folder
+        var animationSets = Resources.LoadAll<AvatarAnimationSet>("");
+        if (animationSets.Length > 0)
+        {
+            Debug.Log($"Found {animationSets.Length} animation set(s) in Resources");
+            return animationSets[0]; // Use first found
+        }
+
+        return null;
     }
 
     void ConfigureHumanoidAvatar()
@@ -231,6 +298,23 @@ public class U3DAvatarManager : NetworkBehaviour
     {
         if (avatarAnimator == null) return;
 
+        // Use advanced animation system if available
+        if (enableAdvancedAnimations && animationController != null && animationController.IsInitialized)
+        {
+            // Animation controller handles parameter updates automatically via Fusion
+            // No need to manually update parameters here
+            return;
+        }
+
+        // Fallback to basic parameter updates for compatibility
+        UpdateBasicAnimatorParameters();
+    }
+
+    // ADD NEW METHOD: Basic animator parameter updates (fallback)
+    void UpdateBasicAnimatorParameters()
+    {
+        if (avatarAnimator == null) return;
+
         // Use cached parameter IDs for Unity 6+ performance
         avatarAnimator.SetBool(animIdIsMoving, NetworkIsMoving);
         avatarAnimator.SetBool(animIdIsSprinting, NetworkIsSprinting);
@@ -240,6 +324,127 @@ public class U3DAvatarManager : NetworkBehaviour
         avatarAnimator.SetFloat(animIdMoveSpeed, NetworkMoveSpeed);
         avatarAnimator.SetFloat(animIdMoveX, NetworkMoveDirection.x);
         avatarAnimator.SetFloat(animIdMoveY, NetworkMoveDirection.y);
+    }
+
+    // ADD NEW METHODS: Animation event handlers
+    void OnAnimationStateChanged(string stateName)
+    {
+        Debug.Log($"🎬 Avatar animation state changed to: {stateName}");
+        // Add custom logic for animation state changes
+    }
+
+    void OnCustomAnimationTriggered(string animationName)
+    {
+        Debug.Log($"🎬 Custom animation triggered: {animationName}");
+        // Add custom logic for custom animations
+    }
+
+    // ADD NEW PUBLIC METHODS: Enhanced avatar control
+
+    /// <summary>
+    /// Set custom animation set at runtime
+    /// </summary>
+    public void SetAnimationSet(AvatarAnimationSet newAnimationSet)
+    {
+        if (!Object.HasStateAuthority)
+        {
+            Debug.LogWarning("Only State Authority can change animation set");
+            return;
+        }
+
+        defaultAnimationSet = newAnimationSet;
+
+        if (animationController != null)
+        {
+            animationController.SetAnimationSet(newAnimationSet);
+            Debug.Log("✅ Animation set updated");
+        }
+    }
+
+    /// <summary>
+    /// Trigger custom animation (networked)
+    /// </summary>
+    public void TriggerCustomAnimation(string animationName)
+    {
+        if (!Object.HasStateAuthority)
+        {
+            Debug.LogWarning("Only State Authority can trigger custom animations");
+            return;
+        }
+
+        if (animationController != null)
+        {
+            animationController.TriggerNetworkAnimation(animationName);
+        }
+        else
+        {
+            // Fallback to basic trigger
+            TriggerAnimation(animationName);
+        }
+    }
+
+    /// <summary>
+    /// Check if specific animation is currently playing
+    /// </summary>
+    public bool IsAnimationPlaying(string animationName)
+    {
+        if (animationController != null)
+        {
+            return animationController.IsAnimationPlaying(animationName);
+        }
+
+        // Fallback check
+        if (avatarAnimator != null)
+        {
+            var stateInfo = avatarAnimator.GetCurrentAnimatorStateInfo(0);
+            return stateInfo.IsName(animationName);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Get current animation progress (0-1)
+    /// </summary>
+    public float GetAnimationProgress()
+    {
+        if (animationController != null)
+        {
+            return animationController.GetAnimationProgress();
+        }
+
+        // Fallback
+        if (avatarAnimator != null)
+        {
+            var stateInfo = avatarAnimator.GetCurrentAnimatorStateInfo(0);
+            return stateInfo.normalizedTime;
+        }
+
+        return 0f;
+    }
+
+    /// <summary>
+    /// Force animation parameter refresh
+    /// </summary>
+    public void RefreshAnimationParameters()
+    {
+        if (animationController != null)
+        {
+            animationController.ForceParameterUpdate();
+        }
+    }
+
+    /// <summary>
+    /// Get detailed animation debug info
+    /// </summary>
+    public Dictionary<string, object> GetAnimationDebugInfo()
+    {
+        if (animationController != null)
+        {
+            return animationController.GetCurrentParameterValues();
+        }
+
+        return new Dictionary<string, object>();
     }
 
     // Public methods for external control
@@ -336,6 +541,14 @@ public class U3DAvatarManager : NetworkBehaviour
 
     void OnDestroy()
     {
+        // Clean up animation controller
+        if (animationController != null)
+        {
+            animationController.OnAnimationStateChanged -= OnAnimationStateChanged;
+            animationController.OnCustomAnimationTriggered -= OnCustomAnimationTriggered;
+        }
+
+        // Clean up avatar instance
         if (avatarInstance != null)
         {
             DestroyImmediate(avatarInstance);
@@ -355,6 +568,23 @@ public class U3DAvatarManager : NetworkBehaviour
         if (animationSmoothTime < 0f)
         {
             animationSmoothTime = 0.1f;
+        }
+
+        // Validate animation set in editor
+        if (defaultAnimationSet != null && enableAdvancedAnimations)
+        {
+            if (defaultAnimationSet.ValidateAnimations(out List<string> warnings))
+            {
+                // Validation passed - could show success message in editor
+            }
+            else
+            {
+                // Show warnings in console during development
+                foreach (string warning in warnings)
+                {
+                    Debug.LogWarning($"Animation Set Validation: {warning}", this);
+                }
+            }
         }
     }
 }
