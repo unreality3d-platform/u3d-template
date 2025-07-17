@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Fusion;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(CharacterController), typeof(PlayerInput))]
 public class U3DPlayerController : NetworkBehaviour
@@ -107,6 +108,12 @@ public class U3DPlayerController : NetworkBehaviour
     [Networked] public bool NetworkIsFlying { get; set; }
     [Networked] public float NetworkCameraPitch { get; set; }
     [Networked] public bool NetworkIsInteracting { get; set; }
+
+    // Mouse input smoothing (add after existing camera state variables)
+    private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
+    private Queue<float> _mouseTimeBuffer = new Queue<float>();
+    private const float MOUSE_SMOOTHING_WINDOW = 0.015f; // 15ms smoothing window
+    private Vector2 _smoothedMouseInput = Vector2.zero;
 
     // Core Components
     private CharacterController characterController;
@@ -631,12 +638,39 @@ public class U3DPlayerController : NetworkBehaviour
         // Stop camera movement when cursor is released for UI interaction
         if (!IsCursorLocked()) return;
 
-        // Get mouse input
-        lookInput = input.LookInput;
+        // Get raw mouse input
+        Vector2 rawLookInput = input.LookInput;
 
         // Apply look inversion if enabled
         if (lookInverted)
-            lookInput.y = -lookInput.y;
+            rawLookInput.y = -rawLookInput.y;
+
+        // Add current input to smoothing buffer
+        float currentTime = (float)Runner.SimulationTime;
+        _mouseInputBuffer.Enqueue(rawLookInput);
+        _mouseTimeBuffer.Enqueue(currentTime);
+
+        // Remove old entries outside smoothing window
+        while (_mouseTimeBuffer.Count > 0 && (currentTime - _mouseTimeBuffer.Peek()) > MOUSE_SMOOTHING_WINDOW)
+        {
+            _mouseInputBuffer.Dequeue();
+            _mouseTimeBuffer.Dequeue();
+        }
+
+        // Calculate smoothed mouse input (average over smoothing window)
+        Vector2 smoothedLookInput = Vector2.zero;
+        if (_mouseInputBuffer.Count > 0)
+        {
+            foreach (Vector2 sample in _mouseInputBuffer)
+            {
+                smoothedLookInput += sample;
+            }
+            smoothedLookInput /= _mouseInputBuffer.Count;
+        }
+
+        // Store smoothed input for use in other methods
+        _smoothedMouseInput = smoothedLookInput;
+        lookInput = smoothedLookInput; // Update existing lookInput for compatibility
 
         // Handle Advanced AAA-style mouse controls first (takes priority)
         HandleAdvancedMouseControls(input);
@@ -647,10 +681,10 @@ public class U3DPlayerController : NetworkBehaviour
             if (enableAdvancedCamera && cameraPivot != null)
             {
                 // Advanced camera system: Always-on free look
-                if (Mathf.Abs(lookInput.x) > 0.01f)
+                if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
                 {
                     // Rotate character around Y-axis (like right-click mode but always on)
-                    float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                    float yawDelta = smoothedLookInput.x * cameraOrbitSensitivity;
                     transform.Rotate(Vector3.up, yawDelta);
 
                     // Keep camera yaw in sync with character
@@ -659,10 +693,10 @@ public class U3DPlayerController : NetworkBehaviour
                     NetworkRotation = transform.rotation;
                 }
 
-                if (Mathf.Abs(lookInput.y) > 0.01f)
+                if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
                 {
                     // Camera pitch follows mouse
-                    cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                    cameraPitchAdvanced -= smoothedLookInput.y * cameraOrbitSensitivity;
                     cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                     NetworkCameraPitch = cameraPitchAdvanced;
                 }
@@ -676,15 +710,15 @@ public class U3DPlayerController : NetworkBehaviour
             else
             {
                 // Legacy camera system: Always-on free look
-                if (Mathf.Abs(lookInput.x) > 0.01f)
+                if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
                 {
-                    transform.Rotate(Vector3.up, lookInput.x);
+                    transform.Rotate(Vector3.up, smoothedLookInput.x);
                     NetworkRotation = transform.rotation;
                 }
 
-                if (Mathf.Abs(lookInput.y) > 0.01f)
+                if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
                 {
-                    cameraPitch -= lookInput.y;
+                    cameraPitch -= smoothedLookInput.y;
                     cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
                     NetworkCameraPitch = cameraPitch;
                 }
@@ -694,15 +728,15 @@ public class U3DPlayerController : NetworkBehaviour
         else if (!enableAlwaysFreeLook && !isLeftMouseDragging && !isRightMouseDragging && !enableAdvancedCamera)
         {
             // Original legacy camera system for compatibility
-            if (Mathf.Abs(lookInput.x) > 0.01f)
+            if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
             {
-                transform.Rotate(Vector3.up, lookInput.x);
+                transform.Rotate(Vector3.up, smoothedLookInput.x);
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(lookInput.y) > 0.01f)
+            if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
             {
-                cameraPitch -= lookInput.y;
+                cameraPitch -= smoothedLookInput.y;
                 cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitch;
             }
@@ -718,14 +752,17 @@ public class U3DPlayerController : NetworkBehaviour
         isRightMouseDragging = input.RightMouseHeld;
         isBothMouseForward = input.BothMouseHeld;
 
+        // Use smoothed mouse input instead of raw lookInput
+        Vector2 smoothedInput = _smoothedMouseInput;
+
         // BOTH mouse buttons: Move forward with mouse steering (NEW - AAA style)
         if (isBothMouseForward)
         {
             // Allow mouse steering while moving forward with both buttons
-            if (Mathf.Abs(lookInput.x) > 0.01f)
+            if (Mathf.Abs(smoothedInput.x) > 0.01f)
             {
                 // Rotate character around Y-axis for steering
-                float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                float yawDelta = smoothedInput.x * cameraOrbitSensitivity;
                 transform.Rotate(Vector3.up, yawDelta);
 
                 // Keep camera yaw in sync with character
@@ -734,10 +771,10 @@ public class U3DPlayerController : NetworkBehaviour
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(lookInput.y) > 0.01f)
+            if (Mathf.Abs(smoothedInput.y) > 0.01f)
             {
                 // Camera pitch follows mouse for look up/down while moving
-                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitchAdvanced;
             }
@@ -745,10 +782,10 @@ public class U3DPlayerController : NetworkBehaviour
         // Right-click drag: Rotate character AND camera together (Advanced AAA style)
         else if (isRightMouseDragging && !isLeftMouseDragging)
         {
-            if (Mathf.Abs(lookInput.x) > 0.01f)
+            if (Mathf.Abs(smoothedInput.x) > 0.01f)
             {
                 // Rotate character around Y-axis
-                float yawDelta = lookInput.x * cameraOrbitSensitivity;
+                float yawDelta = smoothedInput.x * cameraOrbitSensitivity;
                 transform.Rotate(Vector3.up, yawDelta);
 
                 // Keep camera yaw in sync with character
@@ -757,10 +794,10 @@ public class U3DPlayerController : NetworkBehaviour
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(lookInput.y) > 0.01f)
+            if (Mathf.Abs(smoothedInput.y) > 0.01f)
             {
                 // Camera pitch follows mouse
-                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitchAdvanced;
             }
@@ -768,16 +805,16 @@ public class U3DPlayerController : NetworkBehaviour
         // Left-click drag: Orbit camera around character WITHOUT turning character
         else if (isLeftMouseDragging && !isRightMouseDragging)
         {
-            if (Mathf.Abs(lookInput.x) > 0.01f)
+            if (Mathf.Abs(smoothedInput.x) > 0.01f)
             {
                 // Orbit camera horizontally around character
-                cameraYaw += lookInput.x * cameraOrbitSensitivity;
+                cameraYaw += smoothedInput.x * cameraOrbitSensitivity;
             }
 
-            if (Mathf.Abs(lookInput.y) > 0.01f)
+            if (Mathf.Abs(smoothedInput.y) > 0.01f)
             {
                 // Orbit camera vertically around character
-                cameraPitchAdvanced -= lookInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
             }
 
