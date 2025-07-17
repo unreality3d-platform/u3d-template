@@ -421,33 +421,8 @@ namespace U3D.Networking
 
             if (shouldSpawn && playerPrefab.IsValid)
             {
-                Vector3 spawnPosition = GetSpawnPosition();
-
-                try
-                {
-                    var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
-
-                    if (playerObject != null)
-                    {
-                        _spawnedPlayers[player] = playerObject;
-                        Debug.Log($"✅ Player spawned successfully: {playerObject.name}");
-
-                        // IMPORTANT: Refresh input setup for the spawned player
-                        var playerController = playerObject.GetComponent<U3DPlayerController>();
-                        if (playerController != null)
-                        {
-                            playerController.RefreshInputActionsFromNetworkManager(this);
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogError("❌ Player object is null after spawning!");
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"❌ Failed to spawn player: {e.Message}");
-                }
+                // ONLY CHANGE: Add delay to prevent falling through floor
+                StartCoroutine(DelayedSpawn(runner, player));
             }
 
             if (player == runner.LocalPlayer)
@@ -461,6 +436,49 @@ namespace U3D.Networking
 
             OnPlayerJoinedEvent?.Invoke(player);
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
+        }
+
+        private System.Collections.IEnumerator DelayedSpawn(NetworkRunner runner, PlayerRef player)
+        {
+            // Wait for scene physics to initialize
+            yield return new WaitForSeconds(0.3f);
+
+            // FIXED: Use the U3DPlayerSpawner instead of our own logic
+            Vector3 spawnPosition;
+
+            if (U3DPlayerSpawner.Instance != null)
+            {
+                // Use the proper spawn system with ground validation
+                spawnPosition = U3DPlayerSpawner.Instance.GetSpawnPosition();
+                Debug.Log($"✅ Using PlayerSpawner position: {spawnPosition}");
+            }
+            else
+            {
+                // Fallback to old method if no spawner found
+                spawnPosition = GetSpawnPosition();
+                Debug.LogWarning("⚠️ No PlayerSpawner found, using NetworkManager fallback");
+            }
+
+            Debug.Log($"🎯 Spawning player {player} at: {spawnPosition}");
+
+            var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
+
+            if (playerObject != null)
+            {
+                _spawnedPlayers[player] = playerObject;
+                Debug.Log($"✅ Player spawned successfully: {playerObject.name}");
+
+                // Setup input
+                var playerController = playerObject.GetComponent<U3DPlayerController>();
+                if (playerController != null)
+                {
+                    playerController.RefreshInputActionsFromNetworkManager(this);
+                }
+            }
+            else
+            {
+                Debug.LogError($"❌ Failed to spawn player at {spawnPosition}");
+            }
         }
 
         public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
