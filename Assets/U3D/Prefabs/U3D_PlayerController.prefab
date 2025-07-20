@@ -195,7 +195,7 @@ Animator:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8488662624428376917}
   m_Enabled: 1
-  m_Avatar: {fileID: 9000000, guid: f68b8767bd46e1944bf2f25ce3afb7dc, type: 2}
+  m_Avatar: {fileID: 9000000, guid: 3409512eae9cabb44afc36233da9735d, type: 2}
   m_Controller: {fileID: 9100000, guid: 1780850ded46c53458fe56b92b192991, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
@@ -335,7 +335,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   avatarFBX: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-  autoConfigureHumanoid: 1
+  autoConfigureHumanoid: 0
   avatarScaleMultiplier: 1
   avatarOffset: {x: 0, y: 0, z: 0}
   followPlayerRotation: 1
@@ -353,7 +353,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   animatorController: {fileID: 9100000, guid: 1780850ded46c53458fe56b92b192991, type: 2}
-  debugAnimationStates: 1
+  debugAnimationStates: 0
 --- !u!114 &6674612337431982079
 MonoBehaviour:
   m_ObjectHideFlags: 0

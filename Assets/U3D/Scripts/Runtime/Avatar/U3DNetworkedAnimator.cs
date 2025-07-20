@@ -120,13 +120,13 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     public override void FixedUpdateNetwork()
     {
         // FUSION 2 REQUIREMENT: Only State Authority can modify animator parameters
-        if (!Object.HasStateAuthority)
+        if (!Object.HasStateAuthority) 
         {
             if (debugAnimationStates) Debug.Log("⚠️ No State Authority - skipping animation updates");
             return;
         }
-
-        if (!IsInitialized)
+        
+        if (!IsInitialized) 
         {
             if (debugAnimationStates) Debug.Log("⚠️ Not initialized - skipping animation updates");
             return;
@@ -159,7 +159,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
 
         // Calculate movement values using PlayerController's actual speed logic
         Vector3 velocity = playerController.Velocity;
-
+        
         // CORRECT: Use PlayerController's intended speed, not CharacterController velocity
         float moveSpeed = 0f;
         if (isMoving)
@@ -175,7 +175,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         // FUSION 2 CRITICAL: Set parameters on NetworkMecanimAnimator's actual Animator
         // This ensures parameters and network sync target the same animator
         Animator activeAnimator = networkAnimator.Animator;
-
+        
         activeAnimator.SetBool(hashIsMoving, isMoving);
         activeAnimator.SetBool(hashIsCrouching, isCrouching);
         activeAnimator.SetBool(hashIsFlying, isFlying);
@@ -192,7 +192,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         if (isJumping && !lastIsJumping)
         {
             // CRITICAL: Use NetworkMecanimAnimator.SetTrigger for proper network sync
-            networkAnimator.SetTrigger(hashJumpTrigger);
+            networkAnimator.SetTrigger("JumpTrigger");
         }
 
         // Debug output
@@ -238,7 +238,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
 
         // CRITICAL: NOW connect NetworkMecanimAnimator to avatar animator
         networkAnimator.Animator = avatarAnimator;
-
+        
         // VERIFY the connection worked
         if (networkAnimator.Animator == avatarAnimator)
         {
@@ -248,7 +248,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         {
             Debug.LogError($"❌ NetworkMecanimAnimator connection failed! Expected: {avatarAnimator.name}, Got: {(networkAnimator.Animator?.name ?? "NULL")}");
         }
-
+        
         // Update our reference
         targetAnimator = avatarAnimator;
 
