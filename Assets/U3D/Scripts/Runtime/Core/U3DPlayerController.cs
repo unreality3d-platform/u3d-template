@@ -508,10 +508,9 @@ public class U3DPlayerController : NetworkBehaviour
             jumpCount = 0;
         }
 
-        // Reset jump after animation system catches it
-        if (NetworkIsJumping)
+        if (isGrounded && velocity.y <= 0 && NetworkIsJumping)
         {
-            NetworkIsJumping = false;
+            NetworkIsJumping = false; // Only reset when landed
         }
     }
 
