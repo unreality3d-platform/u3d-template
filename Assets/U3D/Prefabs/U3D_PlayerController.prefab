@@ -155,13 +155,16 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2981476027813993288}
+  - component: {fileID: 2927287290641100187}
   - component: {fileID: 227767514918744194}
   - component: {fileID: 4392417217393934379}
+  - component: {fileID: 8590291952775574450}
+  - component: {fileID: 6674612337431982079}
   - component: {fileID: 3563563381108832062}
   - component: {fileID: 8322012935390943905}
   - component: {fileID: 3303798439634689199}
   m_Layer: 0
-  m_Name: U3D_NetworkedPlayer
+  m_Name: U3D_PlayerController
   m_TagString: Player
   m_Icon: {fileID: 3936346786652291628, guid: 0000000000000000d000000000000000, type: 0}
   m_NavMeshLayer: 0
@@ -183,6 +186,28 @@ Transform:
   - {fileID: 3382878408267745467}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!95 &2927287290641100187
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8488662624428376917}
+  m_Enabled: 1
+  m_Avatar: {fileID: 9000000, guid: f68b8767bd46e1944bf2f25ce3afb7dc, type: 2}
+  m_Controller: {fileID: 9100000, guid: 1780850ded46c53458fe56b92b192991, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!114 &227767514918744194
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -210,6 +235,59 @@ MonoBehaviour:
   lookDownLimit: -80
   cameraCollisionRadius: 0.2
   cameraCollisionBuffer: 0.1
+  enableAdvancedCamera: 1
+  cameraOrbitSensitivity: 2
+  characterTurnSpeed: 90
+  enableAlwaysFreeLook: 1
+  cameraDistanceCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 5
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cameraHeightCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1.5
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1.5
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  transitionTime: 1.5
   enableSprintToggle: 1
   sprintKey: 304
   enableAutoRun: 1
@@ -241,6 +319,9 @@ MonoBehaviour:
   _NetworkIsFlying: 0
   _NetworkCameraPitch: 0
   _NetworkIsInteracting: 0
+  _NetworkIsJumping: 0
+  _NetworkIsSwimming: 0
+  _NetworkIsClimbing: 0
 --- !u!114 &4392417217393934379
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -248,27 +329,49 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8488662624428376917}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b0f663e9b5f00654cb404aa7201f430e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  avatarFBX: {fileID: 919132149155446097, guid: f98218a3ce5f37545b83c16359cc58e4, type: 3}
+  avatarFBX: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
   autoConfigureHumanoid: 1
   avatarScaleMultiplier: 1
-  defaultAnimatorController: {fileID: 0}
-  enableNetworkedAnimations: 1
-  animationSmoothTime: 0.1
   avatarOffset: {x: 0, y: 0, z: 0}
   followPlayerRotation: 1
   hideInFirstPerson: 1
-  _NetworkIsMoving: 0
-  _NetworkIsSprinting: 0
-  _NetworkIsCrouching: 0
-  _NetworkIsFlying: 0
-  _NetworkIsGrounded: 0
-  _NetworkMoveSpeed: 0
-  _NetworkMoveDirection: {x: 0, y: 0}
+--- !u!114 &8590291952775574450
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8488662624428376917}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c02e52422855d141a8d3e9a95c06cc7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  animatorController: {fileID: 9100000, guid: 1780850ded46c53458fe56b92b192991, type: 2}
+  debugAnimationStates: 1
+--- !u!114 &6674612337431982079
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8488662624428376917}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 506319458, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Animator: {fileID: 2927287290641100187}
+  ApplyTiming: 2
+  SyncSettings: 79
+  StateHashes: 000000006dacfe3e773dc4d4f57f984db6d1ab4e2b1a167c794069552638cb43a21b1dacf3b09ce077934a0f2445ff7f3ed4c5958b7cfd670f5f2b88f38ddc86184e547b
+  TriggerHashes: 0000000087a0c606
+  TotalWords: 4
 --- !u!114 &3563563381108832062
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -530,6 +633,34 @@ MonoBehaviour:
       m_Calls: []
     m_ActionId: 6cba1bd0-2f1a-492f-8fad-3846c154198b
     m_ActionName: 'Player/Escape[/Keyboard/escape]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 25ee4cba-bc1e-4c8b-a065-b9d4563a68dc
+    m_ActionName: 'Player/MouseLeft[/Mouse/leftButton]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 57ad4506-ef5e-4a9e-bc36-c3f7d1b4c2f6
+    m_ActionName: 'Player/MouseRight[/Mouse/rightButton]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 36f84840-92ef-4f0c-b79e-9fee44714f1f
+    m_ActionName: 'Player/StrafeLeft[/Keyboard/q]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 5d40dd99-eed7-4557-8dff-313bb2e01d8c
+    m_ActionName: 'Player/StrafeRight[/Keyboard/e]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: b02f6c93-9b99-4c96-8cf2-81f9cd634943
+    m_ActionName: 'Player/TurnLeft[/Keyboard/a]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 96421424-ca90-419f-a046-411b89fe3ad5
+    m_ActionName: 'Player/TurnRight[/Keyboard/d]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 020bf672-c371-40e9-bbc1-aef9e1387e6d
+    m_ActionName: 'Player/AutoRunToggle[/Keyboard/numLock]'
   m_NeverAutoSwitchControlSchemes: 0
   m_DefaultControlScheme: 
   m_DefaultActionMap: Player
@@ -574,9 +705,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   SortKey: 2829484168
   ObjectInterest: 1
-  Flags: 262145
+  Flags: 131073
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 227767514918744194}
   - {fileID: 4392417217393934379}
+  - {fileID: 8590291952775574450}
+  - {fileID: 6674612337431982079}
   ForceRemoteRenderTimeframe: 0
