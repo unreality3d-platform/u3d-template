@@ -3,36 +3,22 @@ using System.Collections.Generic;
 using System;
 
 /// <summary>
-/// ScriptableObject for organizing avatar animation clips and runtime AnimatorController generation
+/// FIXED: Complete ScriptableObject for all 8 core avatar animation states
 /// Unity 6+ optimized with performance caching and network-ready parameter mapping
+/// Core States: Idle, Walking, Running, Crouching, Jumping, Flying, Swimming, Climbing
 /// </summary>
 [CreateAssetMenu(fileName = "New Avatar Animation Set", menuName = "U3D/Avatar Animation Set")]
 public class AvatarAnimationSet : ScriptableObject
 {
-    [Header("Core Locomotion Animations")]
-    [SerializeField] private AnimationClip idleAnimation;
-    [SerializeField] private AnimationClip walkAnimation;
-    [SerializeField] private AnimationClip runAnimation;
-    [SerializeField] private AnimationClip sprintAnimation;
-
-    [Header("Movement States")]
-    [SerializeField] private AnimationClip crouchIdleAnimation;
-    [SerializeField] private AnimationClip crouchWalkAnimation;
-    [SerializeField] private AnimationClip jumpStartAnimation;
-    [SerializeField] private AnimationClip jumpLoopAnimation;
-    [SerializeField] private AnimationClip landAnimation;
-
-    [Header("Flying/Swimming States")]
-    [SerializeField] private AnimationClip flyIdleAnimation;
-    [SerializeField] private AnimationClip flyForwardAnimation;
-    [SerializeField] private AnimationClip flyUpAnimation;
-    [SerializeField] private AnimationClip flyDownAnimation;
-
-    [Header("Blend Tree Configuration")]
-    [SerializeField] private bool useBlendTrees = true;
-    [SerializeField] private float walkToRunThreshold = 2.5f;
-    [SerializeField] private float runToSprintThreshold = 5.0f;
-    [SerializeField] private Vector2 blendTreeRange = new Vector2(0f, 8f);
+    [Header("8 Core Animation States - ALL REQUIRED")]
+    [SerializeField] private AnimationClip idleLoop;
+    [SerializeField] private AnimationClip walkingLoop;
+    [SerializeField] private AnimationClip runningLoop;
+    [SerializeField] private AnimationClip crouchingLoop;
+    [SerializeField] private AnimationClip jumpingLoop;
+    [SerializeField] private AnimationClip flyingLoop;
+    [SerializeField] private AnimationClip swimmingLoop;
+    [SerializeField] private AnimationClip climbingLoop;  // ADDED: Missing core state
 
     [Header("Animation Transitions")]
     [SerializeField] private float standardTransitionDuration = 0.15f;
@@ -52,10 +38,10 @@ public class AvatarAnimationSet : ScriptableObject
     // Animation clip validation cache
     private HashSet<AnimationClip> _validatedClips = new HashSet<AnimationClip>();
 
-    // Standard parameter names for U3D networking integration
+    // FIXED: All 8 core states for Fusion 2 networking
     public static readonly string[] StandardParameters = {
-        "IsMoving", "IsSprinting", "IsCrouching", "IsFlying", "IsGrounded",
-        "MoveSpeed", "MoveX", "MoveY", "JumpTrigger", "LandTrigger"
+        "IsMoving", "IsCrouching", "IsFlying", "IsSwimming", "IsGrounded", "IsClimbing",
+        "MoveSpeed", "MoveX", "MoveY", "JumpTrigger"
     };
 
     /// <summary>
@@ -107,25 +93,36 @@ public class AvatarAnimationSet : ScriptableObject
         Critical = 3
     }
 
-    // Public Properties
-    public AnimationClip IdleAnimation => idleAnimation;
-    public AnimationClip WalkAnimation => walkAnimation;
-    public AnimationClip RunAnimation => runAnimation;
-    public AnimationClip SprintAnimation => sprintAnimation;
-    public AnimationClip CrouchIdleAnimation => crouchIdleAnimation;
-    public AnimationClip CrouchWalkAnimation => crouchWalkAnimation;
-    public AnimationClip JumpStartAnimation => jumpStartAnimation;
-    public AnimationClip JumpLoopAnimation => jumpLoopAnimation;
-    public AnimationClip LandAnimation => landAnimation;
-    public AnimationClip FlyIdleAnimation => flyIdleAnimation;
-    public AnimationClip FlyForwardAnimation => flyForwardAnimation;
-    public AnimationClip FlyUpAnimation => flyUpAnimation;
-    public AnimationClip FlyDownAnimation => flyDownAnimation;
+    // FIXED: All 8 Core Properties (maintaining compatibility)
+    public AnimationClip IdleAnimation => idleLoop;
+    public AnimationClip WalkAnimation => walkingLoop;
+    public AnimationClip RunAnimation => runningLoop;
+    public AnimationClip SprintAnimation => runningLoop; // Running serves as sprint
+    public AnimationClip CrouchIdleAnimation => crouchingLoop;
+    public AnimationClip JumpStartAnimation => jumpingLoop;
+    public AnimationClip JumpLoopAnimation => jumpingLoop;
+    public AnimationClip LandAnimation => jumpingLoop; // Jumping loop handles landing
+    public AnimationClip FlyIdleAnimation => flyingLoop;
+    public AnimationClip FlyForwardAnimation => flyingLoop;
+    public AnimationClip FlyUpAnimation => flyingLoop;
+    public AnimationClip FlyDownAnimation => flyingLoop;
 
-    public bool UseBlendTrees => useBlendTrees;
-    public float WalkToRunThreshold => walkToRunThreshold;
-    public float RunToSprintThreshold => runToSprintThreshold;
-    public Vector2 BlendTreeRange => blendTreeRange;
+    // FIXED: New core state properties
+    public AnimationClip SwimIdleAnimation => swimmingLoop;
+    public AnimationClip SwimForwardAnimation => swimmingLoop;
+    public AnimationClip ClimbIdleAnimation => climbingLoop;
+    public AnimationClip ClimbUpAnimation => climbingLoop;
+    public AnimationClip ClimbDownAnimation => climbingLoop;
+
+    // Simplified property names for clarity
+    public AnimationClip IdleLoop => idleLoop;
+    public AnimationClip WalkingLoop => walkingLoop;
+    public AnimationClip RunningLoop => runningLoop;
+    public AnimationClip CrouchingLoop => crouchingLoop;
+    public AnimationClip JumpingLoop => jumpingLoop;
+    public AnimationClip FlyingLoop => flyingLoop;
+    public AnimationClip SwimmingLoop => swimmingLoop;
+    public AnimationClip ClimbingLoop => climbingLoop;  
 
     public float StandardTransitionDuration => standardTransitionDuration;
     public float QuickTransitionDuration => quickTransitionDuration;
@@ -174,29 +171,22 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// Validate all animation clips for humanoid compatibility
+    /// FIXED: Validate all 8 core animation clips for humanoid compatibility
     /// </summary>
     public bool ValidateAnimations(out List<string> warnings)
     {
         warnings = new List<string>();
         bool allValid = true;
 
-        // Check core animations
-        if (!ValidateClip(idleAnimation, "Idle", warnings)) allValid = false;
-        if (!ValidateClip(walkAnimation, "Walk", warnings)) allValid = false;
-        if (!ValidateClip(runAnimation, "Run", warnings)) allValid = false;
-
-        // Check optional animations
-        ValidateClip(sprintAnimation, "Sprint", warnings, false);
-        ValidateClip(crouchIdleAnimation, "Crouch Idle", warnings, false);
-        ValidateClip(crouchWalkAnimation, "Crouch Walk", warnings, false);
-        ValidateClip(jumpStartAnimation, "Jump Start", warnings, false);
-        ValidateClip(jumpLoopAnimation, "Jump Loop", warnings, false);
-        ValidateClip(landAnimation, "Land", warnings, false);
-        ValidateClip(flyIdleAnimation, "Fly Idle", warnings, false);
-        ValidateClip(flyForwardAnimation, "Fly Forward", warnings, false);
-        ValidateClip(flyUpAnimation, "Fly Up", warnings, false);
-        ValidateClip(flyDownAnimation, "Fly Down", warnings, false);
+        // Check ALL 8 core animations (required)
+        if (!ValidateClip(idleLoop, "Idle Loop", warnings)) allValid = false;
+        if (!ValidateClip(walkingLoop, "Walking Loop", warnings)) allValid = false;
+        if (!ValidateClip(runningLoop, "Running Loop", warnings)) allValid = false;
+        if (!ValidateClip(crouchingLoop, "Crouching Loop", warnings)) allValid = false;
+        if (!ValidateClip(jumpingLoop, "Jumping Loop", warnings)) allValid = false;
+        if (!ValidateClip(flyingLoop, "Flying Loop", warnings)) allValid = false;
+        if (!ValidateClip(swimmingLoop, "Swimming Loop", warnings)) allValid = false;
+        if (!ValidateClip(climbingLoop, "Climbing Loop", warnings)) allValid = false;
 
         // Check custom animations
         foreach (var customAnim in customAnimations)
@@ -216,7 +206,7 @@ public class AvatarAnimationSet : ScriptableObject
         {
             if (required)
             {
-                warnings.Add($"❌ Required animation '{clipName}' is missing");
+                warnings.Add($"❌ Required core animation '{clipName}' is missing");
                 return false;
             }
             else
@@ -258,25 +248,20 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// Get animation clip by state name
+    /// FIXED: Get animation clip by state name (supports all 8 core states)
     /// </summary>
     public AnimationClip GetAnimationClip(string stateName)
     {
         switch (stateName.ToLower())
         {
-            case "idle": return idleAnimation;
-            case "walk": return walkAnimation;
-            case "run": return runAnimation;
-            case "sprint": return sprintAnimation;
-            case "crouchidle": return crouchIdleAnimation;
-            case "crouchwalk": return crouchWalkAnimation;
-            case "jumpstart": return jumpStartAnimation;
-            case "jumploop": return jumpLoopAnimation;
-            case "land": return landAnimation;
-            case "flyidle": return flyIdleAnimation;
-            case "flyforward": return flyForwardAnimation;
-            case "flyup": return flyUpAnimation;
-            case "flydown": return flyDownAnimation;
+            case "idle": return idleLoop;
+            case "walking": return walkingLoop;
+            case "running": return runningLoop;
+            case "crouching": return crouchingLoop;
+            case "jumping": return jumpingLoop;
+            case "flying": return flyingLoop;
+            case "swimming": return swimmingLoop;
+            case "climbing": return climbingLoop;  // ADDED
             default:
                 // Search custom animations
                 var customAnim = customAnimations.Find(c => c.name.ToLower() == stateName.ToLower());
@@ -285,30 +270,58 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// Get all required animation clips for runtime controller generation
+    /// FIXED: Get all 8 core animation clips for runtime controller generation
     /// </summary>
     public Dictionary<string, AnimationClip> GetAllAnimationClips()
     {
         var clips = new Dictionary<string, AnimationClip>();
 
-        // Add core animations
-        if (idleAnimation != null) clips["Idle"] = idleAnimation;
-        if (walkAnimation != null) clips["Walk"] = walkAnimation;
-        if (runAnimation != null) clips["Run"] = runAnimation;
-        if (sprintAnimation != null) clips["Sprint"] = sprintAnimation;
-
-        // Add movement state animations
-        if (crouchIdleAnimation != null) clips["CrouchIdle"] = crouchIdleAnimation;
-        if (crouchWalkAnimation != null) clips["CrouchWalk"] = crouchWalkAnimation;
-        if (jumpStartAnimation != null) clips["JumpStart"] = jumpStartAnimation;
-        if (jumpLoopAnimation != null) clips["JumpLoop"] = jumpLoopAnimation;
-        if (landAnimation != null) clips["Land"] = landAnimation;
-
-        // Add flying animations
-        if (flyIdleAnimation != null) clips["FlyIdle"] = flyIdleAnimation;
-        if (flyForwardAnimation != null) clips["FlyForward"] = flyForwardAnimation;
-        if (flyUpAnimation != null) clips["FlyUp"] = flyUpAnimation;
-        if (flyDownAnimation != null) clips["FlyDown"] = flyDownAnimation;
+        // Add ALL 8 core animations with legacy naming support
+        if (idleLoop != null) clips["Idle"] = idleLoop;
+        if (walkingLoop != null)
+        {
+            clips["Walk"] = walkingLoop;
+            clips["Walking"] = walkingLoop;
+        }
+        if (runningLoop != null)
+        {
+            clips["Run"] = runningLoop;
+            clips["Running"] = runningLoop;
+            clips["Sprint"] = runningLoop; // Running serves as sprint
+        }
+        if (crouchingLoop != null)
+        {
+            clips["CrouchIdle"] = crouchingLoop;
+            clips["Crouching"] = crouchingLoop;
+        }
+        if (jumpingLoop != null)
+        {
+            clips["JumpStart"] = jumpingLoop;
+            clips["JumpLoop"] = jumpingLoop;
+            clips["Land"] = jumpingLoop;
+            clips["Jumping"] = jumpingLoop;
+        }
+        if (flyingLoop != null)
+        {
+            clips["FlyIdle"] = flyingLoop;
+            clips["FlyForward"] = flyingLoop;
+            clips["FlyUp"] = flyingLoop;
+            clips["FlyDown"] = flyingLoop;
+            clips["Flying"] = flyingLoop;
+        }
+        if (swimmingLoop != null)
+        {
+            clips["Swimming"] = swimmingLoop;
+            clips["SwimIdle"] = swimmingLoop;
+            clips["SwimForward"] = swimmingLoop;
+        }
+        if (climbingLoop != null)  // ADDED
+        {
+            clips["Climbing"] = climbingLoop;
+            clips["ClimbIdle"] = climbingLoop;
+            clips["ClimbUp"] = climbingLoop;
+            clips["ClimbDown"] = climbingLoop;
+        }
 
         // Add custom animations
         foreach (var customAnim in customAnimations)
@@ -323,24 +336,66 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
+    /// ADDED: Check if all 8 core animations are assigned
+    /// </summary>
+    public bool HasAllCoreAnimations()
+    {
+        return idleLoop != null && walkingLoop != null && runningLoop != null &&
+               crouchingLoop != null && jumpingLoop != null && flyingLoop != null &&
+               swimmingLoop != null && climbingLoop != null;
+    }
+
+    /// <summary>
+    /// ADDED: Get count of assigned core animations
+    /// </summary>
+    public int GetAssignedCoreAnimationCount()
+    {
+        int count = 0;
+        if (idleLoop != null) count++;
+        if (walkingLoop != null) count++;
+        if (runningLoop != null) count++;
+        if (crouchingLoop != null) count++;
+        if (jumpingLoop != null) count++;
+        if (flyingLoop != null) count++;
+        if (swimmingLoop != null) count++;
+        if (climbingLoop != null) count++;
+        return count;
+    }
+
+    /// <summary>
     /// Editor validation
     /// </summary>
     void OnValidate()
     {
-        // Ensure valid threshold values
-        if (walkToRunThreshold <= 0f) walkToRunThreshold = 2.5f;
-        if (runToSprintThreshold <= walkToRunThreshold) runToSprintThreshold = walkToRunThreshold + 2.5f;
-
         // Ensure valid transition durations
         if (standardTransitionDuration < 0f) standardTransitionDuration = 0.15f;
         if (quickTransitionDuration < 0f) quickTransitionDuration = 0.05f;
         if (slowTransitionDuration < 0f) slowTransitionDuration = 0.3f;
 
-        // Ensure valid blend tree range
-        if (blendTreeRange.y <= blendTreeRange.x) blendTreeRange.y = blendTreeRange.x + 8f;
-
         // Clear caches on validation
         _parametersCached = false;
         _validatedClips.Clear();
+    }
+
+    /// <summary>
+    /// ADDED: Flexible validation - allows partial animation sets for creators
+    /// </summary>
+    public bool HasMinimumRequiredAnimations()
+    {
+        // Require only the 3 most essential animations
+        return idleLoop != null && walkingLoop != null && runningLoop != null;
+    }
+
+    /// <summary>
+    /// ADDED: Get validation status for UI feedback
+    /// </summary>
+    public string GetValidationStatus()
+    {
+        int assigned = GetAssignedCoreAnimationCount();
+
+        if (assigned >= 8) return "✅ Complete (8/8 core animations)";
+        if (assigned >= 6) return "🟡 Good (6/8 core animations)";
+        if (assigned >= 3) return "⚠️ Basic (3/8 core animations)";
+        return "❌ Incomplete (needs Idle, Walking, Running)";
     }
 }

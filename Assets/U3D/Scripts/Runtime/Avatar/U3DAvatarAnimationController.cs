@@ -2,22 +2,17 @@
 using Fusion;
 using System.Collections.Generic;
 
-#if UNITY_EDITOR
-using UnityEditor;
-using UnityEditor.Animations;
-#endif
-
 /// <summary>
-/// Runtime AnimatorController generator and animation system for U3DAvatarManager
-/// Unity 6+ optimized with Fusion 2 networking integration
-/// Handles automatic parameter binding and network synchronization
+/// FIXED: Unity 6 + WebGL production-ready animation controller using AnimatorOverrideController only
+/// Supports all 8 core animation states with optimized Fusion 2 networking
+/// WebGL compatible - NO runtime AnimatorController generation
 /// </summary>
 [System.Serializable]
 public class U3DAvatarAnimationController : NetworkBehaviour
 {
     [Header("Animation Configuration")]
     [SerializeField] private AvatarAnimationSet animationSet;
-    [SerializeField] private bool autoGenerateController = true;
+    [SerializeField] private RuntimeAnimatorController baseController; // REQUIRED for WebGL
     [SerializeField] private bool enableParameterValidation = true;
 
     [Header("Network Animation")]
@@ -27,30 +22,21 @@ public class U3DAvatarAnimationController : NetworkBehaviour
 
     [Header("Performance")]
     [SerializeField] private bool useCachedParameterIds = true;
-    [SerializeField] private int maxAnimationLayers = 4;
     [SerializeField] private bool optimizeInactiveStates = true;
 
-    // Networked Animation Parameters (Fusion 2)
-    [Networked] public bool NetworkIsMoving { get; set; }
-    [Networked] public bool NetworkIsSprinting { get; set; }
-    [Networked] public bool NetworkIsCrouching { get; set; }
-    [Networked] public bool NetworkIsFlying { get; set; }
-    [Networked] public bool NetworkIsGrounded { get; set; }
-    [Networked] public float NetworkMoveSpeed { get; set; }
-    [Networked] public Vector2 NetworkMoveDirection { get; set; }
-    [Networked] public int NetworkAnimationTrigger { get; set; }
+    // FIXED: Single networked state struct for ALL 8 core animation states (optimized)
+    [Networked] public U3DAnimationState NetworkAnimationState { get; set; }
 
     // Core Components
     private Animator targetAnimator;
     private U3DAvatarManager avatarManager;
     private U3DPlayerController playerController;
-    private RuntimeAnimatorController generatedController;
+    private AnimatorOverrideController overrideController;
 
     // Animation State Tracking
     private Dictionary<string, int> cachedParameterIds = new Dictionary<string, int>();
     private Dictionary<string, object> lastParameterValues = new Dictionary<string, object>();
     private bool isInitialized = false;
-    private float lastNetworkUpdate = 0f;
 
     // Animation Events
     public System.Action<string> OnAnimationStateChanged;
@@ -59,18 +45,42 @@ public class U3DAvatarAnimationController : NetworkBehaviour
 
     // Public Properties
     public bool IsInitialized => isInitialized;
-    public RuntimeAnimatorController GeneratedController => generatedController;
+    public RuntimeAnimatorController GeneratedController => overrideController;
     public AvatarAnimationSet AnimationSet => animationSet;
 
     /// <summary>
-    /// Initialize the animation controller with target animator
+    /// FIXED: Networked animation state struct containing all 8 core states
     /// </summary>
-    public void Initialize(Animator animator, U3DAvatarManager manager, U3DPlayerController controller)
+    [System.Serializable]
+    public struct U3DAnimationState : INetworkStruct
+    {
+        // Core movement states
+        [Networked] public bool IsMoving { get; set; }
+        [Networked] public bool IsCrouching { get; set; }
+        [Networked] public bool IsFlying { get; set; }
+        [Networked] public bool IsSwimming { get; set; }
+        [Networked] public bool IsGrounded { get; set; }
+        [Networked] public bool IsClimbing { get; set; }  // ADDED: Missing core state
+        [Networked] public bool IsJumping { get; set; }
+
+        // Movement parameters
+        [Networked] public float MoveSpeed { get; set; }
+        [Networked] public Vector2 MoveDirection { get; set; }
+
+        // Animation triggers
+        [Networked] public int AnimationTriggerHash { get; set; }
+        [Networked] public float StateTransitionTime { get; set; }
+    }
+
+    /// <summary>
+    /// Initialize with WebGL-safe AnimatorOverrideController approach only
+    /// </summary>
+    public bool Initialize(Animator animator, U3DAvatarManager manager, U3DPlayerController controller)
     {
         if (isInitialized)
         {
-            Debug.LogWarning("U3DAvatarAnimationController already initialized");
-            return;
+            Debug.LogWarning("⚠️ U3DAvatarAnimationController already initialized");
+            return true;
         }
 
         targetAnimator = animator;
@@ -80,13 +90,22 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         if (targetAnimator == null)
         {
             Debug.LogError("❌ Target Animator is null! Cannot initialize animation controller");
-            return;
+            return false;
         }
 
         if (animationSet == null)
         {
             Debug.LogError("❌ Animation Set is null! Please assign an AvatarAnimationSet");
-            return;
+            return false;
+        }
+
+        // CRITICAL: ANimator controller is REQUIRED for WebGL builds
+        if (baseController == null)
+        {
+            Debug.LogError("❌ ANimator Controller is REQUIRED.\n" +
+                          "Please assign an AnimatorController in the inspector.\n" +
+                          "This controller will be used as template for AnimatorOverrideController.");
+            return false;
         }
 
         // Validate animation set
@@ -95,17 +114,14 @@ public class U3DAvatarAnimationController : NetworkBehaviour
             ValidateAnimationSet();
         }
 
-        // Generate or assign runtime controller
-        if (autoGenerateController)
+        // Create AnimatorOverrideController (WebGL safe)
+        if (!CreateOverrideController())
         {
-            GenerateRuntimeController();
-        }
-        else if (targetAnimator.runtimeAnimatorController != null)
-        {
-            generatedController = targetAnimator.runtimeAnimatorController;
+            Debug.LogError("❌ Failed to create AnimatorOverrideController");
+            return false;
         }
 
-        // Cache parameter IDs for performance
+        // Cache parameter IDs for Unity 6+ performance
         if (useCachedParameterIds)
         {
             CacheParameterIds();
@@ -115,17 +131,120 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         InitializeParameterTracking();
 
         isInitialized = true;
-        Debug.Log("✅ U3DAvatarAnimationController initialized successfully");
+        Debug.Log("✅ U3DAvatarAnimationController initialized with WebGL-safe approach");
+        return true;
     }
 
     /// <summary>
-    /// Validate the assigned animation set
+    /// Create AnimatorOverrideController - WebGL compatible approach
+    /// </summary>
+    private bool CreateOverrideController()
+    {
+        try
+        {
+            // Create override controller from base
+            overrideController = new AnimatorOverrideController(baseController);
+
+            if (overrideController == null)
+            {
+                Debug.LogError("❌ Failed to create AnimatorOverrideController");
+                return false;
+            }
+
+            // Override animation clips with our animation set
+            var clipOverrides = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrideController.GetOverrides(clipOverrides);
+
+            var animationClips = animationSet.GetAllAnimationClips();
+            int successfulOverrides = 0;
+
+            // Override clips by intelligent name matching
+            for (int i = 0; i < clipOverrides.Count; i++)
+            {
+                var originalClip = clipOverrides[i].Key;
+                if (originalClip == null) continue;
+
+                string originalName = originalClip.name.ToLower();
+                AnimationClip replacementClip = null;
+
+                // Direct name matching first
+                foreach (var kvp in animationClips)
+                {
+                    if (DoesClipNameMatch(originalName, kvp.Key.ToLower()))
+                    {
+                        replacementClip = kvp.Value;
+                        break;
+                    }
+                }
+
+                if (replacementClip != null)
+                {
+                    clipOverrides[i] = new KeyValuePair<AnimationClip, AnimationClip>(originalClip, replacementClip);
+                    successfulOverrides++;
+                    Debug.Log($"✅ Overrode '{originalClip.name}' with '{replacementClip.name}'");
+                }
+            }
+
+            // Apply overrides
+            overrideController.ApplyOverrides(clipOverrides);
+
+            // Assign to animator
+            targetAnimator.runtimeAnimatorController = overrideController;
+
+            Debug.Log($"✅ Created AnimatorOverrideController with {successfulOverrides} overrides");
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"❌ Exception creating override controller: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// FIXED: Intelligent clip name matching for all 8 core states
+    /// </summary>
+    private bool DoesClipNameMatch(string originalName, string setClipKey)
+    {
+        // Direct match
+        if (originalName == setClipKey) return true;
+
+        // FIXED: All 8 core animation name patterns
+        var patterns = new Dictionary<string, string[]>
+        {
+            { "idle", new[] { "idle", "standing", "default" } },
+            { "walking", new[] { "walk", "walking", "move" } },
+            { "running", new[] { "run", "running", "sprint", "jog" } },
+            { "crouching", new[] { "crouch", "crouching", "duck" } },
+            { "jumping", new[] { "jump", "jumping", "leap", "hop" } },
+            { "flying", new[] { "fly", "flying", "float", "hover" } },
+            { "swimming", new[] { "swim", "swimming", "water" } },
+            { "climbing", new[] { "climb", "climbing", "ladder", "wall" } }  // ADDED
+        };
+
+        foreach (var pattern in patterns)
+        {
+            if (setClipKey == pattern.Key)
+            {
+                foreach (string variant in pattern.Value)
+                {
+                    if (originalName.Contains(variant)) return true;
+                }
+            }
+        }
+
+        // Partial matching as fallback
+        return originalName.Contains(setClipKey) || setClipKey.Contains(originalName);
+    }
+
+    /// <summary>
+    /// FIXED: Validate the assigned animation set for all 8 core states
     /// </summary>
     private void ValidateAnimationSet()
     {
         if (animationSet.ValidateAnimations(out List<string> warnings))
         {
-            Debug.Log("✅ Animation set validation passed");
+            Debug.Log($"✅ Animation set validation passed ({animationSet.GetAssignedCoreAnimationCount()}/8 core states assigned)");
         }
         else
         {
@@ -135,196 +254,17 @@ public class U3DAvatarAnimationController : NetworkBehaviour
                 Debug.LogWarning(warning);
             }
         }
-    }
 
-    /// <summary>
-    /// Generate runtime AnimatorController from animation set
-    /// Note: This is primarily for editor use - production should use pre-built controllers
-    /// </summary>
-    private void GenerateRuntimeController()
-    {
-#if UNITY_EDITOR
-        if (Application.isPlaying)
+        // ADDED: Check for complete core animation coverage
+        if (!animationSet.HasAllCoreAnimations())
         {
-            // Runtime generation is limited - use pre-built controllers in production
-            Debug.LogWarning("⚠️ Runtime controller generation is limited. Use pre-built AnimatorControllers for best performance.");
-            CreateBasicRuntimeController();
-        }
-        else
-        {
-            CreateEditorAnimatorController();
-        }
-#else
-        CreateBasicRuntimeController();
-#endif
-    }
-
-    /// <summary>
-    /// Create basic runtime controller for production builds
-    /// </summary>
-    private void CreateBasicRuntimeController()
-    {
-        // In production, this should ideally use AnimatorOverrideController
-        // with a pre-built base controller for best performance
-
-        if (targetAnimator.runtimeAnimatorController == null)
-        {
-            Debug.LogError("❌ No AnimatorController assigned and runtime generation failed. Please assign a pre-built controller.");
-            return;
-        }
-
-        generatedController = targetAnimator.runtimeAnimatorController;
-
-        // If using AnimatorOverrideController, override clips here
-        var overrideController = generatedController as AnimatorOverrideController;
-        if (overrideController != null)
-        {
-            OverrideAnimationClips(overrideController);
+            Debug.LogWarning($"⚠️ Incomplete core animation set: {animationSet.GetAssignedCoreAnimationCount()}/8 states assigned\n" +
+                           "Missing states may result in broken animations for some player actions.");
         }
     }
 
     /// <summary>
-    /// Override animation clips in AnimatorOverrideController
-    /// </summary>
-    private void OverrideAnimationClips(AnimatorOverrideController overrideController)
-    {
-        var clipOverrides = new List<KeyValuePair<AnimationClip, AnimationClip>>();
-        overrideController.GetOverrides(clipOverrides);
-
-        var animationClips = animationSet.GetAllAnimationClips();
-
-        for (int i = 0; i < clipOverrides.Count; i++)
-        {
-            var originalClip = clipOverrides[i].Key;
-
-            // Try to find matching clip in animation set
-            if (animationClips.TryGetValue(originalClip.name, out AnimationClip newClip))
-            {
-                clipOverrides[i] = new KeyValuePair<AnimationClip, AnimationClip>(originalClip, newClip);
-                Debug.Log($"✅ Overrode animation clip: {originalClip.name}");
-            }
-        }
-
-        overrideController.ApplyOverrides(clipOverrides);
-    }
-
-#if UNITY_EDITOR
-    /// <summary>
-    /// Create full AnimatorController in editor (development/testing)
-    /// </summary>
-    private void CreateEditorAnimatorController()
-    {
-        string controllerPath = $"Assets/Generated/Avatar_Controller_{GetInstanceID()}.controller";
-
-        // Create controller
-        var controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
-
-        // Add standard parameters
-        foreach (string paramName in AvatarAnimationSet.StandardParameters)
-        {
-            AddParameterToController(controller, paramName);
-        }
-
-        // Add custom parameters
-        foreach (var customParam in animationSet.CustomParameters)
-        {
-            controller.AddParameter(customParam.parameterName, customParam.parameterType);
-        }
-
-        // Create basic state machine
-        CreateBasicStateMachine(controller);
-
-        // Assign to animator
-        targetAnimator.runtimeAnimatorController = controller;
-        generatedController = controller;
-
-        Debug.Log($"✅ Generated AnimatorController at: {controllerPath}");
-    }
-
-    /// <summary>
-    /// Add parameter to controller with proper type detection
-    /// </summary>
-    private void AddParameterToController(AnimatorController controller, string paramName)
-    {
-        switch (paramName)
-        {
-            case "IsMoving":
-            case "IsSprinting":
-            case "IsCrouching":
-            case "IsFlying":
-            case "IsGrounded":
-                controller.AddParameter(paramName, AnimatorControllerParameterType.Bool);
-                break;
-            case "MoveSpeed":
-            case "MoveX":
-            case "MoveY":
-                controller.AddParameter(paramName, AnimatorControllerParameterType.Float);
-                break;
-            case "JumpTrigger":
-            case "LandTrigger":
-                controller.AddParameter(paramName, AnimatorControllerParameterType.Trigger);
-                break;
-            default:
-                controller.AddParameter(paramName, AnimatorControllerParameterType.Float);
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Create basic state machine with core states
-    /// </summary>
-    private void CreateBasicStateMachine(AnimatorController controller)
-    {
-        var rootStateMachine = controller.layers[0].stateMachine;
-
-        // Create core states
-        var idleState = rootStateMachine.AddState("Idle");
-        var walkState = rootStateMachine.AddState("Walk");
-        var runState = rootStateMachine.AddState("Run");
-
-        // Assign animation clips
-        if (animationSet.IdleAnimation != null) idleState.motion = animationSet.IdleAnimation;
-        if (animationSet.WalkAnimation != null) walkState.motion = animationSet.WalkAnimation;
-        if (animationSet.RunAnimation != null) runState.motion = animationSet.RunAnimation;
-
-        // Set default state
-        rootStateMachine.defaultState = idleState;
-
-        // Create basic transitions
-        CreateBasicTransitions(idleState, walkState, runState);
-    }
-
-    /// <summary>
-    /// Create basic transitions between core states
-    /// </summary>
-    private void CreateBasicTransitions(AnimatorState idleState, AnimatorState walkState, AnimatorState runState)
-    {
-        // Idle to Walk
-        var idleToWalk = idleState.AddTransition(walkState);
-        idleToWalk.AddCondition(AnimatorConditionMode.If, 0, "IsMoving");
-        idleToWalk.duration = animationSet.StandardTransitionDuration;
-
-        // Walk to Idle
-        var walkToIdle = walkState.AddTransition(idleState);
-        walkToIdle.AddCondition(AnimatorConditionMode.IfNot, 0, "IsMoving");
-        walkToIdle.duration = animationSet.StandardTransitionDuration;
-
-        // Walk to Run (if sprint animation exists)
-        if (animationSet.SprintAnimation != null)
-        {
-            var walkToRun = walkState.AddTransition(runState);
-            walkToRun.AddCondition(AnimatorConditionMode.If, 0, "IsSprinting");
-            walkToRun.duration = animationSet.QuickTransitionDuration;
-
-            var runToWalk = runState.AddTransition(walkState);
-            runToWalk.AddCondition(AnimatorConditionMode.IfNot, 0, "IsSprinting");
-            runToWalk.duration = animationSet.QuickTransitionDuration;
-        }
-    }
-#endif
-
-    /// <summary>
-    /// Cache parameter IDs for Unity 6+ performance optimization
+    /// FIXED: Cache parameter IDs for Unity 6+ performance optimization
     /// </summary>
     private void CacheParameterIds()
     {
@@ -332,28 +272,30 @@ public class U3DAvatarAnimationController : NetworkBehaviour
 
         if (targetAnimator == null || targetAnimator.runtimeAnimatorController == null) return;
 
-        // Get parameters from the Animator component, not the RuntimeAnimatorController
+        // Use Unity 6+ approach: Get parameters from Animator component
         foreach (var parameter in targetAnimator.parameters)
         {
             cachedParameterIds[parameter.name] = Animator.StringToHash(parameter.name);
         }
 
-        Debug.Log($"✅ Cached {cachedParameterIds.Count} animator parameter IDs");
+        Debug.Log($"✅ Cached {cachedParameterIds.Count} animator parameter IDs (Unity 6+)");
     }
 
     /// <summary>
-    /// Initialize parameter value tracking for change detection
+    /// FIXED: Initialize parameter value tracking for all 8 core states
     /// </summary>
     private void InitializeParameterTracking()
     {
         lastParameterValues.Clear();
 
-        // Initialize with default values
+        // Initialize with default values for ALL 8 core states
         lastParameterValues["IsMoving"] = false;
-        lastParameterValues["IsSprinting"] = false;
         lastParameterValues["IsCrouching"] = false;
         lastParameterValues["IsFlying"] = false;
+        lastParameterValues["IsSwimming"] = false;
         lastParameterValues["IsGrounded"] = true;
+        lastParameterValues["IsClimbing"] = false;  // ADDED
+        lastParameterValues["IsJumping"] = false;
         lastParameterValues["MoveSpeed"] = 0f;
         lastParameterValues["MoveX"] = 0f;
         lastParameterValues["MoveY"] = 0f;
@@ -374,22 +316,35 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Update networked animation parameters from player controller
+    /// FIXED: Update networked animation parameters for all 8 core states
     /// </summary>
     private void UpdateNetworkedAnimationState()
     {
-        // Sync with player controller state
-        NetworkIsMoving = playerController.NetworkIsMoving;
-        NetworkIsSprinting = playerController.NetworkIsSprinting;
-        NetworkIsCrouching = playerController.NetworkIsCrouching;
-        NetworkIsFlying = playerController.NetworkIsFlying;
-        NetworkIsGrounded = playerController.IsGrounded;
-        NetworkMoveSpeed = playerController.CurrentSpeed;
+        var newState = NetworkAnimationState;
+
+        // FIXED: Sync with all available player controller states
+        newState.IsCrouching = playerController.NetworkIsCrouching;
+        newState.IsFlying = playerController.NetworkIsFlying;
+        newState.IsGrounded = playerController.IsGrounded;
+        newState.IsJumping = playerController.NetworkIsJumping;
+
+        // ADDED: New core states (add these to PlayerController if not present)
+        newState.IsSwimming = false; // Add this to player controller if swimming is implemented
+        newState.IsClimbing = false; // Add this to player controller if climbing is implemented
+
+        Vector3 actualVelocity = playerController.Velocity;
+        float actualSpeed = new Vector2(actualVelocity.x, actualVelocity.z).magnitude;
+        bool isActuallyMoving = actualSpeed > 0.1f && playerController.IsGrounded && !playerController.NetworkIsJumping;
+
+        newState.IsMoving = isActuallyMoving;
+        newState.MoveSpeed = isActuallyMoving ? actualSpeed : 0f;
 
         // Calculate movement direction
         Vector3 velocity = playerController.Velocity;
         Vector3 localVelocity = transform.InverseTransformDirection(velocity);
-        NetworkMoveDirection = new Vector2(localVelocity.x, localVelocity.z);
+        newState.MoveDirection = new Vector2(localVelocity.x, localVelocity.z);
+
+        NetworkAnimationState = newState;
     }
 
     /// <summary>
@@ -410,33 +365,194 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Update animator parameters with cached IDs for performance
+    /// FIXED: Update animator parameters with priority logic to prevent animation conflicts
     /// </summary>
     private void UpdateAnimatorParameters()
     {
-        // Use cached parameter IDs for Unity 6+ performance
-        if (useCachedParameterIds && cachedParameterIds.Count > 0)
+        var state = NetworkAnimationState;
+
+        // Animation priority logic to prevent conflicts
+        if (state.IsJumping)
         {
-            UpdateParameterWithCache("IsMoving", NetworkIsMoving);
-            UpdateParameterWithCache("IsSprinting", NetworkIsSprinting);
-            UpdateParameterWithCache("IsCrouching", NetworkIsCrouching);
-            UpdateParameterWithCache("IsFlying", NetworkIsFlying);
-            UpdateParameterWithCache("IsGrounded", NetworkIsGrounded);
-            UpdateParameterWithCache("MoveSpeed", NetworkMoveSpeed);
-            UpdateParameterWithCache("MoveX", NetworkMoveDirection.x);
-            UpdateParameterWithCache("MoveY", NetworkMoveDirection.y);
+            // PRIORITY 1: Jump takes highest priority - override movement
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsJumping", true);
+                UpdateParameterWithCache("IsMoving", false);
+                UpdateParameterWithCache("IsCrouching", false);
+                UpdateParameterWithCache("IsFlying", state.IsFlying);
+                UpdateParameterWithCache("IsSwimming", false);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                UpdateParameterWithCache("IsClimbing", false);
+                UpdateParameterWithCache("MoveSpeed", 0f);
+                UpdateParameterWithCache("MoveX", 0f);
+                UpdateParameterWithCache("MoveY", 0f);
+            }
+            else
+            {
+                UpdateParameterDirect("IsJumping", true);
+                UpdateParameterDirect("IsMoving", false);
+                UpdateParameterDirect("IsCrouching", false);
+                UpdateParameterDirect("IsFlying", state.IsFlying);
+                UpdateParameterDirect("IsSwimming", false);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                UpdateParameterDirect("IsClimbing", false);
+                UpdateParameterDirect("MoveSpeed", 0f);
+                UpdateParameterDirect("MoveX", 0f);
+                UpdateParameterDirect("MoveY", 0f);
+            }
+        }
+        else if (state.IsFlying)
+        {
+            // PRIORITY 2: Flying state - can have movement
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsFlying", true);
+                UpdateParameterWithCache("IsJumping", false);
+                UpdateParameterWithCache("IsCrouching", false);
+                UpdateParameterWithCache("IsMoving", state.IsMoving);
+                UpdateParameterWithCache("IsSwimming", false);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                UpdateParameterWithCache("IsClimbing", false);
+                UpdateParameterWithCache("MoveSpeed", state.MoveSpeed);
+                UpdateParameterWithCache("MoveX", state.MoveDirection.x);
+                UpdateParameterWithCache("MoveY", state.MoveDirection.y);
+            }
+            else
+            {
+                UpdateParameterDirect("IsFlying", true);
+                UpdateParameterDirect("IsJumping", false);
+                UpdateParameterDirect("IsCrouching", false);
+                UpdateParameterDirect("IsMoving", state.IsMoving);
+                UpdateParameterDirect("IsSwimming", false);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                UpdateParameterDirect("IsClimbing", false);
+                UpdateParameterDirect("MoveSpeed", state.MoveSpeed);
+                UpdateParameterDirect("MoveX", state.MoveDirection.x);
+                UpdateParameterDirect("MoveY", state.MoveDirection.y);
+            }
+        }
+        else if (state.IsSwimming)
+        {
+            // PRIORITY 3: Swimming state - can have movement
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsSwimming", true);
+                UpdateParameterWithCache("IsJumping", false);
+                UpdateParameterWithCache("IsCrouching", false);
+                UpdateParameterWithCache("IsFlying", false);
+                UpdateParameterWithCache("IsMoving", state.IsMoving);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                UpdateParameterWithCache("IsClimbing", false);
+                UpdateParameterWithCache("MoveSpeed", state.MoveSpeed);
+                UpdateParameterWithCache("MoveX", state.MoveDirection.x);
+                UpdateParameterWithCache("MoveY", state.MoveDirection.y);
+            }
+            else
+            {
+                UpdateParameterDirect("IsSwimming", true);
+                UpdateParameterDirect("IsJumping", false);
+                UpdateParameterDirect("IsCrouching", false);
+                UpdateParameterDirect("IsFlying", false);
+                UpdateParameterDirect("IsMoving", state.IsMoving);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                UpdateParameterDirect("IsClimbing", false);
+                UpdateParameterDirect("MoveSpeed", state.MoveSpeed);
+                UpdateParameterDirect("MoveX", state.MoveDirection.x);
+                UpdateParameterDirect("MoveY", state.MoveDirection.y);
+            }
+        }
+        else if (state.IsClimbing)
+        {
+            // PRIORITY 4: Climbing state - can have movement
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsClimbing", true);
+                UpdateParameterWithCache("IsJumping", false);
+                UpdateParameterWithCache("IsCrouching", false);
+                UpdateParameterWithCache("IsFlying", false);
+                UpdateParameterWithCache("IsSwimming", false);
+                UpdateParameterWithCache("IsMoving", state.IsMoving);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                UpdateParameterWithCache("MoveSpeed", state.MoveSpeed);
+                UpdateParameterWithCache("MoveX", state.MoveDirection.x);
+                UpdateParameterWithCache("MoveY", state.MoveDirection.y);
+            }
+            else
+            {
+                UpdateParameterDirect("IsClimbing", true);
+                UpdateParameterDirect("IsJumping", false);
+                UpdateParameterDirect("IsCrouching", false);
+                UpdateParameterDirect("IsFlying", false);
+                UpdateParameterDirect("IsSwimming", false);
+                UpdateParameterDirect("IsMoving", state.IsMoving);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                UpdateParameterDirect("MoveSpeed", state.MoveSpeed);
+                UpdateParameterDirect("MoveX", state.MoveDirection.x);
+                UpdateParameterDirect("MoveY", state.MoveDirection.y);
+            }
+        }
+        else if (state.IsCrouching)
+        {
+            // PRIORITY 5: Crouch state - override movement when crouching
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsCrouching", true);
+                UpdateParameterWithCache("IsJumping", false);
+                UpdateParameterWithCache("IsFlying", false);
+                UpdateParameterWithCache("IsSwimming", false);
+                UpdateParameterWithCache("IsClimbing", false);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                // Allow crouch movement but at reduced speed
+                UpdateParameterWithCache("IsMoving", state.IsMoving);
+                UpdateParameterWithCache("MoveSpeed", state.IsMoving ? state.MoveSpeed * 0.5f : 0f);
+                UpdateParameterWithCache("MoveX", state.MoveDirection.x);
+                UpdateParameterWithCache("MoveY", state.MoveDirection.y);
+            }
+            else
+            {
+                UpdateParameterDirect("IsCrouching", true);
+                UpdateParameterDirect("IsJumping", false);
+                UpdateParameterDirect("IsFlying", false);
+                UpdateParameterDirect("IsSwimming", false);
+                UpdateParameterDirect("IsClimbing", false);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                // Allow crouch movement but at reduced speed
+                UpdateParameterDirect("IsMoving", state.IsMoving);
+                UpdateParameterDirect("MoveSpeed", state.IsMoving ? state.MoveSpeed * 0.5f : 0f);
+                UpdateParameterDirect("MoveX", state.MoveDirection.x);
+                UpdateParameterDirect("MoveY", state.MoveDirection.y);
+            }
         }
         else
         {
-            // Fallback to string-based parameter setting
-            UpdateParameterDirect("IsMoving", NetworkIsMoving);
-            UpdateParameterDirect("IsSprinting", NetworkIsSprinting);
-            UpdateParameterDirect("IsCrouching", NetworkIsCrouching);
-            UpdateParameterDirect("IsFlying", NetworkIsFlying);
-            UpdateParameterDirect("IsGrounded", NetworkIsGrounded);
-            UpdateParameterDirect("MoveSpeed", NetworkMoveSpeed);
-            UpdateParameterDirect("MoveX", NetworkMoveDirection.x);
-            UpdateParameterDirect("MoveY", NetworkMoveDirection.y);
+            // PRIORITY 6: Normal ground movement (lowest priority)
+            if (useCachedParameterIds && cachedParameterIds.Count > 0)
+            {
+                UpdateParameterWithCache("IsMoving", state.IsMoving);
+                UpdateParameterWithCache("IsCrouching", false);
+                UpdateParameterWithCache("IsFlying", false);
+                UpdateParameterWithCache("IsSwimming", false);
+                UpdateParameterWithCache("IsGrounded", state.IsGrounded);
+                UpdateParameterWithCache("IsClimbing", false);
+                UpdateParameterWithCache("IsJumping", false);
+                UpdateParameterWithCache("MoveSpeed", state.MoveSpeed);
+                UpdateParameterWithCache("MoveX", state.MoveDirection.x);
+                UpdateParameterWithCache("MoveY", state.MoveDirection.y);
+            }
+            else
+            {
+                UpdateParameterDirect("IsMoving", state.IsMoving);
+                UpdateParameterDirect("IsCrouching", false);
+                UpdateParameterDirect("IsFlying", false);
+                UpdateParameterDirect("IsSwimming", false);
+                UpdateParameterDirect("IsGrounded", state.IsGrounded);
+                UpdateParameterDirect("IsClimbing", false);
+                UpdateParameterDirect("IsJumping", false);
+                UpdateParameterDirect("MoveSpeed", state.MoveSpeed);
+                UpdateParameterDirect("MoveX", state.MoveDirection.x);
+                UpdateParameterDirect("MoveY", state.MoveDirection.y);
+            }
         }
     }
 
@@ -447,7 +563,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     {
         if (!cachedParameterIds.TryGetValue(paramName, out int paramId)) return;
 
-        // Only update if value changed (optimization)
+        // Only update if value changed (Unity 6+ optimization)
         if (HasParameterChanged(paramName, value))
         {
             switch (value)
@@ -512,7 +628,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Smooth network parameter interpolation for remote players
+    /// FIXED: Smooth network parameter interpolation for remote players (all 8 states)
     /// </summary>
     private void SmoothNetworkParameters()
     {
@@ -540,23 +656,24 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     /// </summary>
     private float GetNetworkParameterValue(string paramName)
     {
+        var state = NetworkAnimationState;
         switch (paramName)
         {
-            case "MoveSpeed": return NetworkMoveSpeed;
-            case "MoveX": return NetworkMoveDirection.x;
-            case "MoveY": return NetworkMoveDirection.y;
+            case "MoveSpeed": return state.MoveSpeed;
+            case "MoveX": return state.MoveDirection.x;
+            case "MoveY": return state.MoveDirection.y;
             default: return 0f;
         }
     }
 
     /// <summary>
-    /// Trigger custom animation across network
+    /// Trigger custom animation across network (WebGL safe)
     /// </summary>
     public void TriggerNetworkAnimation(string animationName)
     {
         if (!Object.HasStateAuthority)
         {
-            Debug.LogWarning("Only State Authority can trigger network animations");
+            Debug.LogWarning("⚠️ Only State Authority can trigger network animations");
             return;
         }
 
@@ -564,14 +681,17 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         var customAnim = animationSet.CustomAnimations.Find(a => a.name == animationName);
         if (customAnim == null)
         {
-            Debug.LogWarning($"Custom animation '{animationName}' not found in animation set");
+            Debug.LogWarning($"⚠️ Custom animation '{animationName}' not found in animation set");
             return;
         }
 
         if (customAnim.networkSynchronized)
         {
             // Use trigger parameter for network sync
-            NetworkAnimationTrigger = animationName.GetHashCode();
+            var state = NetworkAnimationState;
+            state.AnimationTriggerHash = animationName.GetHashCode();
+            NetworkAnimationState = state;
+
             RPC_TriggerCustomAnimation(animationName);
         }
         else
@@ -612,23 +732,23 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Set animation set at runtime
+    /// Set animation set at runtime (WebGL safe)
     /// </summary>
     public void SetAnimationSet(AvatarAnimationSet newAnimationSet)
     {
         if (newAnimationSet == null)
         {
-            Debug.LogError("Cannot set null animation set");
+            Debug.LogError("❌ Cannot set null animation set");
             return;
         }
 
         animationSet = newAnimationSet;
 
-        if (isInitialized)
+        if (isInitialized && baseController != null)
         {
-            // Reinitialize with new animation set
-            isInitialized = false;
-            Initialize(targetAnimator, avatarManager, playerController);
+            // Recreate override controller with new animation set
+            CreateOverrideController();
+            Debug.Log("✅ Updated animation set and recreated override controller");
         }
     }
 
@@ -677,7 +797,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Debug: Get all current parameter values
+    /// FIXED: Debug info for all 8 core states
     /// </summary>
     public Dictionary<string, object> GetCurrentParameterValues()
     {
@@ -685,7 +805,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
 
         if (targetAnimator == null || targetAnimator.runtimeAnimatorController == null) return currentValues;
 
-        // Get parameters from the Animator component
+        // Get parameters from the Animator component (Unity 6+ approach)
         foreach (var parameter in targetAnimator.parameters)
         {
             try
@@ -708,12 +828,39 @@ public class U3DAvatarAnimationController : NetworkBehaviour
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"Failed to get parameter '{parameter.name}': {e.Message}");
+                Debug.LogWarning($"⚠️ Failed to get parameter '{parameter.name}': {e.Message}");
                 currentValues[parameter.name] = "Error";
             }
         }
 
         return currentValues;
+    }
+
+    /// <summary>
+    /// ADDED: Get current network animation state for debugging
+    /// </summary>
+    public U3DAnimationState GetCurrentNetworkState()
+    {
+        return NetworkAnimationState;
+    }
+
+    /// <summary>
+    /// ADDED: Check if specific core animation state is active
+    /// </summary>
+    public bool IsStateActive(string stateName)
+    {
+        var state = NetworkAnimationState;
+        switch (stateName.ToLower())
+        {
+            case "moving": return state.IsMoving;
+            case "crouching": return state.IsCrouching;
+            case "flying": return state.IsFlying;
+            case "swimming": return state.IsSwimming;
+            case "grounded": return state.IsGrounded;
+            case "climbing": return state.IsClimbing;
+            case "jumping": return state.IsJumping;
+            default: return false;
+        }
     }
 
     /// <summary>
@@ -742,7 +889,11 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         // Ensure valid sync threshold
         if (parameterSyncThreshold < 0f) parameterSyncThreshold = 0.01f;
 
-        // Ensure valid max layers
-        if (maxAnimationLayers < 1) maxAnimationLayers = 4;
+        // Validate animator controller requirement
+        if (baseController == null)
+        {
+            Debug.LogWarning("⚠️ Animator Controller is REQUIRED.\n" +
+                           "Please assign an Animator Controller to enable animation override functionality.");
+        }
     }
 }

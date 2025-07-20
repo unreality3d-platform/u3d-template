@@ -99,15 +99,20 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float defaultFOV = 60f;
     [HideInInspector][SerializeField] private float zoomSpeed = 5f;
 
-    // Networked Properties
-    [Networked] public Vector3 NetworkPosition { get; set; }
-    [Networked] public Quaternion NetworkRotation { get; set; }
-    [Networked] public bool NetworkIsMoving { get; set; }
-    [Networked] public bool NetworkIsSprinting { get; set; }
-    [Networked] public bool NetworkIsCrouching { get; set; }
-    [Networked] public bool NetworkIsFlying { get; set; }
-    [Networked] public float NetworkCameraPitch { get; set; }
-    [Networked] public bool NetworkIsInteracting { get; set; }
+    // CLEANED: Core Networked Properties for Animation System (HIDDEN from Creator users)
+    [HideInInspector][Networked] public Vector3 NetworkPosition { get; set; }
+    [HideInInspector][Networked] public Quaternion NetworkRotation { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsMoving { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsSprinting { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsCrouching { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsFlying { get; set; }
+    [HideInInspector][Networked] public float NetworkCameraPitch { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsInteracting { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsJumping { get; set; }
+
+    // UPDATED: Environmental states (set by external trigger systems) - HIDDEN from Creator users
+    [HideInInspector][Networked] public bool NetworkIsSwimming { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsClimbing { get; set; }
 
     // Mouse input smoothing (add after existing camera state variables)
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
@@ -131,6 +136,9 @@ public class U3DPlayerController : NetworkBehaviour
     private bool isFlying;
     private bool isAutoRunning;
     private bool isZooming;
+
+    // REMOVED: Animation-related variables (handled by U3DNetworkedAnimator)
+    // REMOVED: Swimming/climbing controller references (now handled by separate trigger systems)
 
     // Camera State
     private float cameraPitch;
@@ -262,11 +270,13 @@ public class U3DPlayerController : NetworkBehaviour
         currentCameraDistance = 0f;
         targetFOV = defaultFOV;
         playerCamera.fieldOfView = defaultFOV;
-     
+
         InitializeCameraPivot();
 
         // Load player preferences
         LoadPlayerPreferences();
+
+        // REMOVED: Swimming/climbing controller initialization (now handled by separate systems)
     }
 
     void InitializeComponents()
@@ -405,7 +415,12 @@ public class U3DPlayerController : NetworkBehaviour
             HandleCameraPositioning();
             ApplyGravityFixed();
         }
+
+        // REMOVED: Integrated swimming and climbing detection (now handled by external trigger systems)
     }
+
+    // REMOVED: UpdateSwimmingState() and UpdateClimbingState() methods
+    // These are now handled by separate U3DSwimmingTrigger and U3DClimbingTrigger components
 
     // FUSION RENDER: For camera and visual updates
     public override void Render()
@@ -492,6 +507,12 @@ public class U3DPlayerController : NetworkBehaviour
             velocity.y = -2f;
             jumpCount = 0;
         }
+
+        // Reset jump after animation system catches it
+        if (NetworkIsJumping)
+        {
+            NetworkIsJumping = false;
+        }
     }
 
     void HandleMovementFusion(U3DNetworkInputData input)
@@ -575,7 +596,6 @@ public class U3DPlayerController : NetworkBehaviour
     }
 
     // ADD THIS NEW METHOD FOR ADVANCED AAA KEYBOARD MOVEMENT
-
     Vector2 HandleAdvancedKeyboardMovement(U3DNetworkInputData input)
     {
         Vector2 advancedMovement = Vector2.zero;
@@ -851,7 +871,7 @@ public class U3DPlayerController : NetworkBehaviour
             NetworkIsSprinting = isSprinting;
         }
 
-        // Crouch (toggle)
+        // UPDATED: Crouch (toggle) - with movement cancellation
         if (enableCrouchToggle && pressed.IsSet(U3DInputButtons.Crouch))
         {
             isCrouching = !isCrouching;
@@ -870,7 +890,18 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
-        // Fly (toggle)
+        // ADDED: Movement cancels crouch (add this AFTER the crouch toggle logic)
+        if (isCrouching && NetworkIsMoving && !isFlying)
+        {
+            isCrouching = false;
+            NetworkIsCrouching = false;
+
+            // Reset character controller height
+            characterController.height = 2f;
+            characterController.center = new Vector3(0, 1f, 0);
+        }
+
+        // UPDATED: Flying (toggle) - fixed to stop immediately on second press
         if (enableFlying && pressed.IsSet(U3DInputButtons.Fly))
         {
             isFlying = !isFlying;
@@ -878,7 +909,13 @@ public class U3DPlayerController : NetworkBehaviour
 
             if (isFlying)
             {
-                velocity = Vector3.zero;
+                velocity = Vector3.zero; // Reset velocity when starting to fly
+                Debug.Log("🛫 Flying started");
+            }
+            else
+            {
+                velocity = Vector3.zero; // Reset velocity when stopping flying
+                Debug.Log("🛬 Flying stopped immediately");
             }
         }
 
@@ -942,6 +979,8 @@ public class U3DPlayerController : NetworkBehaviour
 
             velocity.y = jumpForce;
             jumpCount++;
+
+            NetworkIsJumping = true;
         }
     }
 
@@ -1195,9 +1234,9 @@ public class U3DPlayerController : NetworkBehaviour
     public Vector3 Velocity => velocity;
     public float CurrentSpeed => GetCurrentSpeed();
     public bool IsLocalPlayer => _isLocalPlayer;
+    public bool IsJumping => NetworkIsJumping;
 
-    // Enhanced position setting with detailed logging
-    // IMPROVED: Enhanced SetPosition method with proper network sync
+    // UPDATED: Enhanced position setting with proper network sync
     public void SetPosition(Vector3 position)
     {
         if (!_isLocalPlayer)
@@ -1269,5 +1308,26 @@ public class U3DPlayerController : NetworkBehaviour
         if (!_isLocalPlayer) return;
 
         cameraPitch = pitch;
+    }
+
+    // ADDED: Environmental state setters for external trigger systems
+    /// <summary>
+    /// Called by U3DSwimmingTrigger when entering/exiting water
+    /// </summary>
+    public void SetSwimmingState(bool isSwimming)
+    {
+        if (!_isLocalPlayer) return;
+        NetworkIsSwimming = isSwimming;
+        Debug.Log($"🏊 Swimming state set to: {isSwimming}");
+    }
+
+    /// <summary>
+    /// Called by U3DClimbingTrigger when entering/exiting climbable surfaces
+    /// </summary>
+    public void SetClimbingState(bool isClimbing)
+    {
+        if (!_isLocalPlayer) return;
+        NetworkIsClimbing = isClimbing;
+        Debug.Log($"🧗 Climbing state set to: {isClimbing}");
     }
 }
