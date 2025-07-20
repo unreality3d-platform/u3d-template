@@ -12,7 +12,7 @@ namespace U3D.Editor
     {
         private const string GITHUB_API_BASE = "https://api.github.com";
         private const string TEMPLATE_REPO_OWNER = "unreality3d-platform";
-        private const string TEMPLATE_REPO_NAME = "u3d-sdk-template";
+        private const string TEMPLATE_REPO_NAME = "u3d-template";
 
         private static async Task<bool> CheckRateLimit()
         {
