@@ -98,7 +98,7 @@ namespace U3D.Editor
 
                 var buildPlayerOptions = new BuildPlayerOptions
                 {
-                    scenes = new string[] { "Assets/Scenes/_My Scene.unity" }, // Hardcoded single scene
+                    scenes = scenes, // Use enabled scenes from Build Settings
                     locationPathName = outputPath,     
                     target = BuildTarget.WebGL,
                     options = BuildOptions.None,
