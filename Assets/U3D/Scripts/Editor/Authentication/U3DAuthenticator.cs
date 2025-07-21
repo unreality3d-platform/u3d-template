@@ -16,8 +16,6 @@ public static class U3DAuthenticator
     private static string _userEmail;
     private static string _displayName;
     private static string _creatorUsername;
-    private static bool _paypalConnected;
-    private static string _pendingPayPalState;
     private static bool _stayLoggedIn = true; // Default to true for convenience
     private static HttpClient _sharedHttpClient;
     private static bool _networkConfigured = false;
@@ -29,15 +27,12 @@ public static class U3DAuthenticator
     private const string USER_EMAIL_KEY = "U3D_UserEmail";
     private const string DISPLAY_NAME_KEY = "U3D_DisplayName";
     private const string CREATOR_USERNAME_KEY = "U3D_CreatorUsername";
-    private const string PAYPAL_CONNECTED_KEY = "U3D_PayPalConnected";
     private const string STAY_LOGGED_IN_KEY = "U3D_StayLoggedIn";
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
     public static string DisplayName => _displayName;
     public static string CreatorUsername => _creatorUsername;
-    public static bool PayPalConnected => _paypalConnected;
-
     public static class CurrentUser
     {
         public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
@@ -45,7 +40,6 @@ public static class U3DAuthenticator
         public static string DisplayName => U3DAuthenticator.DisplayName;
         public static string CreatorUsername => U3DAuthenticator.CreatorUsername;
         public static string UserType => "creator";
-        public static bool PayPalConnected => U3DAuthenticator.PayPalConnected;
     }
 
     public static string GetIdToken() => _idToken ?? "";
@@ -348,193 +342,6 @@ public static class U3DAuthenticator
         return false;
     }
 
-    public static async Task<PayPalAuthResult> PollPayPalAuthStatus(string state)
-    {
-        if (string.IsNullOrEmpty(state) || state != _pendingPayPalState)
-        {
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Invalid or expired PayPal authentication state"
-            };
-        }
-
-        try
-        {
-            var pollRequest = new
-            {
-                state = state
-            };
-
-            var result = await CallFirebaseFunction("checkPayPalAuthStatus", pollRequest);
-
-            if (result.ContainsKey("status"))
-            {
-                string status = result["status"].ToString();
-
-                switch (status)
-                {
-                    case "completed":
-                        if (result.ContainsKey("user"))
-                        {
-                            var userData = JsonConvert.DeserializeObject<Dictionary<string, object>>(result["user"].ToString());
-
-                            if (userData.ContainsKey("customToken"))
-                            {
-                                _idToken = userData["customToken"].ToString();
-                                _userEmail = userData.ContainsKey("email") ? userData["email"].ToString() : "";
-                                _displayName = userData.ContainsKey("displayName") ? userData["displayName"].ToString() : "";
-
-                                SaveCredentials();
-                                await LoadUserProfile();
-
-                                _pendingPayPalState = null;
-
-                                return new PayPalAuthResult
-                                {
-                                    Success = true,
-                                    Completed = true,
-                                    Message = "PayPal authentication successful"
-                                };
-                            }
-                        }
-                        break;
-
-                    case "pending":
-                        return new PayPalAuthResult
-                        {
-                            Success = true,
-                            Completed = false,
-                            Message = "PayPal authentication in progress..."
-                        };
-
-                    case "error":
-                        string errorMessage = result.ContainsKey("error") ? result["error"].ToString() : "PayPal authentication failed";
-                        _pendingPayPalState = null;
-
-                        return new PayPalAuthResult
-                        {
-                            Success = false,
-                            ErrorMessage = errorMessage
-                        };
-                }
-            }
-
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Unexpected response from PayPal authentication status"
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PayPal auth status polling error: {ex.Message}");
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
-
-    // PayPal OAuth Integration Methods
-    public static async Task<PayPalAuthResult> StartPayPalLogin()
-    {
-        try
-        {
-            _pendingPayPalState = Guid.NewGuid().ToString();
-
-            var authRequest = new
-            {
-                state = _pendingPayPalState,
-                linkExisting = false
-            };
-
-            var result = await CallFirebaseFunction("getPayPalAuthUrl", authRequest);
-
-            if (result.ContainsKey("authUrl"))
-            {
-                string authUrl = result["authUrl"].ToString();
-                Debug.Log($"PayPal OAuth URL generated: {authUrl}");
-
-                return new PayPalAuthResult
-                {
-                    Success = true,
-                    AuthUrl = authUrl,
-                    State = _pendingPayPalState
-                };
-            }
-
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Failed to generate PayPal authorization URL"
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PayPal login initialization error: {ex.Message}");
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
-
-    public static async Task<PayPalAuthResult> LinkPayPalToExistingAccount()
-    {
-        if (!IsLoggedIn)
-        {
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Must be logged in to link PayPal account"
-            };
-        }
-
-        try
-        {
-            _pendingPayPalState = Guid.NewGuid().ToString();
-
-            var authRequest = new
-            {
-                state = _pendingPayPalState,
-                linkExisting = true
-            };
-
-            var result = await CallFirebaseFunction("getPayPalAuthUrl", authRequest);
-
-            if (result.ContainsKey("authUrl"))
-            {
-                string authUrl = result["authUrl"].ToString();
-                Debug.Log($"PayPal linking URL generated: {authUrl}");
-
-                return new PayPalAuthResult
-                {
-                    Success = true,
-                    AuthUrl = authUrl,
-                    State = _pendingPayPalState
-                };
-            }
-
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = "Failed to generate PayPal linking URL"
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"PayPal linking initialization error: {ex.Message}");
-            return new PayPalAuthResult
-            {
-                Success = false,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
-
     public static async Task<bool> CheckUsernameAvailability(string username)
     {
         try
@@ -601,7 +408,7 @@ public static class U3DAuthenticator
         {
             Debug.Log("🔄 Force reloading user profile...");
             await LoadUserProfile();
-            Debug.Log($"✅ Profile reloaded - Username: '{_creatorUsername}', PayPal: {_paypalConnected}");
+            Debug.Log($"✅ Profile reloaded - Username: '{_creatorUsername}'");
         }
         catch (Exception ex)
         {
@@ -615,7 +422,6 @@ public static class U3DAuthenticator
         var currentConfig = FirebaseConfigManager.CurrentConfig;
 
         ClearCredentials();
-        _pendingPayPalState = null;
 
         // CRITICAL FIX: Clear authorization headers from HttpClient
         if (_sharedHttpClient != null)
@@ -1097,18 +903,14 @@ public static class U3DAuthenticator
                 _displayName = result["displayName"].ToString();
             }
 
-            if (result.ContainsKey("paypalConnected"))
-            {
-                _paypalConnected = (bool)result["paypalConnected"];
-            }
-
-            Debug.Log($"Profile loaded: {_userEmail}, Username: {_creatorUsername}, PayPal: {_paypalConnected}");
+            Debug.Log($"Profile loaded: {_userEmail}, Username: {_creatorUsername}");
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Profile load failed: {ex.Message}");
         }
     }
+
 
     private static void SaveCredentials()
     {
@@ -1124,7 +926,6 @@ public static class U3DAuthenticator
                 EditorPrefs.SetString(DISPLAY_NAME_KEY, _displayName);
             if (!string.IsNullOrEmpty(_creatorUsername))
                 EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername);
-            EditorPrefs.SetBool(PAYPAL_CONNECTED_KEY, _paypalConnected);
         }
         EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, _stayLoggedIn);
     }
@@ -1138,7 +939,6 @@ public static class U3DAuthenticator
         _userEmail = EditorPrefs.GetString(USER_EMAIL_KEY, "");
         _displayName = EditorPrefs.GetString(DISPLAY_NAME_KEY, "");
         _creatorUsername = EditorPrefs.GetString(CREATOR_USERNAME_KEY, "");
-        _paypalConnected = EditorPrefs.GetBool(PAYPAL_CONNECTED_KEY, false);
         _stayLoggedIn = EditorPrefs.GetBool(STAY_LOGGED_IN_KEY, true);
         _credentialsLoaded = true;
 
@@ -1165,7 +965,6 @@ public static class U3DAuthenticator
                 _userEmail = EditorPrefs.GetString(oldPrefix + "userEmail", "");
                 _displayName = EditorPrefs.GetString(oldPrefix + "displayName", "");
                 _creatorUsername = EditorPrefs.GetString(oldPrefix + "creatorUsername", "");
-                _paypalConnected = EditorPrefs.GetBool(oldPrefix + "paypalConnected", false);
                 _stayLoggedIn = EditorPrefs.GetBool(oldPrefix + "stayLoggedIn", true);
 
                 // Save with new simple keys
@@ -1234,7 +1033,6 @@ public static class U3DAuthenticator
         EditorPrefs.DeleteKey(USER_EMAIL_KEY);
         EditorPrefs.DeleteKey(DISPLAY_NAME_KEY);
         EditorPrefs.DeleteKey(CREATOR_USERNAME_KEY);
-        EditorPrefs.DeleteKey(PAYPAL_CONNECTED_KEY);
         // Don't clear STAY_LOGGED_IN_KEY - preserve user preference
 
         _idToken = "";
@@ -1242,21 +1040,9 @@ public static class U3DAuthenticator
         _userEmail = "";
         _displayName = "";
         _creatorUsername = "";
-        _paypalConnected = false;
 
         Debug.Log("🗑️ U3D authentication credentials cleared");
     }
-}
-
-[System.Serializable]
-public class PayPalAuthResult
-{
-    public bool Success { get; set; }
-    public bool Completed { get; set; }
-    public string AuthUrl { get; set; }
-    public string State { get; set; }
-    public string Message { get; set; }
-    public string ErrorMessage { get; set; }
 }
 
 [System.Serializable]
