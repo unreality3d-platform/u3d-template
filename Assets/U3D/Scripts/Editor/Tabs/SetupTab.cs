@@ -695,7 +695,7 @@ namespace U3D.Editor
                 validationMessage = "";
             }
 
-            if (!string.IsNullOrEmpty(GetSavedPayPalEmail()) && GUILayout.Button("💳 Update PayPal"))
+            if (!string.IsNullOrEmpty(GetSavedPayPalEmail()) && GUILayout.Button("💳 Update PayPal Email"))
             {
                 currentState = AuthState.PayPalSetup;
                 paypalEmail = GetSavedPayPalEmail();

@@ -127,8 +127,10 @@ Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
 # CRITICAL: Allow creator PayPal configuration to be committed
 !Assets/U3D_SDK/Resources/U3DCreatorData.asset
 /Assets/Settings
-# CRITICAL: Allow avatar asset needed by player controller to be committed
-!Assets/U3D/Prefabs/U3DAvatar.asset
+# CRITICAL: Allow U3D prefabs to be committed
+!Assets/U3D/Prefabs/**/*
+# CRITICAL: Allow U3D assets to be committed
+!Assets/U3D/U3D_Assets/**/*.asset
 ##WEBGL_DEPLOY_IGNORE_END##
 
 # Development Dependencies (ALWAYS IGNORED)  
