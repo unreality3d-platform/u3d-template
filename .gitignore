@@ -118,18 +118,22 @@ u3d-config.json
 firebase-config.json
 *-api-keys.*
 
-# Unity Settings (TEMPLATE ONLY - REMOVED IN DEPLOYMENT)
+# Unity Settings (TEMPLATE ONLY - REMOVED IN DEPLOYMENT)  
 # -----------------------------------------------------------------
 ##WEBGL_DEPLOY_IGNORE_START##
+# Only ignore the main ProjectSettings file that can cause conflicts
 ProjectSettings/ProjectSettings.asset
-Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
-*.asset
+
+# REMOVED: Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
+# REMOVED: *.asset  
+# REMOVED: /Assets/Settings
+# ^ These were preventing Unity assets from reaching creators!
+
 # CRITICAL: Allow creator PayPal configuration to be committed
 !Assets/U3D_SDK/Resources/U3DCreatorData.asset
-/Assets/Settings
 # CRITICAL: Allow U3D prefabs to be committed
 !Assets/U3D/Prefabs/**/*
-# CRITICAL: Allow U3D assets to be committed
+# CRITICAL: Allow U3D assets to be committed  
 !Assets/U3D/U3D_Assets/**/*.asset
 ##WEBGL_DEPLOY_IGNORE_END##
 
