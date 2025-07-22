@@ -24,22 +24,57 @@ namespace U3D.Editor
 
         private ValidationResult ValidateRequiredComponents()
         {
-            var hasFirebaseIntegration = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "FirebaseIntegration");
-            var hasPlayerController = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None).Any(mb => mb.GetType().Name == "U3DPlayerController");
+            var allComponents = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+
+            // Check for U3D CORE system components (not spawned player controller)
+            var hasFirebaseIntegration = allComponents.Any(mb => mb.GetType().Name == "FirebaseIntegration");
+            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3D_FusionNetworkManager");
+            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3D_PlayerSpawner");
+            var hasCursorManager = allComponents.Any(mb => mb.GetType().Name == "U3D_CursorManager");
 
             var componentsFound = 0;
             var missingComponents = new List<string>();
+            var optionalComponents = new List<string>();
 
-            if (hasFirebaseIntegration) componentsFound++;
-            else missingComponents.Add("FirebaseIntegration");
+            // Required components
+            if (hasFirebaseIntegration)
+                componentsFound++;
+            else
+                missingComponents.Add("FirebaseIntegration");
 
-            if (hasPlayerController) componentsFound++;
-            else missingComponents.Add("U3DPlayerController");
+            if (hasFusionNetworkManager)
+                componentsFound++;
+            else
+                missingComponents.Add("U3D_FusionNetworkManager");
 
-            var isComplete = componentsFound == 2;
-            var message = isComplete ?
-                "All required U3D components found" :
-                $"Missing components: {string.Join(", ", missingComponents)}";
+            if (hasPlayerSpawner)
+                componentsFound++;
+            else
+                missingComponents.Add("U3D_PlayerSpawner");
+
+            // Optional but recommended
+            if (!hasCursorManager)
+                optionalComponents.Add("U3D_CursorManager");
+
+            var requiredCount = 3; // Firebase + NetworkManager + PlayerSpawner
+            var isComplete = componentsFound == requiredCount;
+
+            string message;
+            if (isComplete)
+            {
+                if (optionalComponents.Count > 0)
+                {
+                    message = $"✅ U3D CORE system configured. Optional: {string.Join(", ", optionalComponents)}";
+                }
+                else
+                {
+                    message = "✅ All U3D CORE components found - networking system ready";
+                }
+            }
+            else
+            {
+                message = $"❌ Missing U3D CORE components: {string.Join(", ", missingComponents)}. Add 'U3D CORE - DO NOT DELETE' prefab to scene.";
+            }
 
             return new ValidationResult(isComplete, message, isComplete ? ValidationSeverity.Info : ValidationSeverity.Error);
         }
