@@ -43,7 +43,7 @@ namespace U3D.Editor
         {
             optimizationTools = new List<CreatorTool>
             {
-                new CreatorTool("Optimize All Textures", "Reduce texture sizes for WebGL deployment", OptimizeAllTextures),
+                new CreatorTool("Optimize All Textures", "Batch optimize textures by type with compression settings", OptimizeAllTextures),
                 new CreatorTool("Optimize All Audio", "Compress audio files for faster loading", OptimizeAllAudio),
                 new CreatorTool("Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
                 new CreatorTool("Analyze Build Size", "Show largest assets and estimated build size", AnalyzeBuildSize),
@@ -245,101 +245,14 @@ namespace U3D.Editor
             EditorGUILayout.Space(5);
         }
 
-        // SIMPLIFIED TEXTURE OPTIMIZATION - Creator-friendly
+        // ENHANCED TEXTURE OPTIMIZATION - Opens dedicated window
         private void OptimizeAllTextures()
         {
-            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
-            int optimizedCount = 0;
-            int skippedCount = 0;
-            long totalSavings = 0;
-
-            foreach (var guid in textureGuids)
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-
-                if (importer != null && !path.Contains("U3D/"))
-                {
-                    // Skip system textures that should stay high quality
-                    if (ShouldSkipTexture(path, importer))
-                    {
-                        skippedCount++;
-                        continue;
-                    }
-
-                    var originalSize = GetEstimatedTextureSize(path);
-                    bool modified = false;
-
-                    // Get WebGL settings
-                    var webglSettings = importer.GetPlatformTextureSettings("WebGL");
-
-                    // Only optimize if not already optimized
-                    if (!webglSettings.overridden || webglSettings.maxTextureSize > 1024)
-                    {
-                        webglSettings.overridden = true;
-                        webglSettings.maxTextureSize = 1024; // Safe size for WebGL
-                        webglSettings.compressionQuality = 50; // Good balance
-                        webglSettings.format = importer.DoesSourceTextureHaveAlpha() ?
-                            TextureImporterFormat.DXT5 : TextureImporterFormat.DXT1;
-
-                        importer.SetPlatformTextureSettings(webglSettings);
-                        modified = true;
-                    }
-
-                    // Disable mipmaps for UI textures (saves memory)
-                    if ((importer.textureType == TextureImporterType.GUI ||
-                         importer.textureType == TextureImporterType.Sprite) &&
-                         importer.mipmapEnabled)
-                    {
-                        importer.mipmapEnabled = false;
-                        modified = true;
-                    }
-
-                    if (modified)
-                    {
-                        EditorUtility.SetDirty(importer);
-                        importer.SaveAndReimport();
-
-                        var newSize = GetEstimatedTextureSize(path);
-                        totalSavings += (originalSize - newSize);
-                        optimizedCount++;
-                    }
-                }
-            }
-
-            AssetDatabase.Refresh();
-
-            Debug.Log($"🎨 TEXTURE OPTIMIZATION COMPLETE");
-            Debug.Log($"✅ Optimized: {optimizedCount} textures");
-            Debug.Log($"⏭️ Skipped: {skippedCount} textures (preserved for quality)");
-            Debug.Log($"💾 Estimated savings: {totalSavings / 1024 / 1024:F1} MB");
-        }
-
-        private bool ShouldSkipTexture(string path, TextureImporter importer)
-        {
-            // Skip HDR textures, skyboxes, normal maps, and lightmaps
-            var extension = Path.GetExtension(path).ToLower();
-            if (extension == ".exr" || extension == ".hdr") return true;
-
-            if (importer.textureShape == TextureImporterShape.TextureCube) return true;
-            if (importer.textureType == TextureImporterType.Lightmap) return true;
-            if (importer.textureType == TextureImporterType.NormalMap) return true;
-
-            var pathLower = path.ToLower();
-            if (pathLower.Contains("skybox") || pathLower.Contains("lightmap")) return true;
-
-            return false;
-        }
-
-        private int GetEstimatedTextureSize(string assetPath)
-        {
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-            return texture != null ? texture.width * texture.height * 4 : 0; // Rough estimate
+            TextureOptimizationWindow.ShowWindow();
         }
 
         private void OptimizeAllAudio()
         {
-            // Open the audio optimization window instead of auto-processing
             AudioOptimizationWindow.ShowWindow();
         }
 
@@ -446,7 +359,568 @@ namespace U3D.Editor
         }
     }
 
-    // Audio Optimization Window with Creator-friendly UI
+    // SOPHISTICATED TEXTURE OPTIMIZATION WINDOW
+    public class TextureOptimizationWindow : EditorWindow
+    {
+        private class TextureFileData
+        {
+            public string path;
+            public string fileName;
+            public TextureImporter importer;
+            public long fileSize;
+            public bool isSelected;
+            public TextureImporterType textureType;
+            public TextureImporterShape textureShape;
+            public int currentMaxSize;
+            public bool hasCrunchCompression;
+            public bool generateMipMaps;
+            public string platformOverride;
+
+            public TextureFileData(string texturePath)
+            {
+                path = texturePath;
+                fileName = Path.GetFileName(texturePath);
+                importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+
+                var fileInfo = new FileInfo(texturePath);
+                fileSize = fileInfo.Exists ? fileInfo.Length : 0;
+
+                isSelected = true; // Default to selected
+
+                if (importer != null)
+                {
+                    textureType = importer.textureType;
+                    textureShape = importer.textureShape;
+                    generateMipMaps = importer.mipmapEnabled;
+
+                    // Get WebGL platform settings or default
+                    if (importer.GetPlatformTextureSettings("WebGL").overridden)
+                    {
+                        var webglSettings = importer.GetPlatformTextureSettings("WebGL");
+                        currentMaxSize = webglSettings.maxTextureSize;
+                        hasCrunchCompression = webglSettings.crunchedCompression;
+                        platformOverride = "WebGL Override";
+                    }
+                    else
+                    {
+                        var defaultSettings = importer.GetDefaultPlatformTextureSettings();
+                        currentMaxSize = defaultSettings.maxTextureSize;
+                        hasCrunchCompression = defaultSettings.crunchedCompression;
+                        platformOverride = "Default";
+                    }
+                }
+                else
+                {
+                    textureType = TextureImporterType.Default;
+                    textureShape = TextureImporterShape.Texture2D;
+                    currentMaxSize = 2048;
+                    hasCrunchCompression = false;
+                    generateMipMaps = true;
+                    platformOverride = "Unknown";
+                }
+            }
+
+            public bool ShouldExcludeFromSizeOptimization()
+            {
+                // Exclude normal maps and cube textures (skyboxes) from size optimization
+                return textureType == TextureImporterType.NormalMap ||
+                       textureShape == TextureImporterShape.TextureCube;
+            }
+
+            public bool ShouldExcludeFromCompression()
+            {
+                // Be more conservative with compression exclusions
+                return textureType == TextureImporterType.NormalMap ||
+                       textureType == TextureImporterType.Lightmap ||
+                       textureShape == TextureImporterShape.TextureCube;
+            }
+        }
+
+        private List<TextureFileData> textureFiles = new List<TextureFileData>();
+        private Vector2 scrollPosition;
+        private bool showOnlyUnoptimized = true;
+        private bool excludeNormalMaps = true;
+        private bool excludeSkyboxes = true;
+        private bool showOnlyProjectAssets = true;
+
+        public static void ShowWindow()
+        {
+            var window = GetWindow<TextureOptimizationWindow>("Texture Optimization");
+            window.minSize = new Vector2(700, 500);
+            window.RefreshTextureList();
+            window.Show();
+        }
+
+        private void RefreshTextureList()
+        {
+            textureFiles.Clear();
+            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
+            int totalFound = 0;
+            int systemExcluded = 0;
+            int fontExcluded = 0;
+
+            foreach (var guid in textureGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                totalFound++;
+
+                // Filter out Unity system assets and packages
+                if (ShouldExcludeSystemAsset(path))
+                {
+                    if (IsFontRelatedTexture(Path.GetFileName(path.ToLower()), path.ToLower()))
+                        fontExcluded++;
+                    else
+                        systemExcluded++;
+                    continue;
+                }
+
+                textureFiles.Add(new TextureFileData(path));
+            }
+
+            textureFiles = textureFiles.OrderByDescending(t => t.fileSize).ToList();
+
+            Debug.Log($"🎨 TEXTURE ANALYSIS: Found {totalFound} total textures");
+            Debug.Log($"📂 Showing {textureFiles.Count} project textures");
+            Debug.Log($"🚫 Excluded {systemExcluded} system textures, {fontExcluded} font-related textures");
+        }
+
+        private bool ShouldExcludeSystemAsset(string path)
+        {
+            var pathLower = path.ToLower();
+            var fileName = Path.GetFileName(pathLower);
+
+            // Always exclude Unity packages and system directories
+            if (pathLower.Contains("packages/") ||
+                pathLower.Contains("u3d/") ||
+                pathLower.Contains("library/"))
+                return true;
+
+            // Exclude font files (TTF files shouldn't appear in Texture2D search, but just in case)
+            if (pathLower.EndsWith(".ttf") || pathLower.EndsWith(".otf"))
+                return true;
+
+            // Exclude ALL font-related textures (comprehensive font filtering)
+            if (IsFontRelatedTexture(fileName, pathLower))
+                return true;
+
+            // Exclude common Unity generated textures
+            if (pathLower.Contains("unity_builtin_extra") ||
+                pathLower.Contains("default-") ||
+                pathLower.Contains("builtin_"))
+                return true;
+
+            // Exclude shader and material preview textures
+            if (pathLower.Contains("preview") &&
+                (pathLower.Contains("material") || pathLower.Contains("shader")))
+                return true;
+
+            return false;
+        }
+
+        private bool IsFontRelatedTexture(string fileName, string pathLower)
+        {
+            // TextMeshPro font assets and atlases
+            if (pathLower.Contains("textmeshpro") ||
+                fileName.Contains("tmp") ||
+                fileName.Contains("sdf"))
+                return true;
+
+            // Font atlas patterns (common TextMeshPro naming)
+            if (fileName.Contains("atlas") && (
+                fileName.Contains("font") ||
+                fileName.Contains("liberation") ||
+                fileName.Contains("arial") ||
+                fileName.Contains("opensans")))
+                return true;
+
+            // Common font names that become atlas textures
+            string[] fontKeywords = {
+                "liberation", "arial", "opensans", "roboto", "ubuntu",
+                "calibri", "times", "helvetica", "verdana", "georgia",
+                "trebuchet", "impact", "comic", "courier"
+            };
+
+            foreach (var keyword in fontKeywords)
+            {
+                if (fileName.Contains(keyword) && (
+                    fileName.Contains("sdf") ||
+                    fileName.Contains("atlas") ||
+                    fileName.Contains("font")))
+                    return true;
+            }
+
+            // TextMeshPro generated file patterns
+            if (fileName.Contains(" sdf") ||
+                fileName.EndsWith("_atlas") ||
+                fileName.EndsWith(" atlas") ||
+                fileName.Contains("lut"))
+                return true;
+
+            return false;
+        }
+
+        private void OnGUI()
+        {
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("Texture Optimization for WebGL", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Select textures and choose optimization presets. Uses WebGL platform overrides with crunch compression.", MessageType.Info);
+
+            if (showOnlyProjectAssets)
+            {
+                EditorGUILayout.HelpBox("✅ Showing only your project textures (excludes Unity packages, TextMeshPro font atlases, TTF files, and system assets)", MessageType.Info);
+            }
+
+            EditorGUILayout.Space(10);
+
+            // Controls
+            EditorGUILayout.BeginHorizontal();
+
+            if (GUILayout.Button("Refresh List"))
+            {
+                RefreshTextureList();
+            }
+
+            if (GUILayout.Button("Select All"))
+            {
+                var filteredTextures = GetFilteredTextures();
+                textureFiles.ForEach(t => t.isSelected = filteredTextures.Contains(t));
+            }
+
+            if (GUILayout.Button("Select None"))
+            {
+                textureFiles.ForEach(t => t.isSelected = false);
+            }
+
+            if (GUILayout.Button("Show Excluded"))
+            {
+                ShowExcludedAssets();
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            // Filter controls
+            EditorGUILayout.BeginHorizontal();
+            showOnlyUnoptimized = EditorGUILayout.Toggle("Show Only Unoptimized", showOnlyUnoptimized);
+            showOnlyProjectAssets = EditorGUILayout.Toggle("Project Assets Only", showOnlyProjectAssets);
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            excludeNormalMaps = EditorGUILayout.Toggle("Exclude Normal Maps", excludeNormalMaps);
+            excludeSkyboxes = EditorGUILayout.Toggle("Exclude Skyboxes", excludeSkyboxes);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(10);
+
+            // File list
+            var displayFiles = GetFilteredTextures();
+
+            EditorGUILayout.LabelField($"Texture Files ({displayFiles.Count()} total, {displayFiles.Count(t => t.isSelected)} selected):", EditorStyles.boldLabel);
+
+            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+
+            foreach (var textureFile in displayFiles)
+            {
+                DrawTextureFileRow(textureFile);
+            }
+
+            EditorGUILayout.EndScrollView();
+
+            // Preset buttons
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("WebGL Optimization Presets:", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+
+            // Preset 1: Ultra Optimized (512px)
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Ultra Optimized", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Max size: 512px\n• Crunch compression\n• Quality: 50%\n• Best for size reduction", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("Apply to Selected", GUILayout.Height(30)))
+            {
+                ApplyOptimizationPreset(512, true, 50);
+            }
+            EditorGUILayout.EndVertical();
+
+            // Preset 2: Balanced (1024px)
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Balanced", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Max size: 1024px\n• Crunch compression\n• Quality: 50%\n• Good quality/size balance", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("Apply to Selected", GUILayout.Height(30)))
+            {
+                ApplyOptimizationPreset(1024, true, 50);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(10);
+
+            // Mip Map Controls
+            EditorGUILayout.LabelField("Mip Map Controls:", EditorStyles.boldLabel);
+            EditorGUILayout.BeginHorizontal();
+
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Enable Mip Maps", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Better for 3D objects\n• Uses more memory\n• Reduces aliasing at distance", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("Enable for Selected", GUILayout.Height(30)))
+            {
+                ApplyMipMapSetting(true);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Disable Mip Maps", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Better for UI/2D sprites\n• Saves memory\n• Faster loading", EditorStyles.wordWrappedMiniLabel);
+            if (GUILayout.Button("Disable for Selected", GUILayout.Height(30)))
+            {
+                ApplyMipMapSetting(false);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private List<TextureFileData> GetFilteredTextures()
+        {
+            var filtered = textureFiles.AsEnumerable();
+
+            if (showOnlyProjectAssets)
+            {
+                filtered = filtered.Where(t => IsProjectAsset(t.path));
+            }
+
+            if (showOnlyUnoptimized)
+            {
+                filtered = filtered.Where(t => !HasWebGLOptimization(t) || t.currentMaxSize > 1024);
+            }
+
+            if (excludeNormalMaps)
+            {
+                filtered = filtered.Where(t => t.textureType != TextureImporterType.NormalMap);
+            }
+
+            if (excludeSkyboxes)
+            {
+                filtered = filtered.Where(t => t.textureShape != TextureImporterShape.TextureCube);
+            }
+
+            return filtered.ToList();
+        }
+
+        private bool IsProjectAsset(string path)
+        {
+            var pathLower = path.ToLower();
+            var fileName = Path.GetFileName(pathLower);
+
+            // Only show assets in the main Assets folder (not packages, libraries, etc.)
+            if (!pathLower.StartsWith("assets/"))
+                return false;
+
+            // Exclude font-related assets even if manually added to Assets
+            if (IsFontRelatedTexture(fileName, pathLower))
+                return false;
+
+            // Exclude TextMeshPro assets that might be in Assets folder
+            if (pathLower.Contains("textmeshpro") ||
+                pathLower.Contains("resources/fonts") ||
+                pathLower.Contains("tmpresources"))
+                return false;
+
+            // Exclude other auto-generated content in Assets
+            if (pathLower.Contains("streamingassets") ||
+                pathLower.Contains("addressableassetsdata") ||
+                pathLower.Contains("xlua"))
+                return false;
+
+            return true;
+        }
+
+        private void DrawTextureFileRow(TextureFileData textureFile)
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+
+            textureFile.isSelected = EditorGUILayout.Toggle(textureFile.isSelected, GUILayout.Width(20));
+
+            EditorGUILayout.BeginVertical();
+            EditorGUILayout.LabelField(textureFile.fileName, EditorStyles.boldLabel);
+
+            string infoText = $"Size: {textureFile.fileSize / 1024:F0} KB | Type: {textureFile.textureType} | Shape: {textureFile.textureShape}";
+            infoText += $"\nMax Size: {textureFile.currentMaxSize} | Crunch: {(textureFile.hasCrunchCompression ? "Yes" : "No")} | Mips: {(textureFile.generateMipMaps ? "Yes" : "No")} | Override: {textureFile.platformOverride}";
+
+            EditorGUILayout.LabelField(infoText, EditorStyles.miniLabel);
+            EditorGUILayout.EndVertical();
+
+            if (GUILayout.Button("Select", GUILayout.Width(80)))
+            {
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(textureFile.path);
+                Selection.activeObject = texture;
+                EditorGUIUtility.PingObject(texture);
+            }
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(2);
+        }
+
+        private void ApplyOptimizationPreset(int maxTextureSize, bool useCrunchCompression, int quality)
+        {
+            var selectedFiles = textureFiles.Where(t => t.isSelected).ToList();
+
+            if (!selectedFiles.Any())
+            {
+                EditorUtility.DisplayDialog("No Selection", "Please select at least one texture to optimize.", "OK");
+                return;
+            }
+
+            int optimizedCount = 0;
+            int skippedCount = 0;
+
+            foreach (var textureFile in selectedFiles)
+            {
+                if (textureFile.importer != null)
+                {
+                    // Skip textures that shouldn't be size-optimized
+                    bool skipSizeOptimization = textureFile.ShouldExcludeFromSizeOptimization();
+                    bool skipCompression = textureFile.ShouldExcludeFromCompression();
+
+                    if (skipSizeOptimization && skipCompression)
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Get or create WebGL platform settings
+                    var webglSettings = textureFile.importer.GetPlatformTextureSettings("WebGL");
+                    webglSettings.overridden = true;
+
+                    // Apply size optimization (if appropriate)
+                    if (!skipSizeOptimization)
+                    {
+                        webglSettings.maxTextureSize = maxTextureSize;
+                    }
+
+                    // Apply compression optimization (if appropriate)
+                    if (!skipCompression)
+                    {
+                        webglSettings.crunchedCompression = useCrunchCompression;
+                        if (useCrunchCompression)
+                        {
+                            webglSettings.compressionQuality = quality;
+                        }
+
+                        // Use appropriate format based on alpha channel
+                        if (textureFile.importer.DoesSourceTextureHaveAlpha())
+                        {
+                            webglSettings.format = TextureImporterFormat.DXT5Crunched;
+                        }
+                        else
+                        {
+                            webglSettings.format = TextureImporterFormat.DXT1Crunched;
+                        }
+                    }
+
+                    textureFile.importer.SetPlatformTextureSettings(webglSettings);
+                    EditorUtility.SetDirty(textureFile.importer);
+                    textureFile.importer.SaveAndReimport();
+                    optimizedCount++;
+                }
+            }
+
+            AssetDatabase.Refresh();
+            RefreshTextureList();
+
+            Debug.Log($"🎨 TEXTURE OPTIMIZATION COMPLETE");
+            Debug.Log($"✅ Optimized: {optimizedCount} textures (max size: {maxTextureSize}px, crunch: {useCrunchCompression})");
+            Debug.Log($"⏭️ Skipped: {skippedCount} textures (normal maps/skyboxes preserved)");
+
+            EditorUtility.DisplayDialog("Optimization Complete",
+                $"Applied optimization to {optimizedCount} textures.\nSkipped {skippedCount} textures (normal maps/skyboxes).\n\nCheck Console for details.", "OK");
+        }
+
+        private void ApplyMipMapSetting(bool enableMipMaps)
+        {
+            var selectedFiles = textureFiles.Where(t => t.isSelected).ToList();
+
+            if (!selectedFiles.Any())
+            {
+                EditorUtility.DisplayDialog("No Selection", "Please select at least one texture.", "OK");
+                return;
+            }
+
+            int modifiedCount = 0;
+
+            foreach (var textureFile in selectedFiles)
+            {
+                if (textureFile.importer != null && textureFile.importer.mipmapEnabled != enableMipMaps)
+                {
+                    textureFile.importer.mipmapEnabled = enableMipMaps;
+                    EditorUtility.SetDirty(textureFile.importer);
+                    textureFile.importer.SaveAndReimport();
+                    modifiedCount++;
+                }
+            }
+
+            AssetDatabase.Refresh();
+            RefreshTextureList();
+
+            Debug.Log($"🔧 MIP MAP SETTING APPLIED");
+            Debug.Log($"✅ Modified: {modifiedCount} textures (mip maps: {(enableMipMaps ? "enabled" : "disabled")})");
+
+            EditorUtility.DisplayDialog("Mip Map Setting Applied",
+                $"Modified {modifiedCount} textures.\nMip maps are now {(enableMipMaps ? "enabled" : "disabled")} for selected textures.", "OK");
+        }
+
+        private void ShowExcludedAssets()
+        {
+            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
+            var excludedAssets = new List<string>();
+            var fontAssets = new List<string>();
+
+            foreach (var guid in textureGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (ShouldExcludeSystemAsset(path))
+                {
+                    if (IsFontRelatedTexture(Path.GetFileName(path.ToLower()), path.ToLower()))
+                        fontAssets.Add(path);
+                    else
+                        excludedAssets.Add(path);
+                }
+            }
+
+            Debug.Log($"🔍 EXCLUDED ASSETS REPORT ({excludedAssets.Count + fontAssets.Count} total)");
+
+            if (fontAssets.Any())
+            {
+                Debug.Log($"\n📝 FONT-RELATED TEXTURES ({fontAssets.Count}):");
+                foreach (var asset in fontAssets.Take(10))
+                {
+                    Debug.Log($"  • {asset}");
+                }
+                if (fontAssets.Count > 10)
+                    Debug.Log($"  ... and {fontAssets.Count - 10} more font textures");
+            }
+
+            if (excludedAssets.Any())
+            {
+                Debug.Log($"\n🛠️ SYSTEM/PACKAGE TEXTURES ({excludedAssets.Count}):");
+                foreach (var asset in excludedAssets.Take(10))
+                {
+                    Debug.Log($"  • {asset}");
+                }
+                if (excludedAssets.Count > 10)
+                    Debug.Log($"  ... and {excludedAssets.Count - 10} more system textures");
+            }
+
+            Debug.Log($"\n✅ This filtering keeps your optimization tool focused on actual project textures!");
+        }
+
+        private bool HasWebGLOptimization(TextureFileData textureFile)
+        {
+            return textureFile.importer != null &&
+                   textureFile.importer.GetPlatformTextureSettings("WebGL").overridden;
+        }
+    }
+
+    // Audio Optimization Window (preserved for completeness)
     public class AudioOptimizationWindow : EditorWindow
     {
         private class AudioFileData
@@ -468,9 +942,8 @@ namespace U3D.Editor
                 var fileInfo = new FileInfo(audioPath);
                 fileSize = fileInfo.Exists ? fileInfo.Length : 0;
 
-                isSelected = true; // Default to selected
+                isSelected = true;
 
-                // Get current settings
                 if (importer != null)
                 {
                     if (importer.ContainsSampleSettingsOverride("WebGL"))
@@ -514,7 +987,7 @@ namespace U3D.Editor
             foreach (var guid in audioGuids)
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.Contains("U3D/")) // Skip system audio
+                if (!path.Contains("U3D/"))
                 {
                     audioFiles.Add(new AudioFileData(path));
                 }
@@ -631,7 +1104,7 @@ namespace U3D.Editor
             {
                 loadType = AudioClipLoadType.Streaming,
                 compressionFormat = AudioCompressionFormat.Vorbis,
-                quality = 0.3f, // Lower quality for size
+                quality = 0.3f,
                 sampleRateSetting = AudioSampleRateSetting.OptimizeSampleRate
             }, "Ambient/Music");
         }
@@ -642,7 +1115,7 @@ namespace U3D.Editor
             {
                 loadType = AudioClipLoadType.DecompressOnLoad,
                 compressionFormat = AudioCompressionFormat.Vorbis,
-                quality = 0.6f, // Medium quality
+                quality = 0.6f,
                 sampleRateSetting = AudioSampleRateSetting.PreserveSampleRate
             }, "Instant Load");
         }
@@ -653,7 +1126,7 @@ namespace U3D.Editor
             {
                 loadType = AudioClipLoadType.CompressedInMemory,
                 compressionFormat = AudioCompressionFormat.Vorbis,
-                quality = 0.8f, // Higher quality for UI sounds
+                quality = 0.8f,
                 sampleRateSetting = AudioSampleRateSetting.PreserveSampleRate
             }, "UI/One-Shot");
         }
@@ -674,9 +1147,8 @@ namespace U3D.Editor
             {
                 if (audioFile.importer != null)
                 {
-                    // Set WebGL platform override
                     audioFile.importer.SetOverrideSampleSettings("WebGL", settings);
-                    audioFile.importer.forceToMono = false; // Preserve stereo for quality
+                    audioFile.importer.forceToMono = false;
 
                     EditorUtility.SetDirty(audioFile.importer);
                     audioFile.importer.SaveAndReimport();
@@ -685,7 +1157,7 @@ namespace U3D.Editor
             }
 
             AssetDatabase.Refresh();
-            RefreshAudioList(); // Update the list to show new settings
+            RefreshAudioList();
 
             Debug.Log($"🔊 Applied '{presetName}' preset to {optimizedCount} audio files");
 

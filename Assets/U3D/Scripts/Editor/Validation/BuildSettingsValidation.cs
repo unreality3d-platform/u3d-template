@@ -87,15 +87,35 @@ namespace U3D.Editor
 
         private ValidationResult ValidatePlayerControllerSetup()
         {
-            var hasPlayerController = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
-                .Any(mb => mb.GetType().Name == "U3DPlayerController");
-            return new ValidationResult(
-                hasPlayerController,
-                hasPlayerController ?
-                    "✅ U3D Player Controller found in scene" :
-                    "💡 Consider adding U3D Player Controller for standard movement controls",
-                hasPlayerController ? ValidationSeverity.Info : ValidationSeverity.Warning
-            );
+            // Check for U3D CORE networking system components instead of scene-placed player controller
+            var allComponents = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+
+            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3D_FusionNetworkManager");
+            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3D_PlayerSpawner");
+            var hasCursorManager = allComponents.Any(mb => mb.GetType().Name == "U3D_CursorManager");
+
+            // Check for U3D CORE prefab by looking for key networking components
+            var coreSystemsPresent = hasFusionNetworkManager && hasPlayerSpawner;
+
+            string resultMessage;
+            ValidationSeverity severity;
+
+            if (coreSystemsPresent)
+            {
+                resultMessage = "✅ U3D CORE networking system found - player spawning configured";
+                severity = ValidationSeverity.Info;
+            }
+            else
+            {
+                var missingComponents = new List<string>();
+                if (!hasFusionNetworkManager) missingComponents.Add("U3D_FusionNetworkManager");
+                if (!hasPlayerSpawner) missingComponents.Add("U3D_PlayerSpawner");
+
+                resultMessage = $"⚠️ Missing U3D CORE components: {string.Join(", ", missingComponents)}. Add 'U3D CORE - DO NOT DELETE' prefab to scene.";
+                severity = ValidationSeverity.Error;
+            }
+
+            return new ValidationResult(coreSystemsPresent, resultMessage, severity);
         }
     }
 }
