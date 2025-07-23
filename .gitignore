@@ -1,9 +1,10 @@
 # =================================================================
-# UNREALITY3D TEMPLATE REPOSITORY .GITIGNORE
+# UNREALITY3D TEMPLATE REPOSITORY .GITIGNORE - WITH CHUNK SUPPORT
 # =================================================================
-# This file serves two purposes:
+# This file serves multiple purposes:
 # 1. Template repo development (ignores Unity dev files)
 # 2. Creator deployments (modified by pipeline for WebGL hosting)
+# 3. Chunk file handling (allows temporary .part* files)
 # =================================================================
 
 # Unity Development Files (ALWAYS IGNORED)
@@ -124,11 +125,6 @@ firebase-config.json
 # Only ignore the main ProjectSettings file that can cause conflicts
 ProjectSettings/ProjectSettings.asset
 
-# REMOVED: Assets/Settings/UniversalRenderPipelineGlobalSettings.asset
-# REMOVED: *.asset  
-# REMOVED: /Assets/Settings
-# ^ These were preventing Unity assets from reaching creators!
-
 # CRITICAL: Allow creator PayPal configuration to be committed
 !Assets/U3D_SDK/Resources/U3DCreatorData.asset
 # CRITICAL: Allow U3D prefabs to be committed
@@ -137,7 +133,29 @@ ProjectSettings/ProjectSettings.asset
 !Assets/U3D/U3D_Assets/**/*.asset
 ##WEBGL_DEPLOY_IGNORE_END##
 
+# Chunk File Handling (FOR LARGE FILE SUPPORT)
+# -----------------------------------------------------------------
+# IMPORTANT: Chunk files (.part*) are temporarily allowed during deployment
+# They are automatically cleaned up after reassembly by GitHub Actions
+
+# Allow chunk files during deployment process
+# !*.part*  # Explicitly allow .part* files (commented = allowed)
+
+# Backup directories created during chunk reassembly
+.chunks_backup/
+*/.chunks_backup/
+
+# Chunk reassembly logs and temporary files
+*.chunk.log
+*.reassembly.tmp
+
 # Development Dependencies (ALWAYS IGNORED)  
 # -----------------------------------------------------------------
 *.localization
 crashlytics-build.properties
+
+# GitHub Actions (INCLUDED IN TEMPLATE)
+# -----------------------------------------------------------------
+# The .github/workflows/ directory is included in the template
+# and should be committed to provide chunk reassembly functionality
+# !.github/workflows/reassemble-chunks.yml
