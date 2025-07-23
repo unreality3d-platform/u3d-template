@@ -1,0 +1,319 @@
+# .github/workflows/reassemble-chunks.yml
+# Unity WebGL Large File Chunk Reassembly Workflow
+# 
+# This workflow is bundled in the u3d-template and automatically included
+# when creators create repositories. It reassembles Unity .data files that
+# were chunked by Firebase Functions to bypass GitHub's 100MB file limit.
+#
+# IMPORTANT: Manual trigger only - avoids auto-trigger issues
+
+name: Reassemble Unity Chunks
+
+# Manual trigger only - Firebase Functions will trigger this after pushing chunks
+on:
+  workflow_dispatch:
+    inputs:
+      check_for_chunks:
+        description: 'Check and reassemble Unity chunk files'
+        required: false
+        default: 'true'
+        type: string
+
+jobs:
+  reassemble:
+    name: Reassemble Unity WebGL Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          
+      - name: Check for chunk files
+        id: check_chunks
+        run: |
+          echo "🔍 Checking for Unity chunk files..."
+          
+          # Look for .data.part* files anywhere in the repository
+          chunk_files=$(find . -type f -name "*.data.part*" | head -20)
+          
+          if [ -n "$chunk_files" ]; then
+            echo "📦 Found chunk files:"
+            echo "$chunk_files"
+            echo "chunks_found=true" >> $GITHUB_OUTPUT
+            
+            # Count total chunks for logging
+            chunk_count=$(find . -type f -name "*.data.part*" | wc -l)
+            echo "chunk_count=$chunk_count" >> $GITHUB_OUTPUT
+            
+            # List unique base files (remove .partXXX extensions)
+            base_files=$(find . -type f -name "*.data.part*" | sed -E 's/\.part[0-9]+$//' | sort -u)
+            echo "Base files to reassemble:"
+            echo "$base_files"
+            
+          else
+            echo "✅ No chunk files found - repository already has complete files"
+            echo "chunks_found=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Protect against LFS (GPT Enhancement)
+        if: steps.check_chunks.outputs.chunks_found == 'true'
+        run: |
+          echo "🛡️ Adding LFS protection for chunk files..."
+          
+          # Prevent LFS from tracking chunk files during reassembly
+          if [ ! -f .gitattributes ]; then
+            touch .gitattributes
+          fi
+          
+          # Add LFS protection if not already present
+          if ! grep -q "*.part*" .gitattributes; then
+            echo "*.part* filter=diff text" >> .gitattributes
+            echo "✅ Added LFS protection to .gitattributes"
+          else
+            echo "ℹ️ LFS protection already exists"
+          fi
+          
+      - name: Reassemble chunk files (GPT Enhanced)
+        if: steps.check_chunks.outputs.chunks_found == 'true'
+        run: |
+          echo "🔄 Starting chunk reassembly process..."
+          echo "📊 Total chunks found: ${{ steps.check_chunks.outputs.chunk_count }}"
+          
+          # Initialize counters
+          files_reassembled=0
+          total_size=0
+          
+          # Find all unique base files (without .partXXX extension)
+          base_files=$(find . -type f -name "*.data.part*" | sed -E 's/\.part[0-9]+$//' | sort -u)
+          
+          # Process each base file
+          for basefile in $base_files; do
+            echo ""
+            echo "📦 Processing: $basefile"
+            
+            # Find all parts for this base file - PRESERVE DIRECTORY STRUCTURE
+            # CRITICAL: Use full path to avoid conflicts between files with same name in different directories
+            parts=$(find . -name "${basefile}.part*" | sort -V)
+            part_count=$(echo "$parts" | wc -w)
+            
+            if [ $part_count -eq 0 ]; then
+              echo "⚠️ No parts found for $basefile"
+              continue
+            fi
+            
+            echo "🔍 Found $part_count parts:"
+            echo "$parts"
+            
+            # Verify all parts exist and are readable
+            all_parts_valid=true
+            for part in $parts; do
+              if [ ! -f "$part" ] || [ ! -r "$part" ]; then
+                echo "❌ Part not accessible: $part"
+                all_parts_valid=false
+                break
+              fi
+            done
+            
+            if [ "$all_parts_valid" = false ]; then
+              echo "❌ Skipping $basefile due to missing/invalid parts"
+              continue
+            fi
+            
+            # Calculate total size of parts
+            part_size=0
+            for part in $parts; do
+              size=$(stat -f%z "$part" 2>/dev/null || stat -c%s "$part" 2>/dev/null || echo "0")
+              part_size=$((part_size + size))
+            done
+            
+            echo "📏 Total size of parts: $(echo $part_size | awk '{printf "%.2f MB", $1/1024/1024}')"
+            
+            # Create backup directory
+            backup_dir="$(dirname "$basefile")/.chunks_backup"
+            mkdir -p "$backup_dir"
+            
+            # Backup chunks before reassembly
+            for part in $parts; do
+              cp "$part" "$backup_dir/"
+            done
+            echo "💾 Backed up chunks to $backup_dir"
+            
+            # Reassemble with verification
+            echo "🔧 Reassembling $basefile..."
+            
+            # Use robust concatenation with verification
+            {
+              cat $parts > "$basefile.tmp"
+            } || {
+              echo "❌ Failed to concatenate parts for $basefile"
+              continue
+            }
+            
+            # Verify reassembled file size
+            reassembled_size=$(stat -f%z "$basefile.tmp" 2>/dev/null || stat -c%s "$basefile.tmp" 2>/dev/null || echo "0")
+            
+            if [ "$reassembled_size" -eq "$part_size" ]; then
+              # Move to final location
+              mv "$basefile.tmp" "$basefile"
+              
+              echo "✅ Successfully reassembled $basefile"
+              echo "📏 Final size: $(echo $reassembled_size | awk '{printf "%.2f MB", $1/1024/1024}')"
+              
+              # Remove chunk files after successful reassembly
+              for part in $parts; do
+                rm "$part"
+                echo "🗑️ Removed chunk: $(basename "$part")"
+              done
+              
+              # Remove backup after successful reassembly
+              rm -rf "$backup_dir"
+              echo "🧹 Cleaned up backup directory"
+              
+              files_reassembled=$((files_reassembled + 1))
+              total_size=$((total_size + reassembled_size))
+              
+            else
+              echo "❌ Size mismatch for $basefile:"
+              echo "   Expected: $part_size bytes"
+              echo "   Got: $reassembled_size bytes"
+              echo "💾 Backup chunks preserved in $backup_dir"
+              rm -f "$basefile.tmp"
+            fi
+          done
+          
+          echo ""
+          echo "🎉 Reassembly Summary:"
+          echo "📊 Files reassembled: $files_reassembled"
+          echo "📏 Total size: $(echo $total_size | awk '{printf "%.2f MB", $1/1024/1024}')"
+          
+          if [ $files_reassembled -eq 0 ]; then
+            echo "⚠️ No files were successfully reassembled"
+            exit 1
+          fi
+          
+      - name: Verify Unity WebGL structure
+        if: steps.check_chunks.outputs.chunks_found == 'true'
+        run: |
+          echo "🔍 Verifying Unity WebGL file structure..."
+          
+          # Check for required Unity WebGL files
+          unity_files_found=0
+          
+          echo "Looking for Unity WebGL files:"
+          
+          if find . -name "*.data" -type f | head -1 > /dev/null; then
+            data_file=$(find . -name "*.data" -type f | head -1)
+            data_size=$(stat -f%z "$data_file" 2>/dev/null || stat -c%s "$data_file" 2>/dev/null || echo "0")
+            echo "✅ .data file: $(basename "$data_file") ($(echo $data_size | awk '{printf "%.2f MB", $1/1024/1024}'))"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No .data file found"
+          fi
+          
+          if find . -name "*.wasm" -type f | head -1 > /dev/null; then
+            wasm_file=$(find . -name "*.wasm" -type f | head -1)
+            wasm_size=$(stat -f%z "$wasm_file" 2>/dev/null || stat -c%s "$wasm_file" 2>/dev/null || echo "0")
+            echo "✅ .wasm file: $(basename "$wasm_file") ($(echo $wasm_size | awk '{printf "%.2f MB", $1/1024/1024}'))"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No .wasm file found"
+          fi
+          
+          if find . -name "*.framework.js" -type f | head -1 > /dev/null; then
+            framework_file=$(find . -name "*.framework.js" -type f | head -1)
+            echo "✅ .framework.js file: $(basename "$framework_file")"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No .framework.js file found"
+          fi
+          
+          if find . -name "*.loader.js" -type f | head -1 > /dev/null; then
+            loader_file=$(find . -name "*.loader.js" -type f | head -1)
+            echo "✅ .loader.js file: $(basename "$loader_file")"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No .loader.js file found"
+          fi
+          
+          if [ -f "index.html" ]; then
+            echo "✅ index.html file found"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No index.html file found"
+          fi
+          
+          echo ""
+          echo "📊 Unity WebGL files found: $unity_files_found/5"
+          
+          if [ $unity_files_found -ge 4 ]; then
+            echo "✅ Unity WebGL structure appears complete"
+          else
+            echo "⚠️ Unity WebGL structure may be incomplete"
+          fi
+          
+      - name: Commit reassembled files
+        if: steps.check_chunks.outputs.chunks_found == 'true'
+        run: |
+          echo "💾 Committing reassembled Unity files..."
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action - Chunk Reassembly"
+          
+          # Add all changes (reassembled files, removed chunks, updated .gitattributes)
+          git add .
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit"
+          else
+            echo "📝 Committing changes..."
+            
+            # Create commit with detailed message
+            commit_message="🔧 Reassemble Unity WebGL chunks
+
+- Reassembled ${{ steps.check_chunks.outputs.chunk_count }} chunk files into complete Unity .data files
+- Removed chunk files after successful reassembly  
+- Updated .gitattributes for LFS protection
+- Verified Unity WebGL file structure
+
+This commit was automatically generated by the chunk reassembly workflow."
+
+            git commit -m "$commit_message"
+            
+            echo "✅ Changes committed successfully"
+            echo "🚀 Repository now contains complete Unity WebGL files"
+          fi
+          
+      - name: Final status report
+        if: always()
+        run: |
+          echo ""
+          echo "📋 Final Status Report"
+          echo "===================="
+          
+          if [ "${{ steps.check_chunks.outputs.chunks_found }}" = "true" ]; then
+            echo "🎯 Operation: Chunk reassembly"
+            echo "📦 Chunks processed: ${{ steps.check_chunks.outputs.chunk_count }}"
+            
+            # Check if any chunk files remain
+            remaining_chunks=$(find . -name "*.data.part*" -type f | wc -l)
+            if [ $remaining_chunks -eq 0 ]; then
+              echo "✅ Status: All chunks successfully reassembled and cleaned up"
+              echo "🎮 Unity WebGL build ready for GitHub Pages"
+            else
+              echo "⚠️ Status: $remaining_chunks chunk files still remain"
+              echo "🔍 Manual review may be required"
+            fi
+          else
+            echo "ℹ️ Operation: No chunks found"
+            echo "✅ Status: Repository already contains complete files"
+          fi
+          
+          echo ""
+          echo "🌐 Professional URL should be accessible at:"
+          echo "   https://[creator].unreality3d.com/[project]/"
+          echo ""
+          echo "📚 For support, visit: https://unreality3d.com/docs"
