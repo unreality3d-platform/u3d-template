@@ -51,15 +51,47 @@ namespace U3D.Editor
 
         private bool showOnStartup = true;
 
-        // CRITICAL FIX: Add initialization tracking to prevent repeated state resets
-        private bool hasInitialized = false;
+        private static string SETUP_INITIALIZED_KEY => $"U3D_SetupTab_Initialized_{Application.dataPath.GetHashCode()}";
+        private static string SETUP_AUTH_STATE_KEY => $"U3D_SetupTab_WasAuthenticated_{Application.dataPath.GetHashCode()}";
+
+
+        /// <summary>
+        /// CRITICAL: Check if we should skip operations during builds (same as existing classes)
+        /// </summary>
+        private static bool ShouldSkipDuringBuild()
+        {
+            return BuildPipeline.isBuildingPlayer ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
+        private static bool SetupTabInitialized
+        {
+            get => !ShouldSkipDuringBuild() && EditorPrefs.GetBool(SETUP_INITIALIZED_KEY, false);
+            set { if (!ShouldSkipDuringBuild()) EditorPrefs.SetBool(SETUP_INITIALIZED_KEY, value); }
+        }
+
+        private static bool WasAuthenticatedBeforeCompilation
+        {
+            get => !ShouldSkipDuringBuild() && EditorPrefs.GetBool(SETUP_AUTH_STATE_KEY, false);
+            set { if (!ShouldSkipDuringBuild()) EditorPrefs.SetBool(SETUP_AUTH_STATE_KEY, value); }
+        }
 
         public async void Initialize()
         {
-            // Only run full initialization once per session
-            if (hasInitialized)
+            // CRITICAL: Skip initialization during compilation (same pattern as existing classes)
+            if (ShouldSkipDuringBuild())
             {
-                UpdateCompletion();
+                return;
+            }
+
+            // Store current auth state for compilation recovery
+            WasAuthenticatedBeforeCompilation = U3DAuthenticator.IsLoggedIn;
+
+            // Only run full initialization once per Unity session
+            if (SetupTabInitialized && U3DAuthenticator.IsLoggedIn)
+            {
+                await QuickStateCheck();
                 return;
             }
 
@@ -80,7 +112,10 @@ namespace U3D.Editor
             await DetermineInitialState();
 
             // CRITICAL FIX: Mark as initialized to prevent repeated calls
-            hasInitialized = true;
+            if (U3DAuthenticator.IsLoggedIn)
+            {
+                SetupTabInitialized = true;
+            }
         }
 
         private void LogoutAndReset()
@@ -91,8 +126,12 @@ namespace U3D.Editor
 
             // DON'T clear PayPal email - it should persist independently
 
-            // CRITICAL FIX: Reset initialization state so setup can run again
-            hasInitialized = false;
+            // CRITICAL FIX: Reset initialization state (using build guards like existing classes)
+            if (!ShouldSkipDuringBuild())
+            {
+                EditorPrefs.DeleteKey(SETUP_INITIALIZED_KEY);
+                EditorPrefs.DeleteKey(SETUP_AUTH_STATE_KEY);
+            }
 
             currentState = AuthState.ManualLogin;
             UpdateCompletion();
@@ -1025,12 +1064,70 @@ namespace U3D.Editor
             // Existing implementation - ensures Firebase config is loaded
         }
 
+        private async Task QuickStateCheck()
+        {
+            if (U3DAuthenticator.IsLoggedIn && !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
+                {
+                    currentState = AuthState.PayPalSetup;
+                }
+                else if (!GitHubTokenManager.HasValidToken)
+                {
+                    currentState = AuthState.GitHubSetup;
+                }
+                else
+                {
+                    currentState = AuthState.LoggedIn;
+                }
+            }
+            else if (U3DAuthenticator.IsLoggedIn && string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                try
+                {
+                    await U3DAuthenticator.ForceProfileReload();
+                    if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+                    {
+                        currentState = AuthState.UsernameReservation;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("Unauthenticated"))
+                    {
+                        currentState = AuthState.ManualLogin;
+                        SetupTabInitialized = false;
+                    }
+                }
+            }
+
+            UpdateCompletion();
+        }
+
         public void OnEnable()
         {
-            // Only initialize if not already done
-            if (!hasInitialized)
+            // CRITICAL: Only initialize if not skipping (same pattern as existing classes)
+            if (ShouldSkipDuringBuild())
+            {
+                return;
+            }
+
+            // If we were authenticated before compilation but now we're not, try to restore
+            if (WasAuthenticatedBeforeCompilation && !U3DAuthenticator.IsLoggedIn)
+            {
+                // Try auto-login to restore state
+                _ = U3DAuthenticator.TryAutoLogin();
+            }
+
+            // Only do full initialization if we haven't completed it yet
+            if (!SetupTabInitialized)
             {
                 Initialize();
+            }
+            else
+            {
+                // Quick state verification for already-initialized tabs
+                _ = QuickStateCheck();
             }
         }
     }
