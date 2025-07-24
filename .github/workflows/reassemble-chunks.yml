@@ -36,7 +36,7 @@ jobs:
           echo "🔍 Checking for Unity chunk files..."
           
           # Look for .data.part* files anywhere in the repository
-          chunk_files=$(find . -type f -name "*.data.part*" | head -20)
+          chunk_files=$(find . -type f \( -name "*.data.part*" -o -name "*.wasm.part*" \) | head -20)
           
           if [ -n "$chunk_files" ]; then
             echo "📦 Found chunk files:"
@@ -44,7 +44,7 @@ jobs:
             echo "chunks_found=true" >> $GITHUB_OUTPUT
             
             # Count total chunks for logging
-            chunk_count=$(find . -type f -name "*.data.part*" | wc -l)
+            chunk_count=$(find . -type f \( -name "*.data.part*" -o -name "*.wasm.part*" \) | wc -l)
             echo "chunk_count=$chunk_count" >> $GITHUB_OUTPUT
             
             # List unique base files (remove .partXXX extensions)
@@ -86,7 +86,7 @@ jobs:
           total_size=0
           
           # Find all unique base files (without .partXXX extension)
-          base_files=$(find . -type f -name "*.data.part*" | sed -E 's/\.part[0-9]+$//' | sort -u)
+          base_files=$(find . -type f \( -name "*.data.part*" -o -name "*.wasm.part*" \) | sed -E 's/\.part[0-9]+$//' | sort -u)
           
           # Process each base file
           for basefile in $base_files; do
@@ -95,8 +95,7 @@ jobs:
             
             # Find all parts for this base file - PRESERVE DIRECTORY STRUCTURE
             # CRITICAL: Use full path to avoid conflicts between files with same name in different directories
-            basename_only=$(basename "$basefile")
-            parts=$(find . -name "${basename_only}.part*" | sort -V)
+            parts=$(find . -type f -name "$(basename "$basefile").part*" -path "$(dirname "$basefile")/*" | sort -V)
             part_count=$(echo "$parts" | wc -w)
             
             if [ $part_count -eq 0 ]; then
@@ -291,7 +290,7 @@ jobs:
             echo "📦 Chunks processed: ${{ steps.check_chunks.outputs.chunk_count }}"
             
             # Check if any chunk files remain
-            remaining_chunks=$(find . -name "*.data.part*" -type f | wc -l)
+            remaining_chunks=$(find . -type f \( -name "*.data.part*" -o -name "*.wasm.part*" \) | wc -l)
             if [ $remaining_chunks -eq 0 ]; then
               echo "✅ Status: All chunks successfully reassembled and cleaned up"
               echo "🎮 Unity WebGL build ready for GitHub Pages"
