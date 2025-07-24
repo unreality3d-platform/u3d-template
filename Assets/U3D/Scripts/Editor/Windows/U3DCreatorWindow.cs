@@ -45,14 +45,14 @@ namespace U3D.Editor
         [InitializeOnLoadMethod]
         static void OpenOnStartup()
         {
-            // CRITICAL: Skip initialization during actual builds to prevent IndexOutOfRangeException
+            // CRITICAL: Skip initialization during actual builds
             if (ShouldSkipDuringBuild())
             {
                 Debug.Log("🚫 U3DCreatorWindow: Skipping startup during build process");
                 return;
             }
 
-            // Wait for editor to finish initializing, but don't log message for normal startup
+            // Wait for editor to finish initializing
             if (IsEditorInitializing())
             {
                 EditorApplication.delayCall += OpenOnStartup;
@@ -63,7 +63,6 @@ namespace U3D.Editor
                 // NEVER open during Play mode changes
                 if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
-                // FIXED: Use build guards for EditorPrefs access
                 bool hasOpenedBefore = false;
                 bool showOnStartup = true;
 
@@ -77,7 +76,8 @@ namespace U3D.Editor
                 if (!hasOpenedBefore || showOnStartup)
                 {
                     ShowWindow();
-                    // FIXED: Use build guards for EditorPrefs access
+
+                    // CRITICAL: Mark as opened AFTER showing window to coordinate with scene loading
                     if (!ShouldSkipDuringBuild())
                     {
                         EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
