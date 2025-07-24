@@ -79,7 +79,7 @@ namespace U3D.Editor
 
         public async void Initialize()
         {
-            // CRITICAL: Skip initialization during compilation (same pattern as existing classes)
+            // CRITICAL: Skip initialization during compilation
             if (ShouldSkipDuringBuild())
             {
                 return;
@@ -88,30 +88,19 @@ namespace U3D.Editor
             // Store current auth state for compilation recovery
             WasAuthenticatedBeforeCompilation = U3DAuthenticator.IsLoggedIn;
 
-            // Only run full initialization once per Unity session
-            if (SetupTabInitialized && U3DAuthenticator.IsLoggedIn)
-            {
-                await QuickStateCheck();
-                return;
-            }
-
             EnsureFirebaseConfiguration();
 
-            // ✅ IMPROVEMENT: Always try auto-login first, regardless of current state
+            // CRITICAL FIX: Always try auto-login first, but don't require it to succeed
             if (!U3DAuthenticator.IsLoggedIn)
             {
                 await U3DAuthenticator.TryAutoLogin();
-
-                // Give auto-login a moment to complete profile loading
-                if (U3DAuthenticator.IsLoggedIn)
-                {
-                    await Task.Delay(100); // Brief pause for profile data
-                }
+                // No delay needed - if auth data is there, it's available immediately after TryAutoLogin
             }
 
+            // IMPORTANT: Always determine state based on current auth status, regardless of initialization flag
             await DetermineInitialState();
 
-            // CRITICAL FIX: Mark as initialized to prevent repeated calls
+            // Only mark as initialized if we're actually in a stable state
             if (U3DAuthenticator.IsLoggedIn)
             {
                 SetupTabInitialized = true;
@@ -147,10 +136,12 @@ namespace U3D.Editor
                 return;
             }
 
-            // CRITICAL FIX: Wait for auto-login to complete profile loading
-            // Don't assume CreatorUsername is missing - it might just be loading
+            // User is logged in - check what setup steps are complete
+
+            // Check for username
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
+                // Try ONE profile reload attempt, but don't make it critical
                 try
                 {
                     await U3DAuthenticator.ForceProfileReload();
@@ -160,18 +151,19 @@ namespace U3D.Editor
                     // If profile reload fails with auth error, user needs to re-login
                     if (ex.Message.Contains("Unauthenticated"))
                     {
+                        UnityDebug.LogWarning("⚠️ Auth token expired during profile reload");
                         currentState = AuthState.ManualLogin;
+                        SetupTabInitialized = false;
                         UpdateCompletion();
                         return;
                     }
-                    UnityDebug.LogWarning($"⚠️ Profile reload failed: {ex.Message}");
+                    UnityDebug.LogWarning($"⚠️ Profile reload failed (continuing anyway): {ex.Message}");
                 }
             }
 
-            // NEW: Check again after profile reload attempt
+            // Determine state based on what's completed
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
-                // If still empty after reload attempt, user needs to complete username setup
                 currentState = AuthState.UsernameReservation;
             }
             else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
@@ -1066,42 +1058,7 @@ namespace U3D.Editor
 
         private async Task QuickStateCheck()
         {
-            if (U3DAuthenticator.IsLoggedIn && !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-            {
-                if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
-                {
-                    currentState = AuthState.PayPalSetup;
-                }
-                else if (!GitHubTokenManager.HasValidToken)
-                {
-                    currentState = AuthState.GitHubSetup;
-                }
-                else
-                {
-                    currentState = AuthState.LoggedIn;
-                }
-            }
-            else if (U3DAuthenticator.IsLoggedIn && string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-            {
-                try
-                {
-                    await U3DAuthenticator.ForceProfileReload();
-                    if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-                    {
-                        currentState = AuthState.UsernameReservation;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (ex.Message.Contains("Unauthenticated"))
-                    {
-                        currentState = AuthState.ManualLogin;
-                        SetupTabInitialized = false;
-                    }
-                }
-            }
-
-            UpdateCompletion();
+            await DetermineInitialState();
         }
 
         public void OnEnable()
