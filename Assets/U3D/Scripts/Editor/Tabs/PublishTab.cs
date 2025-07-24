@@ -45,7 +45,7 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// CRITICAL: Check if we should skip operations during builds
+        /// CRITICAL: Check if we should skip operations during builds (same as GitHubTokenManager/ProjectStartupConfiguration)
         /// </summary>
         private static bool ShouldSkipDuringBuild()
         {
@@ -56,24 +56,23 @@ namespace U3D.Editor
 
         public void Initialize()
         {
-            // Cache product name on main thread to avoid threading issues
-            cachedProductName = Application.productName;
-
-            // CRITICAL: Skip other initialization during builds
+            // CRITICAL: Skip initialization during compilation (same pattern as existing classes)
             if (ShouldSkipDuringBuild())
             {
                 return;
             }
 
-            // FIXED: Don't automatically show success view on tab load
-            // Success view should only show immediately after successful publish
+            // Cache product name on main thread to avoid threading issues
+            cachedProductName = Application.productName;
 
-            // Clear any stale "just published" flag on tab initialization
-            var justPublished = EditorPrefs.GetBool("U3D_JustPublished", false);
-            if (justPublished)
+            // Clear any stale "just published" flag on tab initialization (using build guards)
+            if (!ShouldSkipDuringBuild())
             {
-                // This was a fresh session load, clear the flag
-                EditorPrefs.DeleteKey("U3D_JustPublished");
+                var justPublished = EditorPrefs.GetBool("U3D_JustPublished", false);
+                if (justPublished)
+                {
+                    EditorPrefs.DeleteKey("U3D_JustPublished");
+                }
             }
 
             // Always start in Ready state to show repository options
@@ -215,6 +214,12 @@ namespace U3D.Editor
 
         private bool CanPublish()
         {
+            // CRITICAL: Return false if we're in compilation/build state (same pattern as existing classes)
+            if (ShouldSkipDuringBuild())
+            {
+                return false;
+            }
+
             return U3DAuthenticator.IsLoggedIn &&
                    !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername) &&
                    GitHubTokenManager.HasValidToken;
@@ -224,6 +229,13 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("Prerequisites", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
+
+            // CRITICAL: Show compilation message if we're in that state (same pattern as existing classes)
+            if (ShouldSkipDuringBuild())
+            {
+                EditorGUILayout.HelpBox("⏳ Waiting for script compilation to complete...", MessageType.Info);
+                return;
+            }
 
             if (!U3DAuthenticator.IsLoggedIn)
             {
