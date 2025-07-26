@@ -76,8 +76,6 @@ public static class U3DAuthenticator
 
         try
         {
-            Debug.Log("🔧 Configuring network settings for Unity Editor...");
-
             // Configure ServicePointManager ONCE (global .NET settings)
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
             ServicePointManager.DefaultConnectionLimit = 100;
@@ -105,7 +103,6 @@ public static class U3DAuthenticator
                 {
                     var servicePoint = ServicePointManager.FindServicePoint(new Uri(endpoint));
                     servicePoint.ConnectionLeaseTimeout = 60000; // 60 seconds
-                    Debug.Log($"Set ConnectionLeaseTimeout for {endpoint}");
                 }
                 catch (Exception ex)
                 {
@@ -132,7 +129,6 @@ public static class U3DAuthenticator
             _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
 
             _networkConfigured = true;
-            Debug.Log("✅ Network configuration completed successfully with DNS cache fix");
         }
         catch (Exception ex)
         {
@@ -151,37 +147,32 @@ public static class U3DAuthenticator
         // Check if user wants to stay logged in
         if (!_stayLoggedIn)
         {
-            Debug.Log("Auto-login disabled by user preference");
             return false;
         }
 
         if (string.IsNullOrEmpty(_idToken))
         {
-            Debug.Log("No stored credentials found - manual login required");
             return false;
         }
 
         try
         {
-            Debug.Log("🔄 Attempting auto-login with stored credentials...");
             bool isValid = await ValidateStoredToken();
 
             if (isValid)
             {
                 await LoadUserProfile();
-                Debug.Log("✅ Auto-login successful");
                 return true;
             }
             else
             {
-                Debug.Log("ℹ️ Auto-login not possible - manual login required");
                 return false;
             }
         }
         catch (Exception ex)
         {
             // CRITICAL: Never throw scary errors during auto-login
-            Debug.Log($"ℹ️ Auto-login failed gracefully: {ex.Message}");
+            Debug.LogWarning($"Auto-login failed gracefully: {ex.Message}");
             ClearCredentials();
             return false;
         }
@@ -222,7 +213,6 @@ public static class U3DAuthenticator
                     SaveCredentials();
                     await LoadUserProfile();
 
-                    Debug.Log("Login successful");
                     return true;
                 }
             }
@@ -305,7 +295,6 @@ public static class U3DAuthenticator
                     SaveCredentials();
                     await LoadUserProfile();
 
-                    Debug.Log("Registration successful");
                     return true;
                 }
             }
@@ -406,13 +395,11 @@ public static class U3DAuthenticator
 
         try
         {
-            Debug.Log("🔄 Force reloading user profile...");
             await LoadUserProfile();
-            Debug.Log($"✅ Profile reloaded - Username: '{_creatorUsername}'");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"❌ Force profile reload failed: {ex.Message}");
+            Debug.LogError($"Force profile reload failed: {ex.Message}");
         }
     }
 
@@ -437,8 +424,6 @@ public static class U3DAuthenticator
 
         // DON'T clear GitHub token - users want to keep their GitHub setup!
         // GitHubTokenManager.ClearToken(); // ← REMOVE THIS LINE
-
-        Debug.Log("Logged out successfully");
     }
 
     private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
@@ -467,15 +452,11 @@ public static class U3DAuthenticator
 
                 var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
 
-                Debug.Log($"🔗 Attempt {attempt}/{maxRetries}: Calling {functionName}");
-                Debug.Log($"📦 Request size: {json.Length} characters ({json.Length / (1024.0 * 1024.0):F2} MB)");
-
                 var startTime = DateTime.Now;
                 var response = await _sharedHttpClient.PostAsync(functionEndpoint, content);
                 var responseText = await response.Content.ReadAsStringAsync();
 
                 var duration = DateTime.Now - startTime;
-                Debug.Log($"✅ Request completed in {duration.TotalSeconds:F1} seconds");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -486,7 +467,7 @@ public static class U3DAuthenticator
                 }
                 else
                 {
-                    Debug.LogWarning($"❌ HTTP Error: {response.StatusCode} - {responseText}");
+                    Debug.LogWarning($"HTTP Error: {response.StatusCode} - {responseText}");
                     var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
                     var errorMessage = "Function call failed";
 
@@ -504,20 +485,20 @@ public static class U3DAuthenticator
             }
             catch (HttpRequestException ex) when (ex.Message.Contains("An error occurred while sending the request") && attempt < maxRetries)
             {
-                Debug.LogWarning($"⚠️ HttpClient corrupted, recreating on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"HttpClient corrupted, recreating on attempt {attempt}/{maxRetries}: {ex.Message}");
 
                 // Dispose corrupted HttpClient and recreate
                 RecreateHttpClient();
 
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"🔄 Retrying in {delay}ms with fresh HttpClient...");
+                Debug.LogWarning($"Retrying in {delay}ms with fresh HttpClient...");
                 await Task.Delay(delay);
                 continue;
             }
             catch (HttpRequestException ex) when (attempt < maxRetries)
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"⚠️ HttpRequestException on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"HttpRequestException on attempt {attempt}/{maxRetries}: {ex.Message}");
 
                 // Log inner exception details for debugging
                 if (ex.InnerException != null)
@@ -525,29 +506,29 @@ public static class U3DAuthenticator
                     Debug.LogWarning($"Inner exception: {ex.InnerException.GetType().Name} - {ex.InnerException.Message}");
                 }
 
-                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+                Debug.LogWarning($"Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
             }
             catch (TaskCanceledException ex) when (attempt < maxRetries && !ex.CancellationToken.IsCancellationRequested)
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"⏰ Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
-                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+                Debug.LogWarning($"Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
             }
             catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"🌐 Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
-                Debug.LogWarning($"🔄 Retrying in {delay}ms...");
+                Debug.LogWarning($"Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
+                Debug.LogWarning($"Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
             }
             catch (HttpRequestException ex)
             {
-                Debug.LogError($"💥 Network request failed after {maxRetries} attempts: {ex.Message}");
+                Debug.LogError($"Network request failed after {maxRetries} attempts: {ex.Message}");
 
                 // Provide specific guidance for Unity Editor network issues
                 string guidance = "This appears to be a Unity Editor network configuration issue. Try:\n" +
@@ -567,8 +548,6 @@ public static class U3DAuthenticator
     {
         try
         {
-            Debug.Log("🔧 Recreating HttpClient due to corruption...");
-
             // Dispose old client
             _sharedHttpClient?.Dispose();
 
@@ -589,8 +568,6 @@ public static class U3DAuthenticator
             // Set headers
             _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
             _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
-
-            Debug.Log("✅ HttpClient recreated successfully");
         }
         catch (Exception ex)
         {
@@ -625,7 +602,6 @@ public static class U3DAuthenticator
             return;
         }
 
-        Debug.Log("Establishing Firebase configuration...");
         await EstablishDynamicConfiguration();
 
         if (!FirebaseConfigManager.IsConfigurationComplete())
@@ -681,7 +657,6 @@ public static class U3DAuthenticator
                             appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
                             measurementId = "G-YXC3XB3PFL"
                         };
-                        Debug.Log("Development Firebase configuration loaded securely");
                     }
                     else
                     {
@@ -716,8 +691,6 @@ public static class U3DAuthenticator
 
                 FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
                 FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
-
-                Debug.Log("Firebase configuration established securely - no hardcoded API keys");
             }
             else
             {
@@ -737,14 +710,11 @@ public static class U3DAuthenticator
         // Don't attempt refresh if we don't have a refresh token
         if (string.IsNullOrEmpty(_refreshToken))
         {
-            Debug.Log("ℹ️ No refresh token available - manual login required");
             return false;
         }
 
         try
         {
-            Debug.Log("🔄 Attempting to refresh ID token...");
-
             var refreshData = new
             {
                 grant_type = "refresh_token",
@@ -775,18 +745,16 @@ public static class U3DAuthenticator
                     }
 
                     SaveCredentials();
-                    Debug.Log("✅ ID token refreshed successfully");
                     return true;
                 }
             }
             else
             {
-                Debug.Log($"⚠️ Token refresh failed: {response.StatusCode} - {responseText}");
+                Debug.LogWarning($"Token refresh failed: {response.StatusCode} - {responseText}");
 
                 // If refresh token is invalid, clear credentials
                 if (response.StatusCode == HttpStatusCode.BadRequest)
                 {
-                    Debug.Log("🗑️ Refresh token expired - clearing credentials");
                     ClearCredentials();
                 }
 
@@ -795,7 +763,7 @@ public static class U3DAuthenticator
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"⚠️ Token refresh error: {ex.Message}");
+            Debug.LogWarning($"Token refresh error: {ex.Message}");
             return false;
         }
 
@@ -809,11 +777,8 @@ public static class U3DAuthenticator
             // Don't validate if we don't have a token
             if (string.IsNullOrEmpty(_idToken))
             {
-                Debug.Log("No stored token to validate");
                 return false;
             }
-
-            Debug.Log("🔍 Validating stored authentication token...");
 
             // First attempt with current token
             try
@@ -822,7 +787,6 @@ public static class U3DAuthenticator
 
                 if (result.ContainsKey("userId"))
                 {
-                    Debug.Log("✅ Stored token is valid");
                     return true;
                 }
             }
@@ -833,8 +797,6 @@ public static class U3DAuthenticator
                 // If token is expired/unauthenticated, try to refresh
                 if (message.Contains("unauthenticated") || message.Contains("unauthorized"))
                 {
-                    Debug.Log("⏰ Token appears expired - attempting refresh...");
-
                     bool refreshed = await RefreshIdTokenIfNeeded();
                     if (refreshed)
                     {
@@ -844,17 +806,15 @@ public static class U3DAuthenticator
                             var retryResult = await CallFirebaseFunction("getUserProfile", new { });
                             if (retryResult.ContainsKey("userId"))
                             {
-                                Debug.Log("✅ Token refreshed and validated successfully");
                                 return true;
                             }
                         }
                         catch (Exception retryEx)
                         {
-                            Debug.LogWarning($"⚠️ Validation failed even after refresh: {retryEx.Message}");
+                            Debug.LogWarning($"Validation failed even after refresh: {retryEx.Message}");
                         }
                     }
 
-                    Debug.Log("ℹ️ Token refresh failed - manual login required");
                     ClearCredentials();
                     return false;
                 }
@@ -862,21 +822,20 @@ public static class U3DAuthenticator
                 // Handle network issues gracefully
                 if (IsRetriableNetworkError(ex))
                 {
-                    Debug.LogWarning($"🌐 Network issue during token validation: {ex.Message}");
+                    Debug.LogWarning($"Network issue during token validation: {ex.Message}");
                     return false;
                 }
 
-                Debug.LogWarning($"⚠️ Token validation failed: {ex.Message}");
+                Debug.LogWarning($"Token validation failed: {ex.Message}");
                 ClearCredentials();
                 return false;
             }
 
-            Debug.Log("⚠️ Token validation returned unexpected response");
             return false;
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"⚠️ Token validation error: {ex.Message}");
+            Debug.LogWarning($"Token validation error: {ex.Message}");
             ClearCredentials();
             return false;
         }
@@ -903,8 +862,6 @@ public static class U3DAuthenticator
 
             // FIX: Always save after profile load to keep EditorPrefs in sync
             SaveCredentials();
-
-            Debug.Log($"Profile loaded: {_userEmail}, Username: '{_creatorUsername}'");
         }
         catch (Exception ex)
         {
@@ -925,7 +882,6 @@ public static class U3DAuthenticator
             bool hasUsername = result.ContainsKey("creatorUsername") &&
                               !string.IsNullOrEmpty(result["creatorUsername"]?.ToString());
 
-            Debug.Log($"🔍 Username verification: HasUsername={hasUsername}");
             return hasUsername;
         }
         catch (Exception ex)
@@ -966,8 +922,6 @@ public static class U3DAuthenticator
         _creatorUsername = EditorPrefs.GetString(CREATOR_USERNAME_KEY, "");
         _stayLoggedIn = EditorPrefs.GetBool(STAY_LOGGED_IN_KEY, true);
         _credentialsLoaded = true;
-
-        Debug.Log($"🔑 Credentials loaded: Token={!string.IsNullOrEmpty(_idToken)}, Email={_userEmail}, Username={_creatorUsername}, StayLoggedIn={_stayLoggedIn}");
     }
 
     private static void MigrateFromOldKeys()
@@ -983,8 +937,6 @@ public static class U3DAuthenticator
         {
             if (EditorPrefs.HasKey(oldPrefix + "idToken") && string.IsNullOrEmpty(_idToken))
             {
-                Debug.Log($"🔄 Migrating credentials from old keys: {oldPrefix}");
-
                 _idToken = EditorPrefs.GetString(oldPrefix + "idToken", "");
                 _refreshToken = EditorPrefs.GetString(oldPrefix + "refreshToken", "");
                 _userEmail = EditorPrefs.GetString(oldPrefix + "userEmail", "");
@@ -1003,7 +955,6 @@ public static class U3DAuthenticator
                 EditorPrefs.DeleteKey(oldPrefix + "creatorUsername");
                 EditorPrefs.DeleteKey(oldPrefix + "paypalConnected");
 
-                Debug.Log("✅ Migration completed successfully");
                 break;
             }
         }
@@ -1043,7 +994,6 @@ public static class U3DAuthenticator
                     {
                         EditorPrefs.SetString("U3D_PayPalEmail", paypalEmail);
                         EditorPrefs.DeleteKey(oldKey);
-                        Debug.Log($"🔄 Migrated PayPal email from {oldKey}");
                         break;
                     }
                 }
@@ -1065,8 +1015,6 @@ public static class U3DAuthenticator
         _userEmail = "";
         _displayName = "";
         _creatorUsername = "";
-
-        Debug.Log("🗑️ U3D authentication credentials cleared");
     }
 }
 
