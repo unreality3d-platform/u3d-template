@@ -89,7 +89,7 @@ namespace U3D.Editor
             }
         }
 
-public void DrawTab()
+        public void DrawTab()
         {
             InitializeStyles();
 
@@ -128,6 +128,8 @@ public void DrawTab()
                     if (newSelection && !isSelected)
                     {
                         selectedCategoryIndex = i;
+                        // NEW: Refresh MonetizationToolsCategory when switching to it
+                        RefreshCategoryIfNeeded(i);
                     }
                 }
             }
@@ -144,6 +146,8 @@ public void DrawTab()
                     if (newSelection && !isSelected)
                     {
                         selectedCategoryIndex = i;
+                        // NEW: Refresh MonetizationToolsCategory when switching to it
+                        RefreshCategoryIfNeeded(i);
                     }
                 }
                 EditorGUILayout.EndHorizontal();
@@ -166,6 +170,21 @@ public void DrawTab()
             }
 
             EditorGUILayout.EndScrollView();
+        }
+
+        // NEW: Method to refresh specific categories when switching to them
+        private void RefreshCategoryIfNeeded(int categoryIndex)
+        {
+            if (categoryIndex >= 0 && categoryIndex < categories.Count)
+            {
+                var category = categories[categoryIndex];
+
+                // Refresh MonetizationToolsCategory to check current PayPal status
+                if (category is MonetizationToolsCategory monetizationCategory)
+                {
+                    monetizationCategory.RefreshPayPalConfiguration();
+                }
+            }
         }
 
         private void DrawFilteredTools()
