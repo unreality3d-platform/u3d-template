@@ -13,6 +13,10 @@ namespace U3D.Editor
 
         private List<CreatorTool> tools;
 
+        // NEW: Optimistic approach - assume PayPal is configured unless proven otherwise
+        private bool paypalConfigurationChecked = false;
+        private bool paypalConfigured = true; // Optimistic default
+
         public MonetizationToolsCategory()
         {
             tools = new List<CreatorTool>
@@ -32,45 +36,25 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("Monetization Tools", EditorStyles.boldLabel);
 
-            // Check PayPal setup status
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string paypalEmail = (creatorData != null) ? creatorData.PayPalEmail : "";
-            bool paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
+            // NEW: Only check PayPal configuration if we haven't already checked
+            if (!paypalConfigurationChecked)
+            {
+                CheckPayPalConfiguration();
+            }
 
+            // NEW: Optimistically show configured state unless we know it's not configured
             if (paypalConfigured)
             {
-                EditorGUILayout.HelpBox(
-                    $"PayPal Connected: {paypalEmail}\n\n" +
-                    "Dual Transaction System Ready:\n" +
-                    "• You keep 95% of all earnings\n" +
-                    "• Platform fee: 5% (for hosting & infrastructure)\n" +
-                    "• Automatic payment splitting\n" +
-                    "• Direct payments to your PayPal account",
-                    MessageType.Info);
+                DrawConfiguredState();
             }
             else
             {
-                EditorGUILayout.HelpBox(
-                    "PayPal Not Configured\n\n" +
-                    "To enable monetization:\n" +
-                    "1. Go to the Setup tab\n" +
-                    "2. Add your PayPal email address\n" +
-                    "3. Return here to add payment tools\n\n" +
-                    "You'll keep 95% of all earnings!",
-                    MessageType.Warning);
-
-                EditorGUILayout.Space(5);
-
-                if (GUILayout.Button("Go to Setup Tab", GUILayout.Height(30)))
-                {
-                    OnRequestTabSwitch?.Invoke(0);
-                }
-
-                EditorGUILayout.Space(10);
+                DrawUnconfiguredState();
             }
 
             EditorGUILayout.Space(10);
 
+            // Draw tools with conditional enabling
             foreach (var tool in tools)
             {
                 if (!paypalConfigured)
@@ -95,11 +79,79 @@ namespace U3D.Editor
             }
         }
 
+        private void CheckPayPalConfiguration()
+        {
+            // Check both EditorPrefs and ScriptableObject (same as SetupTab approach)
+            string paypalEmailFromPrefs = EditorPrefs.GetString("U3D_PayPalEmail", "");
+
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            string paypalEmailFromData = (creatorData != null) ? creatorData.PayPalEmail : "";
+
+            // Use either source - prefer ScriptableObject for runtime access
+            string paypalEmail = !string.IsNullOrEmpty(paypalEmailFromData) ? paypalEmailFromData : paypalEmailFromPrefs;
+
+            paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
+            paypalConfigurationChecked = true;
+
+            // Debug log to verify detection
+            if (paypalConfigured)
+            {
+                Debug.Log($"✅ PayPal configured: {paypalEmail}");
+            }
+        }
+
+        private void DrawConfiguredState()
+        {
+            // Get the actual PayPal email to display
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            string paypalEmail = (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+                ? creatorData.PayPalEmail
+                : EditorPrefs.GetString("U3D_PayPalEmail", "");
+
+            EditorGUILayout.HelpBox(
+                $"PayPal Connected: {paypalEmail}\n\n" +
+                "Dual Transaction System Ready:\n" +
+                "• You keep 95% of all earnings\n" +
+                "• Platform fee: 5% (for hosting & infrastructure)\n" +
+                "• Automatic payment splitting\n" +
+                "• Direct payments to your PayPal account",
+                MessageType.Info);
+        }
+
+        private void DrawUnconfiguredState()
+        {
+            EditorGUILayout.HelpBox(
+                "PayPal Not Configured\n\n" +
+                "To enable monetization:\n" +
+                "1. Go to the Setup tab\n" +
+                "2. Add your PayPal email address\n" +
+                "3. Return here to add payment tools\n\n" +
+                "You'll keep 95% of all earnings!",
+                MessageType.Warning);
+
+            EditorGUILayout.Space(5);
+
+            if (GUILayout.Button("Go to Setup Tab", GUILayout.Height(30)))
+            {
+                OnRequestTabSwitch?.Invoke(0);
+            }
+
+            EditorGUILayout.Space(10);
+        }
+
+        // NEW: Method to force recheck (called when PayPal setup changes)
+        public void RefreshPayPalConfiguration()
+        {
+            paypalConfigurationChecked = false;
+            CheckPayPalConfiguration();
+        }
+
         #region Tool Creation Methods
 
         private void CreatePurchaseButton()
         {
-            if (!ValidatePayPalSetup()) return;
+            // NEW: Only validate PayPal setup when actually creating tools (optimistic approach)
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject buttonObject = CreatePaymentUI("Purchase Button", CreatePurchaseButtonUI);
 
@@ -107,14 +159,15 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Premium Content", "Creator content purchase", 5.00f);
             dualTransaction.SetVariableAmount(false);
 
-            // NEW: Auto-assign UI references
+            // Auto-assign UI references
             AssignUIReferences(buttonObject, dualTransaction);
 
             LogToolCreation("Purchase Button", "Single-purchase payment button with 95%/5% split");
         }
+
         private void CreateTipJar()
         {
-            if (!ValidatePayPalSetup()) return;
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             // Find or create Canvas using Unity 6+ method
             Canvas canvas = Object.FindFirstObjectByType<Canvas>();
@@ -183,7 +236,7 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Creator Tip", "Support this creator's work", 5.00f);
             dualTransaction.SetVariableAmount(true, 1.00f, 100.00f);
 
-            // NEW: Auto-assign UI references
+            // Auto-assign UI references
             AssignUIReferences(container, dualTransaction);
 
             Selection.activeGameObject = container;
@@ -192,7 +245,7 @@ namespace U3D.Editor
 
         private void CreateSceneGate()
         {
-            if (!ValidatePayPalSetup()) return;
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject gateObject = CreatePaymentUI("Scene Gate", CreateSceneGateUI);
 
@@ -203,7 +256,7 @@ namespace U3D.Editor
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(gateController.OpenGate);
 
-            // NEW: Auto-assign UI references
+            // Auto-assign UI references
             AssignUIReferences(gateObject, dualTransaction);
 
             LogToolCreation("Scene Gate", "Entry payment gate with automatic unlocking");
@@ -211,7 +264,7 @@ namespace U3D.Editor
 
         private void CreateShopObject()
         {
-            if (!ValidatePayPalSetup()) return;
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject shopObject = CreatePaymentUI("Shop Object", CreateShopObjectUI);
 
@@ -222,7 +275,7 @@ namespace U3D.Editor
 
         private void CreateEventGate()
         {
-            if (!ValidatePayPalSetup()) return;
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject eventObject = CreatePaymentUI("Event Gate", CreateEventGateUI);
 
@@ -233,7 +286,7 @@ namespace U3D.Editor
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(eventController.GrantAccess);
 
-            // NEW: Auto-assign UI references
+            // Auto-assign UI references
             AssignUIReferences(eventObject, dualTransaction);
 
             LogToolCreation("Event Gate", "Timed event access with payment verification");
@@ -241,7 +294,7 @@ namespace U3D.Editor
 
         private void CreateScreenShop()
         {
-            if (!ValidatePayPalSetup()) return;
+            if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject screenShop = CreateScreenOverlayUI("Screen Shop", CreateScreenShopUI);
 
@@ -740,7 +793,7 @@ namespace U3D.Editor
                 dualTransaction.SetItemDetails(item.itemName, item.description, item.price);
                 dualTransaction.SetVariableAmount(false);
 
-                // NEW: Auto-assign UI references for shop item buttons
+                // Auto-assign UI references for shop item buttons
                 dualTransaction.AssignEssentialReferences(
                     itemButton.GetComponent<Button>(),
                     null // Shop items don't have individual status text
@@ -879,22 +932,44 @@ namespace U3D.Editor
 
         #region Validation and Logging
 
-        private bool ValidatePayPalSetup()
+        // NEW: On-demand validation that follows SetupTab's optimistic pattern
+        private bool ValidatePayPalSetupOnDemand()
         {
-            // Only use ScriptableObject approach - no EditorPrefs
+            // Check both sources (same as CheckPayPalConfiguration)
+            string paypalEmailFromPrefs = EditorPrefs.GetString("U3D_PayPalEmail", "");
+
             var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string paypalEmail = (creatorData != null) ? creatorData.PayPalEmail : "";
+            string paypalEmailFromData = (creatorData != null) ? creatorData.PayPalEmail : "";
+
+            string paypalEmail = !string.IsNullOrEmpty(paypalEmailFromData) ? paypalEmailFromData : paypalEmailFromPrefs;
 
             if (string.IsNullOrEmpty(paypalEmail))
             {
-                EditorUtility.DisplayDialog(
+                // Show dialog and offer to go to Setup tab
+                bool goToSetup = EditorUtility.DisplayDialog(
                     "PayPal Setup Required",
-                    "Please configure your PayPal email in the Setup tab before creating monetization tools.\n\n" +
-                    "This enables the dual transaction system where you keep 95% of earnings.",
-                    "OK"
+                    "Please configure your PayPal email to enable monetization tools.\n\n" +
+                    "This enables the dual transaction system where you keep 95% of earnings.\n\n" +
+                    "Would you like to go to the Setup tab now?",
+                    "Yes, Take Me There", "Cancel"
                 );
+
+                if (goToSetup)
+                {
+                    OnRequestTabSwitch?.Invoke(0); // Switch to Setup tab
+                }
+
+                // Update our cached state since we now know it's not configured
+                paypalConfigured = false;
+                paypalConfigurationChecked = true;
+
                 return false;
             }
+
+            // Update our cached state since we now know it IS configured
+            paypalConfigured = true;
+            paypalConfigurationChecked = true;
+
             return true;
         }
 
