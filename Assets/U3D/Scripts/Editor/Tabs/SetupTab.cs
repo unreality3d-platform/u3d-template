@@ -25,7 +25,8 @@ namespace U3D.Editor
             LoggedIn
         }
 
-        private AuthState currentState = AuthState.ManualLogin;
+        // FIX #1: OPTIMISTIC DEFAULT STATE - Start with logged in appearance
+        private AuthState currentState = AuthState.LoggedIn;
         private string email = "";
         private string password = "";
         private string confirmPassword = "";
@@ -53,7 +54,6 @@ namespace U3D.Editor
 
         private static string SETUP_INITIALIZED_KEY => $"U3D_SetupTab_Initialized_{Application.dataPath.GetHashCode()}";
         private static string SETUP_AUTH_STATE_KEY => $"U3D_SetupTab_WasAuthenticated_{Application.dataPath.GetHashCode()}";
-
 
         /// <summary>
         /// CRITICAL: Check if we should skip operations during builds (same as existing classes)
@@ -115,11 +115,12 @@ namespace U3D.Editor
 
             // DON'T clear PayPal email - it should persist independently
 
-            // CRITICAL FIX: Reset initialization state (using build guards like existing classes)
+            // FIX #2: Clear completion flags including username completion
             if (!ShouldSkipDuringBuild())
             {
                 EditorPrefs.DeleteKey(SETUP_INITIALIZED_KEY);
                 EditorPrefs.DeleteKey(SETUP_AUTH_STATE_KEY);
+                EditorPrefs.DeleteKey($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}");
             }
 
             currentState = AuthState.ManualLogin;
@@ -136,35 +137,52 @@ namespace U3D.Editor
                 return;
             }
 
-            // User is logged in - check what setup steps are complete
+            // FIX #3: Check if username was previously completed
+            bool usernameWasPreviouslySet = false;
+            if (!ShouldSkipDuringBuild())
+            {
+                usernameWasPreviouslySet = EditorPrefs.GetBool($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}", false);
+            }
 
             // Check for username
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
-                // Try ONE profile reload attempt, but don't make it critical
-                try
+                // Only try reload if we haven't already confirmed username is set
+                if (!usernameWasPreviouslySet)
                 {
-                    await U3DAuthenticator.ForceProfileReload();
-                }
-                catch (Exception ex)
-                {
-                    // If profile reload fails with auth error, user needs to re-login
-                    if (ex.Message.Contains("Unauthenticated"))
+                    try
                     {
-                        UnityDebug.LogWarning("⚠️ Auth token expired during profile reload");
-                        currentState = AuthState.ManualLogin;
-                        SetupTabInitialized = false;
-                        UpdateCompletion();
-                        return;
+                        await U3DAuthenticator.ForceProfileReload();
                     }
-                    UnityDebug.LogWarning($"⚠️ Profile reload failed (continuing anyway): {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        // If profile reload fails with auth error, user needs to re-login
+                        if (ex.Message.Contains("Unauthenticated"))
+                        {
+                            UnityDebug.LogWarning("⚠️ Auth token expired during profile reload");
+                            currentState = AuthState.ManualLogin;
+                            SetupTabInitialized = false;
+                            UpdateCompletion();
+                            return;
+                        }
+                        UnityDebug.LogWarning($"⚠️ Profile reload failed (continuing anyway): {ex.Message}");
+                    }
                 }
             }
 
-            // Determine state based on what's completed
+            // FIX #4: Modified username check logic with persistence
             if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
-                currentState = AuthState.UsernameReservation;
+                // If username was previously completed but is now empty, it's a loading issue
+                if (usernameWasPreviouslySet)
+                {
+                    UnityDebug.Log("⏳ Username previously set but not loaded yet - staying in LoggedIn state");
+                    currentState = AuthState.LoggedIn; // Stay optimistic
+                }
+                else
+                {
+                    currentState = AuthState.UsernameReservation; // Actually needs username setup
+                }
             }
             else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
             {
@@ -277,7 +295,7 @@ namespace U3D.Editor
                     "This will log you out completely. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    LogoutAndReset(); // CHANGED: Use new method
+                    LogoutAndReset();
                 }
             }
         }
@@ -420,7 +438,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    LogoutAndReset(); // CHANGED: Use new method
+                    LogoutAndReset();
                 }
             }
         }
@@ -505,7 +523,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    LogoutAndReset(); // CHANGED: Use new method
+                    LogoutAndReset();
                 }
             }
         }
@@ -641,7 +659,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    LogoutAndReset(); // CHANGED: Use new method
+                    LogoutAndReset();
                 }
             }
         }
@@ -743,7 +761,7 @@ namespace U3D.Editor
                     "This will log you out and clear all stored credentials. Continue?",
                     "Yes, Logout", "Cancel"))
                 {
-                    LogoutAndReset(); // CHANGED: Use new method
+                    LogoutAndReset();
                 }
             }
         }
@@ -866,6 +884,12 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.ReserveUsername(desiredUsername);
                 if (success)
                 {
+                    // FIX #5: Mark username as completed when successfully reserved
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}", true);
+                    }
+
                     if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
