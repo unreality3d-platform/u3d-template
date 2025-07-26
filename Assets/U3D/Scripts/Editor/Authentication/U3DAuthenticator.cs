@@ -888,29 +888,52 @@ public static class U3DAuthenticator
         {
             var result = await CallFirebaseFunction("getUserProfile", new { });
 
-            if (result.ContainsKey("creatorUsername"))
-            {
-                _creatorUsername = result["creatorUsername"].ToString();
-            }
+            // FIX: Always update all fields, use empty string if not present
+            _creatorUsername = result.ContainsKey("creatorUsername") && result["creatorUsername"] != null
+                ? result["creatorUsername"].ToString()
+                : "";
 
-            if (result.ContainsKey("email"))
-            {
-                _userEmail = result["email"].ToString();
-            }
+            _userEmail = result.ContainsKey("email") && result["email"] != null
+                ? result["email"].ToString()
+                : _userEmail; // Keep existing if not provided
 
-            if (result.ContainsKey("displayName"))
-            {
-                _displayName = result["displayName"].ToString();
-            }
+            _displayName = result.ContainsKey("displayName") && result["displayName"] != null
+                ? result["displayName"].ToString()
+                : _displayName; // Keep existing if not provided
 
-            Debug.Log($"Profile loaded: {_userEmail}, Username: {_creatorUsername}");
+            // FIX: Always save after profile load to keep EditorPrefs in sync
+            SaveCredentials();
+
+            Debug.Log($"Profile loaded: {_userEmail}, Username: '{_creatorUsername}'");
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Profile load failed: {ex.Message}");
+            // Don't change _creatorUsername on failure - let existing logic handle it
         }
     }
 
+    public static async Task<bool> VerifyUsernameExists()
+    {
+        if (string.IsNullOrEmpty(_idToken))
+            return false;
+
+        try
+        {
+            var result = await CallFirebaseFunction("getUserProfile", new { });
+
+            bool hasUsername = result.ContainsKey("creatorUsername") &&
+                              !string.IsNullOrEmpty(result["creatorUsername"]?.ToString());
+
+            Debug.Log($"🔍 Username verification: HasUsername={hasUsername}");
+            return hasUsername;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Username verification failed: {ex.Message}");
+            return false; // Assume no username on verification failure
+        }
+    }
 
     private static void SaveCredentials()
     {
@@ -924,8 +947,10 @@ public static class U3DAuthenticator
                 EditorPrefs.SetString(USER_EMAIL_KEY, _userEmail);
             if (!string.IsNullOrEmpty(_displayName))
                 EditorPrefs.SetString(DISPLAY_NAME_KEY, _displayName);
-            if (!string.IsNullOrEmpty(_creatorUsername))
-                EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername);
+
+            // FIX: ALWAYS save creatorUsername, even if empty
+            // This ensures EditorPrefs stays in sync with memory
+            EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername ?? "");
         }
         EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, _stayLoggedIn);
     }
