@@ -275,11 +275,8 @@ namespace U3D.Editor
             {
                 availableOptions.Clear();
 
-                // Use sanitized Product Name for search since repo names are always sanitized
-                var sanitizedProductName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
-
-                // Get repositories that match current Product Name
-                var repoResult = await GitHubAPI.GetUserRepositories(sanitizedProductName, 50);
+                // Get ALL repositories (not filtered by name)
+                var repoResult = await GitHubAPI.GetUserRepositories("", 100);
 
                 if (!repoResult.Success)
                 {
@@ -289,53 +286,59 @@ namespace U3D.Editor
                     return;
                 }
 
-                // Analyze each repository and add UpdateExisting options
+                Debug.Log($"🔍 Found {repoResult.Repositories.Count} total repositories");
+
+                // Analyze each repository - ONLY show Unreality3D projects
                 foreach (var repo in repoResult.Repositories)
                 {
-                    // Check if it's a Unity project
-                    repo.IsUnityProject = await GitHubAPI.HasUnityWebGLFiles(repo.Name);
+                    // Enhanced detection: Only Unreality3D projects
+                    repo.IsUnreality3DProject = await GitHubAPI.WasCreatedWithUnreality3D(repo.Name);
 
-                    // Get GitHub Pages URL if available
-                    if (repo.HasPages)
+                    if (repo.IsUnreality3DProject)
                     {
-                        repo.GitHubPagesUrl = await GitHubAPI.GetGitHubPagesUrl(repo.Name);
-                    }
+                        // Get GitHub Pages URL if available
+                        if (repo.HasPages)
+                        {
+                            repo.GitHubPagesUrl = await GitHubAPI.GetGitHubPagesUrl(repo.Name);
+                        }
 
-                    // Create update option for existing repos that match current Product Name
-                    if (IsRelatedRepository(repo.Name, cachedProductName))
-                    {
                         availableOptions.Add(new ProjectOption
                         {
                             Type = ProjectOption.OptionType.UpdateExisting,
                             RepositoryName = repo.Name,
                             DisplayName = $"Update \"{repo.Name}\"",
-                            Description = repo.IsUnityProject ? "Unity WebGL repository" : "Repository",
+                            Description = repo.IsUnreality3DProject ? "Unreality3D project" : "Repository", 
                             ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{repo.Name}/",
                             GitHubPagesUrl = repo.GitHubPagesUrl,
                             LastUpdated = repo.UpdatedAt,
-                            IsUnityProject = repo.IsUnityProject
+                            IsUnreality3DProject = repo.IsUnreality3DProject // This property name could also be renamed for clarity
                         });
+
+                        Debug.Log($"✅ Added Unreality3D repository: {repo.Name}");
+                    }
+                    else
+                    {
+                        Debug.Log($"⏭️ Skipped non-Unreality3D repository: {repo.Name}");
                     }
                 }
 
-                // Always add "Create New Repository" option 
+                // Always add "Create New Repository" option
                 availableOptions.Add(new ProjectOption
                 {
                     Type = ProjectOption.OptionType.CreateNew,
-                    RepositoryName = "new-repository", // Placeholder - will be updated based on Product Name
+                    RepositoryName = "new-repository",
                     DisplayName = "Create New Repository",
-                    Description = "New Unity WebGL repository",
+                    Description = "New Unreality3D WebGL project", // Updated description
                     ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/[product-name]/",
                     GitHubPagesUrl = null,
                     LastUpdated = null,
-                    IsUnityProject = false
+                    IsUnreality3DProject = false
                 });
 
-                // Auto-select the first option
-                if (availableOptions.Count > 0)
-                {
-                    selectedOptionIndex = 0;
-                }
+                Debug.Log($"🎯 Final options: {availableOptions.Count} ({availableOptions.Count - 1} Unreality3D projects + 1 new)");
+
+                // Smart default selection
+                selectedOptionIndex = DetermineDefaultSelection();
 
                 optionsLoaded = true;
                 loadingOptions = false;
@@ -346,6 +349,35 @@ namespace U3D.Editor
                 optionsLoaded = true;
                 loadingOptions = false;
             }
+        }
+
+        // Smart default selection logic
+        private int DetermineDefaultSelection()
+        {
+            if (availableOptions.Count == 0)
+                return -1;
+
+            // Get sanitized current Product Name for comparison
+            var sanitizedCurrentProduct = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+            Debug.Log($"🔍 Looking for repo matching current Product Name: '{cachedProductName}' → '{sanitizedCurrentProduct}'");
+
+            // Look for exact match with current Product Name
+            for (int i = 0; i < availableOptions.Count; i++)
+            {
+                var option = availableOptions[i];
+
+                if (option.Type == ProjectOption.OptionType.UpdateExisting &&
+                    string.Equals(option.RepositoryName, sanitizedCurrentProduct, StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"✅ Found matching repository: {option.RepositoryName} - selecting update option");
+                    return i;
+                }
+            }
+
+            // No match found - default to "Create New Repository" (which should be the last option)
+            var createNewIndex = availableOptions.Count - 1;
+            Debug.Log($"📝 No matching repository found - selecting 'Create New' option at index {createNewIndex}");
+            return createNewIndex;
         }
 
         private void DrawRepositoryOptions()
@@ -365,10 +397,31 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Choose your publishing option:", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            // Check if current Product Name conflicts with existing repositories
-            var hasNameConflict = availableOptions.Any(opt =>
+            // Check if current Product Name would create a repository that conflicts with existing ones
+            var sanitizedCurrentProduct = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+            var matchingRepo = availableOptions.FirstOrDefault(opt =>
                 opt.Type == ProjectOption.OptionType.UpdateExisting &&
-                string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+                string.Equals(opt.RepositoryName, sanitizedCurrentProduct, StringComparison.OrdinalIgnoreCase));
+
+            bool hasMatchingRepo = matchingRepo != null;
+
+            // Show helpful context about current selection
+            if (hasMatchingRepo)
+            {
+                EditorGUILayout.HelpBox(
+                    $"💡 Your current Product Name \"{cachedProductName}\" matches the repository \"{matchingRepo.RepositoryName}\". " +
+                    "The update option is selected by default, but you can choose 'Create New Repository' to make a separate project.",
+                    MessageType.Info);
+                EditorGUILayout.Space(5);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    $"📝 Your current Product Name \"{cachedProductName}\" will create a new repository. " +
+                    "You can also choose to update any of your existing Unity projects below.",
+                    MessageType.Info);
+                EditorGUILayout.Space(5);
+            }
 
             // Draw radio button options
             for (int i = 0; i < availableOptions.Count; i++)
@@ -392,25 +445,33 @@ namespace U3D.Editor
 
                 var style = new GUIStyle(EditorStyles.boldLabel);
 
-                // Color logic - Green for update existing, Yellow for create new
-                if (option.Type == ProjectOption.OptionType.CreateNew && option.RepositoryName == "new-repository")
+                // Color logic with enhanced matching indication
+                if (option.Type == ProjectOption.OptionType.CreateNew)
                 {
                     style.normal.textColor = Color.yellow;
+                }
+                else if (hasMatchingRepo && option.RepositoryName == matchingRepo.RepositoryName)
+                {
+                    style.normal.textColor = Color.cyan; // Special color for matching repo
                 }
                 else
                 {
                     style.normal.textColor = Color.green;
                 }
 
-                // Display text
+                // Display text with enhanced matching indication
                 string displayText;
                 if (option.Type == ProjectOption.OptionType.UpdateExisting)
                 {
-                    displayText = option.DisplayName; // "Update 'repo-name'"
+                    displayText = option.DisplayName;
+                    if (hasMatchingRepo && option.RepositoryName == matchingRepo.RepositoryName)
+                    {
+                        displayText += " (matches current Product Name)";
+                    }
                 }
                 else
                 {
-                    displayText = "Create New Repository"; // The create new option
+                    displayText = "Create New Repository";
                 }
 
                 EditorGUILayout.LabelField(displayText, style);
@@ -458,33 +519,48 @@ namespace U3D.Editor
 
                         Debug.Log($"Product Name updated to: {newProductName}");
 
-                        // Recalculate validation for immediate feedback
-                        hasNameConflict = availableOptions.Any(opt =>
-                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
-                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+                        // Recalculate default selection based on new Product Name
+                        var previousSelection = selectedOptionIndex;
+                        selectedOptionIndex = DetermineDefaultSelection();
+
+                        // UX IMPROVEMENT: If selection changed to an existing repo, show warning and scroll behavior
+                        if (selectedOptionIndex != previousSelection && selectedOptionIndex < availableOptions.Count - 1)
+                        {
+                            var matchedRepo = availableOptions[selectedOptionIndex];
+                            EditorUtility.DisplayDialog("Existing Repository Found",
+                                $"Your Product Name '{newProductName}' matches an existing Unreality3D project '{matchedRepo.RepositoryName}'.\n\n" +
+                                "The matching repository has been automatically selected above. If you want to create a new repository instead, " +
+                                "choose a different Product Name.",
+                                "OK");
+                        }
                     }
                     GUI.enabled = true;
 
-                    // Update cached name for real-time validation feedback
+                    // Update cached name for real-time feedback
                     if (nameChangedInField)
                     {
                         cachedProductName = newProductName;
-                        // Recalculate conflict status for immediate visual feedback
-                        hasNameConflict = availableOptions.Any(opt =>
-                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
-                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
                     }
 
                     EditorGUILayout.EndHorizontal();
 
-                    // Show validation message if name conflicts with existing repos
-                    if (hasNameConflict && isSelected)
+                    // ENHANCED: Smart repository name preview
+                    var wouldCreateRepo = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                    var wouldConflict = availableOptions.Any(opt =>
+                        opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                        string.Equals(opt.RepositoryName, wouldCreateRepo, StringComparison.OrdinalIgnoreCase));
+
+                    if (wouldConflict)
                     {
-                        EditorGUILayout.Space(3);
-                        EditorGUILayout.HelpBox(
-                            "⚠️ This Product Name matches an existing repository. Please change the Product Name above to create a new repository.",
-                            MessageType.Warning
-                        );
+                        EditorGUILayout.LabelField($"⚠️ Repository '{wouldCreateRepo}' already exists above", EditorStyles.miniLabel);
+                    }
+                    else if (isSelected) // Only show "will create" when this option is actually selected
+                    {
+                        EditorGUILayout.LabelField($"Will create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
+                    }
+                    else
+                    {
+                        EditorGUILayout.LabelField($"Would create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
                     }
                 }
 
@@ -501,50 +577,84 @@ namespace U3D.Editor
             bool canPublish = selectedOptionIndex >= 0;
             string validationError = null;
 
-            // Additional validation for Create New Repository option with name conflict
-            if (canPublish && selectedOptionIndex < availableOptions.Count)
+            // Get the selected option for validation
+            ProjectOption selectedOption = null;
+            if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
             {
-                var selectedOption = availableOptions[selectedOptionIndex];
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew &&
-                    selectedOption.RepositoryName == "new-repository" &&
-                    hasNameConflict)
-                {
-                    canPublish = false;
-                }
+                selectedOption = availableOptions[selectedOptionIndex];
             }
 
-            // Validate Product Name before allowing publish
-            if (canPublish && !ValidateProductName(cachedProductName, out validationError))
+            // Validate based on what's actually selected
+            if (canPublish && selectedOption != null)
             {
-                canPublish = false;
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
+                {
+                    // For Create New: validate Product Name
+                    if (!ValidateProductName(cachedProductName, out validationError))
+                    {
+                        canPublish = false;
+                    }
+                    else
+                    {
+                        // Check if Product Name conflicts with existing repo
+                        var hasConflictingRepo = availableOptions.Any(opt =>
+                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+
+                        if (hasConflictingRepo)
+                        {
+                            validationError = $"Repository '{GitHubAPI.SanitizeRepositoryName(cachedProductName)}' already exists. Use the Update option above or change the Product Name.";
+                            canPublish = false;
+                        }
+                    }
+                }
+                else if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    // For Update Existing: always allow (no additional validation needed)
+                    canPublish = true;
+                }
             }
 
             GUI.enabled = canPublish;
             if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
             {
-                var selectedOption = availableOptions[selectedOptionIndex];
-
-                string targetRepositoryName;
-
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
                     // Use current Product Name for new repository
-                    targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                    var targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
                     shouldCreateNewRepository = true;
                     Debug.Log($"🎯 CREATE NEW REPOSITORY: '{targetRepositoryName}' from Product Name: '{cachedProductName}'");
+                    EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
                 }
                 else
                 {
-                    // Update existing repository
-                    targetRepositoryName = selectedOption.RepositoryName;
+                    // Update existing repository with confirmation
+                    var targetRepositoryName = selectedOption.RepositoryName;
                     shouldCreateNewRepository = false;
-                    Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name: '{cachedProductName}')");
+
+                    // Show confirmation dialog for updates
+                    if (EditorUtility.DisplayDialog("Confirm Repository Update",
+                        $"You are about to update the existing repository '{targetRepositoryName}'.\n\n" +
+                        "This will overwrite the current content with your new build.\n\n" +
+                        "Are you sure you want to continue?",
+                        "Yes, Update", "Cancel"))
+                    {
+                        Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name: '{cachedProductName}')");
+                        EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
+                        _ = StartFirebasePublishProcessAsync();
+                    }
+                    else
+                    {
+                        Debug.Log("Repository update cancelled by user");
+                        GUI.enabled = true;
+                        return; // User cancelled
+                    }
                 }
 
-                // Store the target repository name for deployment
-                EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
-
-                _ = StartFirebasePublishProcessAsync();
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
+                {
+                    _ = StartFirebasePublishProcessAsync();
+                }
             }
             GUI.enabled = true;
 
@@ -553,22 +663,6 @@ namespace U3D.Editor
             {
                 EditorGUILayout.Space(5);
                 EditorGUILayout.HelpBox($"⚠️ {validationError}", MessageType.Warning);
-            }
-
-            // Show helpful message when button is disabled due to name conflict
-            if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
-            {
-                var selectedOption = availableOptions[selectedOptionIndex];
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew &&
-                    selectedOption.RepositoryName == "new-repository" &&
-                    hasNameConflict && string.IsNullOrEmpty(validationError))
-                {
-                    EditorGUILayout.Space(5);
-                    EditorGUILayout.HelpBox(
-                        "💡 Change the Product Name above and click 'Update' to create a repository with a unique name.",
-                        MessageType.Info
-                    );
-                }
             }
         }
 
@@ -593,6 +687,23 @@ namespace U3D.Editor
         {
             try
             {
+                // Get selected option details
+                var selectedOption = availableOptions[selectedOptionIndex];
+
+                // ENHANCED: Add confirmation for repository updates
+                if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    var confirmMessage = $"You are about to update the existing repository '{selectedOption.RepositoryName}'.\n\n" +
+                                        "This will overwrite the current content with your new build.\n\n" +
+                                        "Are you sure you want to continue?";
+
+                    if (!EditorUtility.DisplayDialog("Confirm Repository Update", confirmMessage, "Yes, Update", "Cancel"))
+                    {
+                        Debug.Log("Repository update cancelled by user");
+                        return; // User cancelled
+                    }
+                }
+
                 await StartFirebasePublishProcess();
             }
             catch (System.Exception ex)
@@ -608,6 +719,34 @@ namespace U3D.Editor
                 projectBuilt = false;
                 deploymentComplete = false;
                 isPublishing = false;
+            }
+        }
+
+        // Visual feedback when Product Name matches existing repo
+        private void HandleProductNameMatchFeedback()
+        {
+            var sanitizedCurrentProduct = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+            var matchingRepoIndex = -1;
+
+            for (int i = 0; i < availableOptions.Count; i++)
+            {
+                var option = availableOptions[i];
+                if (option.Type == ProjectOption.OptionType.UpdateExisting &&
+                    string.Equals(option.RepositoryName, sanitizedCurrentProduct, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchingRepoIndex = i;
+                    break;
+                }
+            }
+
+            // If we found a match and it's not currently selected, provide feedback
+            if (matchingRepoIndex >= 0 && selectedOptionIndex != matchingRepoIndex)
+            {
+                EditorGUILayout.Space(5);
+                EditorGUILayout.HelpBox(
+                    $"💡 Note: Your Product Name '{cachedProductName}' matches the repository '{availableOptions[matchingRepoIndex].RepositoryName}' shown above. " +
+                    "You may want to select that option to update your existing project, or change the Product Name to create something new.",
+                    MessageType.Info);
             }
         }
 
@@ -974,7 +1113,7 @@ namespace U3D.Editor
         public string ProfessionalUrl { get; set; }
         public string GitHubPagesUrl { get; set; }
         public DateTime? LastUpdated { get; set; }
-        public bool IsUnityProject { get; set; }
+        public bool IsUnreality3DProject { get; set; }
     }
 
     [System.Serializable]
