@@ -137,28 +137,40 @@ namespace U3D.Editor
                 return;
             }
 
-            // Check if username was previously completed
-            bool usernameWasPreviouslySet = false;
-            if (!ShouldSkipDuringBuild())
+            // Get current username state
+            string currentUsername = U3DAuthenticator.CreatorUsername;
+
+            // If username is missing locally, try to reload from server
+            if (string.IsNullOrEmpty(currentUsername))
             {
-                usernameWasPreviouslySet = EditorPrefs.GetBool($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}", false);
+                try
+                {
+                    await U3DAuthenticator.ForceProfileReload();
+                    currentUsername = U3DAuthenticator.CreatorUsername;
+                }
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("Unauthenticated"))
+                    {
+                        UnityDebug.LogWarning("⚠️ Auth token expired during profile reload");
+                        currentState = AuthState.ManualLogin;
+                        SetupTabInitialized = false;
+                        UpdateCompletion();
+                        return;
+                    }
+                    UnityDebug.LogWarning($"⚠️ Profile reload failed (continuing anyway): {ex.Message}");
+                }
             }
 
-            // FIX: Get current username state
-            string currentUsername = U3DAuthenticator.CreatorUsername;
-            UnityDebug.Log($"🔍 Current username state: '{currentUsername}', Previously completed: {usernameWasPreviouslySet}");
-
-            // FIX: If username was previously completed but is now empty, verify with server
-            if (usernameWasPreviouslySet && string.IsNullOrEmpty(currentUsername))
+            // If still no username after reload, check server one more time
+            if (string.IsNullOrEmpty(currentUsername))
             {
-                UnityDebug.Log("⚠️ Username was completed but is now empty - verifying with server...");
-
                 bool serverHasUsername = await U3DAuthenticator.VerifyUsernameExists();
 
                 if (serverHasUsername)
                 {
-                    // Server has username, but local is empty - reload profile
-                    UnityDebug.Log("🔄 Server has username - reloading profile...");
+                    // Server has username but local is empty - force reload
+                    UnityDebug.Log("🔄 Server has username but local is empty - forcing profile reload");
                     try
                     {
                         await U3DAuthenticator.ForceProfileReload();
@@ -166,34 +178,15 @@ namespace U3D.Editor
                     }
                     catch (Exception ex)
                     {
-                        UnityDebug.LogWarning($"⚠️ Profile reload failed: {ex.Message}");
+                        UnityDebug.LogWarning($"⚠️ Profile reload after server check failed: {ex.Message}");
                     }
-                }
-                else
-                {
-                    // Server doesn't have username - clear the completion flag
-                    UnityDebug.Log("❌ Server doesn't have username - clearing completion flag");
-                    if (!ShouldSkipDuringBuild())
-                    {
-                        EditorPrefs.DeleteKey($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}");
-                    }
-                    usernameWasPreviouslySet = false;
                 }
             }
 
-            // Standard username check with improved logic
+            // Now determine state based on what we actually have
             if (string.IsNullOrEmpty(currentUsername))
             {
-                if (usernameWasPreviouslySet)
-                {
-                    UnityDebug.Log("⏳ Username marked as completed but still loading - staying optimistic");
-                    currentState = AuthState.LoggedIn;
-                }
-                else
-                {
-                    UnityDebug.Log("📝 No username found - needs reservation");
-                    currentState = AuthState.UsernameReservation;
-                }
+                currentState = AuthState.UsernameReservation;
             }
             else if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
             {
@@ -895,21 +888,7 @@ namespace U3D.Editor
                 bool success = await U3DAuthenticator.ReserveUsername(desiredUsername);
                 if (success)
                 {
-                    // FIX: Mark username as completed AND verify it stuck
-                    if (!ShouldSkipDuringBuild())
-                    {
-                        EditorPrefs.SetBool($"U3D_UsernameCompleted_{Application.dataPath.GetHashCode()}", true);
-                    }
-
-                    // FIX: Verify the username was actually saved
-                    string verifyUsername = U3DAuthenticator.CreatorUsername;
-                    if (string.IsNullOrEmpty(verifyUsername))
-                    {
-                        UnityDebug.LogWarning("⚠️ Username reservation succeeded but local state is empty");
-                        // Force reload to get the username
-                        await U3DAuthenticator.ForceProfileReload();
-                    }
-
+                    // Move to next step based on what's needed
                     if (string.IsNullOrEmpty(GetSavedPayPalEmail()))
                     {
                         currentState = AuthState.PayPalSetup;
