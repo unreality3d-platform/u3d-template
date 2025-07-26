@@ -369,7 +369,7 @@ namespace U3D.Editor
                 if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
                 {
                     shouldCreateNewRepository = true;
-                    _ = StartFirebasePublishProcessAsync();
+                    _ = StartFirebasePublishProcess();
                 }
                 return;
             }
@@ -621,7 +621,7 @@ namespace U3D.Editor
                     {
                         Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name: '{cachedProductName}')");
                         EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
-                        _ = StartFirebasePublishProcessAsync();
+                        _ = StartFirebasePublishProcess();
                     }
                     else
                     {
@@ -633,7 +633,7 @@ namespace U3D.Editor
 
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
-                    _ = StartFirebasePublishProcessAsync();
+                    _ = StartFirebasePublishProcess();
                 }
             }
             GUI.enabled = true;
@@ -661,45 +661,6 @@ namespace U3D.Editor
                 return true;
 
             return false;
-        }
-
-        private async System.Threading.Tasks.Task StartFirebasePublishProcessAsync()
-        {
-            try
-            {
-                // Get selected option details
-                var selectedOption = availableOptions[selectedOptionIndex];
-
-                // ENHANCED: Add confirmation for repository updates
-                if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
-                {
-                    var confirmMessage = $"You are about to update the existing repository '{selectedOption.RepositoryName}'.\n\n" +
-                                        "This will overwrite the current content with your new build.\n\n" +
-                                        "Are you sure you want to continue?";
-
-                    if (!EditorUtility.DisplayDialog("Confirm Repository Update", confirmMessage, "Yes, Update", "Cancel"))
-                    {
-                        Debug.Log("Repository update cancelled by user");
-                        return; // User cancelled
-                    }
-                }
-
-                await StartFirebasePublishProcess();
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Firebase async publishing failed: {ex.Message}");
-                EditorUtility.DisplayDialog("Publishing Failed", $"There was an error: {ex.Message}", "OK");
-
-                currentStep = PublishStep.Ready;
-                currentStatus = $"Publishing failed: {ex.Message}";
-
-                // Reset states
-                githubConnected = false;
-                projectBuilt = false;
-                deploymentComplete = false;
-                isPublishing = false;
-            }
         }
 
         // Visual feedback when Product Name matches existing repo
@@ -778,7 +739,6 @@ namespace U3D.Editor
             EditorGUILayout.Space(3);
         }
 
-        // FIX #3: Add authentication validation at actual publish time
         private async System.Threading.Tasks.Task StartFirebasePublishProcess()
         {
             isPublishing = true;
@@ -816,7 +776,6 @@ namespace U3D.Editor
 
                 MarkPublishSuccess(successUrl, repositoryName);
                 currentStatus = "Publishing completed successfully!";
-
                 ShowDeploymentSummary(repositoryName);
             }
             catch (System.Exception ex)
