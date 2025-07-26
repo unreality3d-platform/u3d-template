@@ -10,7 +10,6 @@ using Newtonsoft.Json;
 using System.Text;
 using System.Reflection;
 
-
 namespace U3D.Editor
 {
     public class PublishTab : ICreatorTab
@@ -212,6 +211,7 @@ namespace U3D.Editor
             EditorGUILayout.EndScrollView();
         }
 
+        // FIX #1: Make CanPublish() optimistic - assume we can publish unless compilation is happening
         private bool CanPublish()
         {
             // CRITICAL: Return false if we're in compilation/build state (same pattern as existing classes)
@@ -220,14 +220,14 @@ namespace U3D.Editor
                 return false;
             }
 
-            return U3DAuthenticator.IsLoggedIn &&
-                   !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername) &&
-                   GitHubTokenManager.HasValidToken;
+            // OPTIMISTIC: Assume we can publish - authentication will be validated when actually needed
+            return true;
         }
 
+        // FIX #2: Make DrawPrerequisites() less aggressive about redirecting
         private void DrawPrerequisites()
         {
-            EditorGUILayout.LabelField("Prerequisites", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Checking prerequisites...", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
             // CRITICAL: Show compilation message if we're in that state (same pattern as existing classes)
@@ -237,29 +237,12 @@ namespace U3D.Editor
                 return;
             }
 
-            if (!U3DAuthenticator.IsLoggedIn)
+            // OPTIMISTIC: Show publish interface but validate on actual publish attempt
+            EditorGUILayout.HelpBox("📋 Authentication will be verified when you publish.", MessageType.Info);
+
+            if (GUILayout.Button("Check Setup Status", GUILayout.Height(30)))
             {
-                EditorGUILayout.HelpBox("❌ Please complete authentication in the Setup tab first.", MessageType.Warning);
-                if (GUILayout.Button("Go to Setup Tab"))
-                {
-                    OnRequestTabSwitch?.Invoke(0);
-                }
-            }
-            else if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-            {
-                EditorGUILayout.HelpBox("❌ Please reserve your creator username in the Setup tab first.", MessageType.Warning);
-                if (GUILayout.Button("Go to Setup Tab"))
-                {
-                    OnRequestTabSwitch?.Invoke(0);
-                }
-            }
-            else if (!GitHubTokenManager.HasValidToken)
-            {
-                EditorGUILayout.HelpBox("❌ GitHub token not configured. Please set up your GitHub token in the Setup tab.", MessageType.Warning);
-                if (GUILayout.Button("Go to Setup Tab"))
-                {
-                    OnRequestTabSwitch?.Invoke(0);
-                }
+                OnRequestTabSwitch?.Invoke(0);
             }
         }
 
@@ -676,8 +659,34 @@ namespace U3D.Editor
             EditorGUILayout.Space(3);
         }
 
+        // FIX #3: Add authentication validation at actual publish time
         private async System.Threading.Tasks.Task StartFirebasePublishProcess()
         {
+            // VALIDATE AUTHENTICATION AT PUBLISH TIME (not before)
+            if (!U3DAuthenticator.IsLoggedIn)
+            {
+                EditorUtility.DisplayDialog("Authentication Required",
+                    "Please complete authentication in the Setup tab first.", "OK");
+                OnRequestTabSwitch?.Invoke(0);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                EditorUtility.DisplayDialog("Username Required",
+                    "Please reserve your creator username in the Setup tab first.", "OK");
+                OnRequestTabSwitch?.Invoke(0);
+                return;
+            }
+
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                EditorUtility.DisplayDialog("GitHub Required",
+                    "Please set up your GitHub token in the Setup tab first.", "OK");
+                OnRequestTabSwitch?.Invoke(0);
+                return;
+            }
+
             isPublishing = true;
 
             try

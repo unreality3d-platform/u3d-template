@@ -57,14 +57,56 @@ public class ProjectStartupConfiguration
 
         try
         {
-            // Build target logic (unchanged)
-            if (!hasSetBuildTarget && EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            // FIX #1: Always switch to WebGL if not already set (removed hasSetBuildTarget check)
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
-                // ... existing build target logic unchanged ...
+                Debug.Log("🔄 U3D SDK: Switching build target to WebGL...");
+
+                bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(
+                    BuildTargetGroup.WebGL,
+                    BuildTarget.WebGL
+                );
+
+                if (success)
+                {
+                    Debug.Log("✅ U3D SDK: Build target switched to WebGL successfully");
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    }
+                }
+                else
+                {
+                    Debug.LogError("❌ U3D SDK: WEBGL BUILD SUPPORT NOT INSTALLED");
+                    Debug.LogError("📋 TO FIX: Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support");
+
+                    EditorUtility.DisplayDialog(
+                        "WebGL Build Support Required",
+                        "This Unreality3D template requires WebGL Build Support to function properly.\n\n" +
+                        "To install:\n" +
+                        "1. Open Unity Hub\n" +
+                        "2. Go to Installs tab\n" +
+                        "3. Click the gear icon next to your Unity version\n" +
+                        "4. Select 'Add Modules'\n" +
+                        "5. Check 'WebGL Build Support'\n" +
+                        "6. Install and restart Unity",
+                        "OK"
+                    );
+                    return;
+                }
+            }
+            else if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.WebGL)
+            {
+                if (!hasSetBuildTarget)
+                {
+                    Debug.Log("✅ U3D SDK: Build target is already set to WebGL");
+                    if (!ShouldSkipDuringBuild())
+                    {
+                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                    }
+                }
             }
 
-            // COORDINATED SCENE LOADING: Use the same "first time" system as the dashboard
-            bool hasOpenedBefore = false;
             bool hasLoadedStartupScene = false;
 
             if (!ShouldSkipDuringBuild())
@@ -96,7 +138,8 @@ public class ProjectStartupConfiguration
 
                 bool shouldLoadStartupScene = isEmptyScene || sceneIsEmpty;
 
-                Debug.Log($"🔍 U3D SDK: First time check - HasOpenedBefore: {hasOpenedBefore}, " +
+                // FIX #2: Removed reference to non-existent hasOpenedBefore variable
+                Debug.Log($"🔍 U3D SDK: First time check - " +
                          $"HasLoadedScene: {hasLoadedStartupScene}, ShouldLoad: {shouldLoadStartupScene}");
 
                 if (shouldLoadStartupScene)
@@ -115,10 +158,7 @@ public class ProjectStartupConfiguration
                     EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
                 }
             }
-            else if (hasOpenedBefore)
-            {
-                Debug.Log("ℹ️ U3D SDK: Not first time - respecting user's scene choice");
-            }
+            // FIX #3: Removed the else if block that referenced hasOpenedBefore
 
             Debug.Log("✅ U3D SDK: Project startup configuration complete");
         }
