@@ -275,7 +275,6 @@ namespace U3D.Editor
             {
                 availableOptions.Clear();
 
-                // Get ALL repositories (not filtered by name)
                 var repoResult = await GitHubAPI.GetUserRepositories("", 100);
 
                 if (!repoResult.Success)
@@ -286,17 +285,13 @@ namespace U3D.Editor
                     return;
                 }
 
-                Debug.Log($"🔍 Found {repoResult.Repositories.Count} total repositories");
-
-                // Analyze each repository - ONLY show Unreality3D projects
+                // Clean processing without spam
                 foreach (var repo in repoResult.Repositories)
                 {
-                    // Enhanced detection: Only Unreality3D projects
                     repo.IsUnreality3DProject = await GitHubAPI.WasCreatedWithUnreality3D(repo.Name);
 
                     if (repo.IsUnreality3DProject)
                     {
-                        // Get GitHub Pages URL if available
                         if (repo.HasPages)
                         {
                             repo.GitHubPagesUrl = await GitHubAPI.GetGitHubPagesUrl(repo.Name);
@@ -307,18 +302,12 @@ namespace U3D.Editor
                             Type = ProjectOption.OptionType.UpdateExisting,
                             RepositoryName = repo.Name,
                             DisplayName = $"Update \"{repo.Name}\"",
-                            Description = repo.IsUnreality3DProject ? "Unreality3D project" : "Repository", 
+                            Description = "Unreality3D project",
                             ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/{repo.Name}/",
                             GitHubPagesUrl = repo.GitHubPagesUrl,
                             LastUpdated = repo.UpdatedAt,
-                            IsUnreality3DProject = repo.IsUnreality3DProject // This property name could also be renamed for clarity
+                            IsUnreality3DProject = repo.IsUnreality3DProject
                         });
-
-                        Debug.Log($"✅ Added Unreality3D repository: {repo.Name}");
-                    }
-                    else
-                    {
-                        Debug.Log($"⏭️ Skipped non-Unreality3D repository: {repo.Name}");
                     }
                 }
 
@@ -328,18 +317,14 @@ namespace U3D.Editor
                     Type = ProjectOption.OptionType.CreateNew,
                     RepositoryName = "new-repository",
                     DisplayName = "Create New Repository",
-                    Description = "New Unreality3D WebGL project", // Updated description
+                    Description = "New Unreality3D project",
                     ProfessionalUrl = $"https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/[product-name]/",
                     GitHubPagesUrl = null,
                     LastUpdated = null,
                     IsUnreality3DProject = false
                 });
 
-                Debug.Log($"🎯 Final options: {availableOptions.Count} ({availableOptions.Count - 1} Unreality3D projects + 1 new)");
-
-                // Smart default selection
                 selectedOptionIndex = DetermineDefaultSelection();
-
                 optionsLoaded = true;
                 loadingOptions = false;
             }
@@ -357,9 +342,7 @@ namespace U3D.Editor
             if (availableOptions.Count == 0)
                 return -1;
 
-            // Get sanitized current Product Name for comparison
             var sanitizedCurrentProduct = GitHubAPI.SanitizeRepositoryName(cachedProductName);
-            Debug.Log($"🔍 Looking for repo matching current Product Name: '{cachedProductName}' → '{sanitizedCurrentProduct}'");
 
             // Look for exact match with current Product Name
             for (int i = 0; i < availableOptions.Count; i++)
@@ -369,15 +352,12 @@ namespace U3D.Editor
                 if (option.Type == ProjectOption.OptionType.UpdateExisting &&
                     string.Equals(option.RepositoryName, sanitizedCurrentProduct, StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"✅ Found matching repository: {option.RepositoryName} - selecting update option");
-                    return i;
+                    return i; // Found matching repository
                 }
             }
 
-            // No match found - default to "Create New Repository" (which should be the last option)
-            var createNewIndex = availableOptions.Count - 1;
-            Debug.Log($"📝 No matching repository found - selecting 'Create New' option at index {createNewIndex}");
-            return createNewIndex;
+            // Default to "Create New Repository" (last option)
+            return availableOptions.Count - 1;
         }
 
         private void DrawRepositoryOptions()
@@ -801,31 +781,6 @@ namespace U3D.Editor
         // FIX #3: Add authentication validation at actual publish time
         private async System.Threading.Tasks.Task StartFirebasePublishProcess()
         {
-            // VALIDATE AUTHENTICATION AT PUBLISH TIME (not before)
-            if (!U3DAuthenticator.IsLoggedIn)
-            {
-                EditorUtility.DisplayDialog("Authentication Required",
-                    "Please complete authentication in the Setup tab first.", "OK");
-                OnRequestTabSwitch?.Invoke(0);
-                return;
-            }
-
-            if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
-            {
-                EditorUtility.DisplayDialog("Username Required",
-                    "Please reserve your creator username in the Setup tab first.", "OK");
-                OnRequestTabSwitch?.Invoke(0);
-                return;
-            }
-
-            if (!GitHubTokenManager.HasValidToken)
-            {
-                EditorUtility.DisplayDialog("GitHub Required",
-                    "Please set up your GitHub token in the Setup tab first.", "OK");
-                OnRequestTabSwitch?.Invoke(0);
-                return;
-            }
-
             isPublishing = true;
 
             try
@@ -855,26 +810,22 @@ namespace U3D.Editor
 
                 deploymentComplete = true;
 
-                // Complete - use corrected variable names
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
                 var repositoryName = deployResult.RepositoryName ?? deployResult.ProjectName ?? GitHubAPI.SanitizeRepositoryName(cachedProductName);
                 var successUrl = deployResult.ProfessionalUrl ?? $"https://{creatorUsername}.unreality3d.com/{repositoryName}/";
 
                 MarkPublishSuccess(successUrl, repositoryName);
-
                 currentStatus = "Publishing completed successfully!";
 
                 ShowDeploymentSummary(repositoryName);
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"Firebase publishing failed: {ex.Message}");
+                Debug.LogError($"Publishing failed: {ex.Message}");
                 EditorUtility.DisplayDialog("Publishing Failed", $"There was an error: {ex.Message}", "OK");
 
                 currentStep = PublishStep.Ready;
                 currentStatus = $"Publishing failed: {ex.Message}";
-
-                // Reset states
                 githubConnected = false;
                 projectBuilt = false;
                 deploymentComplete = false;
@@ -889,7 +840,6 @@ namespace U3D.Editor
         {
             try
             {
-                // Validate build requirements
                 if (!UnityBuildHelper.ValidateBuildRequirements())
                 {
                     return new UnityBuildResult
@@ -900,9 +850,7 @@ namespace U3D.Editor
                 }
 
                 var buildPath = Path.Combine(Path.GetDirectoryName(Application.dataPath), "WebGL");
-
                 currentStatus = $"Building to: {buildPath}";
-                Debug.Log($"🎯 Building Unity WebGL to: {buildPath}");
 
                 var buildResult = await UnityBuildHelper.BuildWebGL(buildPath, (status) =>
                 {
@@ -926,21 +874,16 @@ namespace U3D.Editor
             try
             {
                 currentStatus = "Determining repository name...";
-
                 string targetRepositoryName = EditorPrefs.GetString("U3D_TargetRepository", "");
 
                 if (string.IsNullOrEmpty(targetRepositoryName))
                 {
-                    // Fallback to sanitized Product Name
                     targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
-                    Debug.LogWarning($"No target repository stored, using fallback: {targetRepositoryName}");
                 }
 
                 var deploymentIntent = shouldCreateNewRepository ? "create_new" : "update_existing";
-
-                Debug.Log($"🎯 Deployment: {deploymentIntent}, Target: '{targetRepositoryName}', Product Name: '{cachedProductName}'");
-
                 currentStatus = "Uploading build to Firebase Storage...";
+
                 var storageBucket = FirebaseConfigManager.CurrentConfig?.storageBucket ?? "unreality3d.firebasestorage.app";
                 if (string.IsNullOrEmpty(storageBucket) || storageBucket == "setup-required")
                 {
@@ -965,7 +908,7 @@ namespace U3D.Editor
                     if (!ShouldSkipDuringBuild())
                     {
                         EditorPrefs.SetString("U3D_LastRepositoryName", actualRepositoryName);
-                        EditorPrefs.DeleteKey("U3D_TargetRepository"); // Clean up
+                        EditorPrefs.DeleteKey("U3D_TargetRepository");
                     }
 
                     shouldCreateNewRepository = false;

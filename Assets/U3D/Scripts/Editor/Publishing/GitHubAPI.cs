@@ -629,7 +629,6 @@ namespace U3D.Editor
             {
                 using (var client = CreateAuthenticatedClient())
                 {
-                    // Check for our specific README.md content that only our pipeline creates
                     var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/README.md";
                     var response = await client.GetAsync(url);
 
@@ -640,29 +639,24 @@ namespace U3D.Editor
 
                         if (data.ContainsKey("content"))
                         {
-                            // Decode base64 content
                             var encodedContent = data["content"].ToString();
                             var decodedBytes = Convert.FromBase64String(encodedContent.Replace("\n", ""));
                             var fileContent = System.Text.Encoding.UTF8.GetString(decodedBytes);
 
                             // Check for SPECIFIC content that ONLY our generateCreatorReadme function creates
-                            bool wasCreatedWithUnreality3D =
-                                fileContent.Contains("**Unity WebGL Experience by") &&
-                                fileContent.Contains("**Powered by [Unreality3D](https://unreality3d.com)") &&
-                                fileContent.Contains("This experience was created using **[Unreality3D](https://unreality3d.com)**");
-
-                            Debug.Log($"🔍 Repository {repositoryName}: CreatedWithU3D={wasCreatedWithUnreality3D}");
-                            return wasCreatedWithUnreality3D;
+                            return fileContent.Contains("**Unity WebGL Experience by") &&
+                                   fileContent.Contains("**Powered by [Unreality3D](https://unreality3d.com)") &&
+                                   fileContent.Contains("This experience was created using **[Unreality3D](https://unreality3d.com)**");
                         }
                     }
 
-                    Debug.Log($"❌ Repository {repositoryName}: No README.md found or no content");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"Unreality3D detection failed for {repositoryName}: {ex.Message}");
+                // Keep only critical error logging
+                Debug.LogError($"Repository detection failed for {repositoryName}: {ex.Message}");
                 return false;
             }
         }
