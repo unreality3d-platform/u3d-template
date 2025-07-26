@@ -111,7 +111,7 @@ namespace U3D.Editor
             // Handle null/empty
             if (string.IsNullOrWhiteSpace(productName))
             {
-                error = "Product Name cannot be empty";
+                error = "Product Name cannot be empty for New Repository";
                 return false;
             }
 
