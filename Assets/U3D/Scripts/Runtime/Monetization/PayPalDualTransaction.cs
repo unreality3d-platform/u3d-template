@@ -32,6 +32,9 @@ namespace U3D
         public UnityEngine.Events.UnityEvent OnPaymentFailed;
         public UnityEngine.Events.UnityEvent<string> OnStatusChanged;
 
+        [Header("Tip Jar Customization")]
+        [SerializeField] private string creatorMessage = "Thank you for supporting my work!";
+
         // JavaScript bridge imports
         [DllImport("__Internal")]
         private static extern void UnityStartDualTransaction(string itemName, string itemDescription, string price, string transactionId);
@@ -84,7 +87,7 @@ namespace U3D
         {
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
-                SetStatus("PayPal email not configured. Please complete setup first.");
+                SetStatus("PayPal email not saved. Please complete setup first.");
                 if (paymentButton != null)
                     paymentButton.interactable = false;
                 return;
@@ -98,7 +101,18 @@ namespace U3D
                 return;
             }
 
-            SetStatus("Ready to accept payments");
+            // All good - ready for payments with appropriate message
+            if (allowVariableAmount)
+            {
+                SetStatus("Ready to send tip");
+            }
+            else
+            {
+                SetStatus("Ready to accept payments");
+            }
+
+            if (paymentButton != null)
+                paymentButton.interactable = true;
         }
 
         private void UpdateUI()
@@ -207,12 +221,12 @@ namespace U3D
             {
                 if (amount < minimumAmount)
                 {
-                    SetStatus($"Minimum amount is ${minimumAmount:F2}");
+                    SetStatus($"Minimum tip amount is ${minimumAmount:F2}");
                     return false;
                 }
                 if (amount > maximumAmount)
                 {
-                    SetStatus($"Maximum amount is ${maximumAmount:F2}");
+                    SetStatus($"Maximum tip amount is ${maximumAmount:F2}");
                     return false;
                 }
             }
@@ -223,6 +237,16 @@ namespace U3D
                 return false;
             }
 
+            // Clear any previous error messages on valid amount
+            if (allowVariableAmount)
+            {
+                SetStatus("Ready to send tip");
+            }
+            else
+            {
+                SetStatus("Ready to purchase");
+            }
+
             return true;
         }
 
@@ -230,7 +254,12 @@ namespace U3D
         {
             if (float.TryParse(value, out float amount))
             {
+                ValidateAmount(amount); // Add real-time validation
                 UpdateUI();
+            }
+            else if (!string.IsNullOrEmpty(value))
+            {
+                SetStatus("Please enter a valid amount");
             }
         }
 
@@ -280,10 +309,19 @@ namespace U3D
 
             if (success == "true")
             {
-                SetStatus("Payment successful!");
+                // Different success messages based on payment type
+                if (allowVariableAmount)
+                {
+                    SetStatus("Tip sent successfully! Thank you! ❤️");
+                }
+                else
+                {
+                    SetStatus("Payment successful!");
+                }
+
                 OnPaymentSuccess?.Invoke();
 
-                // Disable payment button if this is a one-time purchase
+                // For one-time purchases, disable the button
                 if (!allowVariableAmount && paymentButton != null)
                 {
                     paymentButton.interactable = false;
@@ -293,6 +331,11 @@ namespace U3D
                         buttonText.text = "Paid";
                     }
                 }
+                // For tip jars, reset to ready state after a delay
+                else if (allowVariableAmount)
+                {
+                    StartCoroutine(ResetTipJarAfterDelay());
+                }
 
                 Debug.Log($"Dual transaction completed successfully for {itemName}");
             }
@@ -301,6 +344,22 @@ namespace U3D
                 SetStatus("Payment failed. Please try again.");
                 OnPaymentFailed?.Invoke();
                 Debug.LogWarning($"Dual transaction failed for {itemName}");
+            }
+        }
+
+        private System.Collections.IEnumerator ResetTipJarAfterDelay()
+        {
+            yield return new UnityEngine.WaitForSeconds(3f);
+
+            if (allowVariableAmount)
+            {
+                SetStatus("Ready to send tip");
+
+                // Optionally reset amount to default
+                if (amountInputField != null)
+                {
+                    amountInputField.text = itemPrice.ToString("F2");
+                }
             }
         }
 
@@ -397,24 +456,41 @@ namespace U3D
         /// </summary>
         public void AssignUIReferences(Button payButton, TMP_Text statusTextComponent, TMP_Text priceTextComponent = null, TMP_InputField amountInput = null)
         {
+            // Clear existing listeners to prevent duplicates
+            if (paymentButton != null)
+            {
+                paymentButton.onClick.RemoveAllListeners();
+            }
+
+            if (amountInputField != null)
+            {
+                amountInputField.onValueChanged.RemoveAllListeners();
+            }
+
+            // Assign new references
             paymentButton = payButton;
             statusText = statusTextComponent;
             priceText = priceTextComponent;
             amountInputField = amountInput;
 
-            // Re-initialize with new references
+            // Setup button listener
             if (paymentButton != null)
             {
-                paymentButton.onClick.RemoveAllListeners();
                 paymentButton.onClick.AddListener(StartPayment);
             }
 
+            // Setup amount input listener and configuration
             if (amountInputField != null)
             {
                 amountInputField.gameObject.SetActive(allowVariableAmount);
-                amountInputField.onValueChanged.RemoveAllListeners();
                 amountInputField.onValueChanged.AddListener(OnAmountChanged);
                 amountInputField.text = itemPrice.ToString("F2");
+
+                // Set character limit for currency input
+                amountInputField.characterLimit = 7; // Allows up to "999.99"
+
+                // Ensure decimal number content type
+                amountInputField.contentType = TMP_InputField.ContentType.DecimalNumber;
             }
 
             // Update UI with current settings
@@ -422,6 +498,79 @@ namespace U3D
             ValidateSetup();
 
             Debug.Log($"UI References assigned to PayPalDualTransaction: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInputField != null}");
+        }
+
+        /// <summary>
+        /// Sets a custom creator message for tip jars and donations
+        /// </summary>
+        public void SetCreatorMessage(string message)
+        {
+            creatorMessage = message;
+
+            // Update the item description with the creator message
+            if (!string.IsNullOrEmpty(message))
+            {
+                itemDescription = message;
+            }
+        }
+
+        /// <summary>
+        /// Gets the current creator message
+        /// </summary>
+        public string GetCreatorMessage()
+        {
+            return creatorMessage;
+        }
+
+        /// <summary>
+        /// Enhanced method to configure tip jar specifically
+        /// </summary>
+        public void SetupAsTipJar(float minAmount = 1.00f, float maxAmount = 100.00f, string message = "Thank you for supporting my work! ❤️")
+        {
+            SetItemDetails("Creator Tip", message, 5.00f);
+            SetVariableAmount(true, minAmount, maxAmount);
+            SetCreatorMessage(message);
+
+            Debug.Log($"Configured as tip jar: ${minAmount:F2} - ${maxAmount:F2}, Message: {message}");
+        }
+
+        /// <summary>
+        /// Validates UI components and provides clear feedback about missing references
+        /// </summary>
+        public bool ValidateUIComponents()
+        {
+            bool isValid = true;
+            System.Text.StringBuilder issues = new System.Text.StringBuilder();
+
+            if (paymentButton == null)
+            {
+                issues.AppendLine("• Payment Button is not assigned");
+                isValid = false;
+            }
+
+            if (statusText == null)
+            {
+                issues.AppendLine("• Status Text is not assigned");
+                isValid = false;
+            }
+
+            if (allowVariableAmount && amountInputField == null)
+            {
+                issues.AppendLine("• Amount Input Field is required for variable amounts");
+                isValid = false;
+            }
+
+            if (!isValid)
+            {
+                Debug.LogWarning($"PayPal UI Validation Issues:\n{issues}");
+                SetStatus("UI components not properly configured");
+            }
+            else
+            {
+                Debug.Log("✅ PayPal UI components validated successfully");
+            }
+
+            return isValid;
         }
 
         /// <summary>
