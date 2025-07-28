@@ -189,47 +189,21 @@ namespace U3D.Editor
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = new Vector2(0.5f, 0.5f);
             containerRect.anchorMax = new Vector2(0.5f, 0.5f);
-            containerRect.sizeDelta = new Vector2(300, 200);
+            containerRect.sizeDelta = new Vector2(300, 250); // Taller for message field
             containerRect.anchoredPosition = Vector2.zero;
 
             CreateCleanHeaderUI(container, "Tip Jar");
 
-            // Create amount input field using TMP_DefaultControls
-            var tmpResources = new TMP_DefaultControls.Resources();
-            GameObject inputField = TMP_DefaultControls.CreateInputField(tmpResources);
-            inputField.name = "AmountInput";
-            inputField.transform.SetParent(container.transform, false);
+            // Creator Message Field (Editable)
+            CreateCreatorMessageField(container);
 
-            var inputRect = inputField.GetComponent<RectTransform>();
-            inputRect.anchorMin = new Vector2(0.1f, 0.6f);
-            inputRect.anchorMax = new Vector2(0.9f, 0.75f);
-            inputRect.offsetMin = Vector2.zero;
-            inputRect.offsetMax = Vector2.zero;
+            // Amount Input Field with Clear Labeling
+            CreateTipAmountField(container);
 
-            var inputComponent = inputField.GetComponent<TMP_InputField>();
-            inputComponent.text = "5.00";
-            inputComponent.contentType = TMP_InputField.ContentType.DecimalNumber;
+            // Tip Button
+            CreateTipButton(container);
 
-            // Create tip button using TMP_DefaultControls
-            GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
-            button.name = "TipButton";
-            button.transform.SetParent(container.transform, false);
-
-            var buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0.1f, 0.35f);
-            buttonRect.anchorMax = new Vector2(0.9f, 0.55f);
-            buttonRect.offsetMin = Vector2.zero;
-            buttonRect.offsetMax = Vector2.zero;
-
-            // Update button text (already TextMeshPro from TMP_DefaultControls)
-            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Send Tip";
-                buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
-            }
-
+            // Status Text
             CreateCleanStatusText(container);
 
             var dualTransaction = container.AddComponent<PayPalDualTransaction>();
@@ -237,10 +211,257 @@ namespace U3D.Editor
             dualTransaction.SetVariableAmount(true, 1.00f, 100.00f);
 
             // Auto-assign UI references
-            AssignUIReferences(container, dualTransaction);
+            AssignTipJarReferences(container, dualTransaction);
 
             Selection.activeGameObject = container;
-            LogToolCreation("Tip Jar", "Variable donation system with 95%/5% split");
+            LogToolCreation("Tip Jar", "Variable donation system with customizable creator message");
+        }
+
+        private void CreateCreatorMessageField(GameObject container)
+        {
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            // Message Label
+            GameObject messageLabel = TMP_DefaultControls.CreateText(tmpResources);
+            messageLabel.name = "MessageLabel";
+            messageLabel.transform.SetParent(container.transform, false);
+
+            var labelRect = messageLabel.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0.05f, 0.75f);
+            labelRect.anchorMax = new Vector2(0.95f, 0.82f);
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var labelTMP = messageLabel.GetComponent<TextMeshProUGUI>();
+            if (labelTMP != null)
+            {
+                labelTMP.text = "Your Message to Supporters:";
+                labelTMP.fontSize = 11;
+                labelTMP.color = new Color32(50, 50, 50, 255);
+                labelTMP.raycastTarget = false;
+            }
+
+            // Creator Message Input Field
+            GameObject messageField = TMP_DefaultControls.CreateInputField(tmpResources);
+            messageField.name = "CreatorMessageField";
+            messageField.transform.SetParent(container.transform, false);
+
+            var messageRect = messageField.GetComponent<RectTransform>();
+            messageRect.anchorMin = new Vector2(0.05f, 0.55f);
+            messageRect.anchorMax = new Vector2(0.95f, 0.73f);
+            messageRect.offsetMin = Vector2.zero;
+            messageRect.offsetMax = Vector2.zero;
+
+            var messageInput = messageField.GetComponent<TMP_InputField>();
+            if (messageInput != null)
+            {
+                messageInput.text = "Thank you for supporting my work! ❤️";
+                messageInput.textComponent.fontSize = 10;
+                messageInput.lineType = TMP_InputField.LineType.MultiLineNewline;
+                messageInput.characterLimit = 200;
+            }
+        }
+
+        private void CreateTipAmountField(GameObject container)
+        {
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            // Amount Label
+            GameObject amountLabel = TMP_DefaultControls.CreateText(tmpResources);
+            amountLabel.name = "AmountLabel";
+            amountLabel.transform.SetParent(container.transform, false);
+
+            var labelRect = amountLabel.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0.05f, 0.45f);
+            labelRect.anchorMax = new Vector2(0.95f, 0.52f);
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            var labelTMP = amountLabel.GetComponent<TextMeshProUGUI>();
+            if (labelTMP != null)
+            {
+                labelTMP.text = "Tip Amount ($1.00 - $100.00):";
+                labelTMP.fontSize = 11;
+                labelTMP.color = new Color32(50, 50, 50, 255);
+                labelTMP.raycastTarget = false;
+            }
+
+            // Amount Input Field
+            GameObject amountField = TMP_DefaultControls.CreateInputField(tmpResources);
+            amountField.name = "AmountInput";
+            amountField.transform.SetParent(container.transform, false);
+
+            var amountRect = amountField.GetComponent<RectTransform>();
+            amountRect.anchorMin = new Vector2(0.05f, 0.35f);
+            amountRect.anchorMax = new Vector2(0.95f, 0.43f);
+            amountRect.offsetMin = Vector2.zero;
+            amountRect.offsetMax = Vector2.zero;
+
+            var amountInput = amountField.GetComponent<TMP_InputField>();
+            if (amountInput != null)
+            {
+                amountInput.text = "5.00";
+                amountInput.contentType = TMP_InputField.ContentType.DecimalNumber;
+                amountInput.characterLimit = 6;
+
+                // Add placeholder text
+                var placeholder = amountInput.placeholder as TextMeshProUGUI;
+                if (placeholder != null)
+                {
+                    placeholder.text = "Enter amount...";
+                    placeholder.color = new Color32(150, 150, 150, 255);
+                }
+            }
+        }
+
+        private void CreateTipButton(GameObject container)
+        {
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            GameObject tipButton = TMP_DefaultControls.CreateButton(tmpResources);
+            tipButton.name = "TipButton";
+            tipButton.transform.SetParent(container.transform, false);
+
+            var buttonRect = tipButton.GetComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0.1f, 0.2f);
+            buttonRect.anchorMax = new Vector2(0.9f, 0.32f);
+            buttonRect.offsetMin = Vector2.zero;
+            buttonRect.offsetMax = Vector2.zero;
+
+            // Style the button
+            var buttonImage = tipButton.GetComponent<Image>();
+            if (buttonImage != null)
+            {
+                buttonImage.color = new Color32(0, 156, 222, 255); // PayPal blue
+            }
+
+            var buttonText = tipButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (buttonText != null)
+            {
+                buttonText.text = "💝 Send Tip via PayPal";
+                buttonText.fontSize = 14;
+                buttonText.color = Color.white;
+                buttonText.fontStyle = FontStyles.Bold;
+            }
+        }
+
+        private void AssignTipJarReferences(GameObject container, PayPalDualTransaction dualTransaction)
+        {
+            // Find UI components by name
+            var tipButton = container.transform.Find("TipButton")?.GetComponent<Button>();
+            var statusText = container.transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
+            var amountInput = container.transform.Find("AmountInput")?.GetComponent<TMP_InputField>();
+            var messageField = container.transform.Find("CreatorMessageField")?.GetComponent<TMP_InputField>();
+
+            // Use the public method to assign references (no price text for tip jar)
+            dualTransaction.AssignUIReferences(tipButton, statusText, null, amountInput);
+
+            // Set PayPal email directly from ScriptableObject
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+            {
+                dualTransaction.SetCreatorPayPalEmail(creatorData.PayPalEmail);
+            }
+
+            // Add tip jar specific functionality
+            var tipJarController = container.AddComponent<TipJarController>();
+            tipJarController.Initialize(dualTransaction, messageField);
+
+            Debug.Log($"Tip Jar References assigned: Button={tipButton != null}, Status={statusText != null}, Amount={amountInput != null}, Message={messageField != null}");
+        }
+
+        // TipJarController Component - Add this to MonetizationToolsCategory.cs inside the #region Helper Components
+
+        public class TipJarController : MonoBehaviour
+        {
+            [SerializeField] private string creatorMessage = "Thank you for supporting my work! ❤️";
+            [SerializeField] private TMP_InputField messageField;
+            [SerializeField] private PayPalDualTransaction paypalTransaction;
+
+            public void Initialize(PayPalDualTransaction transaction, TMP_InputField messageInputField)
+            {
+                paypalTransaction = transaction;
+                messageField = messageInputField;
+
+                if (messageField != null)
+                {
+                    messageField.text = creatorMessage;
+                    messageField.onValueChanged.AddListener(OnMessageChanged);
+                }
+
+                // Update the PayPal transaction description with creator message
+                if (paypalTransaction != null)
+                {
+                    paypalTransaction.OnPaymentSuccess.AddListener(OnTipReceived);
+                }
+            }
+
+            private void OnMessageChanged(string newMessage)
+            {
+                creatorMessage = newMessage;
+
+                // Update the PayPal transaction description
+                if (paypalTransaction != null)
+                {
+                    paypalTransaction.SetItemDetails(
+                        "Creator Tip",
+                        string.IsNullOrEmpty(creatorMessage) ? "Support this creator's work" : creatorMessage,
+                        5.00f
+                    );
+                }
+            }
+
+            private void OnTipReceived()
+            {
+                Debug.Log($"Tip received! Creator message: {creatorMessage}");
+
+                // Update the message field to show appreciation
+                if (messageField != null)
+                {
+                    var originalMessage = messageField.text;
+                    messageField.text = "Thank you so much! 🙏";
+
+                    // Restore original message after 3 seconds
+                    StartCoroutine(RestoreMessageAfterDelay(originalMessage, 3f));
+                }
+            }
+
+            private System.Collections.IEnumerator RestoreMessageAfterDelay(string originalMessage, float delay)
+            {
+                yield return new WaitForSeconds(delay);
+
+                if (messageField != null)
+                {
+                    messageField.text = originalMessage;
+                }
+            }
+
+            // Public methods for external configuration
+            public void SetCreatorMessage(string message)
+            {
+                creatorMessage = message;
+                if (messageField != null)
+                {
+                    messageField.text = message;
+                }
+                OnMessageChanged(message);
+            }
+
+            public string GetCreatorMessage()
+            {
+                return creatorMessage;
+            }
+
+            public void SetMessageFieldReference(TMP_InputField field)
+            {
+                messageField = field;
+                if (messageField != null)
+                {
+                    messageField.text = creatorMessage;
+                    messageField.onValueChanged.RemoveAllListeners();
+                    messageField.onValueChanged.AddListener(OnMessageChanged);
+                }
+            }
         }
 
         private void CreateSceneGate()
