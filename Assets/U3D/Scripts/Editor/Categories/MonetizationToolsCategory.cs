@@ -81,14 +81,8 @@ namespace U3D.Editor
 
         private void CheckPayPalConfiguration()
         {
-            // Check both EditorPrefs and ScriptableObject (same as SetupTab approach)
-            string paypalEmailFromPrefs = EditorPrefs.GetString("U3D_PayPalEmail", "");
-
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string paypalEmailFromData = (creatorData != null) ? creatorData.PayPalEmail : "";
-
-            // Use either source - prefer ScriptableObject for runtime access
-            string paypalEmail = !string.IsNullOrEmpty(paypalEmailFromData) ? paypalEmailFromData : paypalEmailFromPrefs;
+            // UNIFIED: Use centralized U3DAuthenticator for PayPal email
+            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
 
             paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
             paypalConfigurationChecked = true;
@@ -98,15 +92,16 @@ namespace U3D.Editor
             {
                 Debug.Log($"✅ PayPal configured: {paypalEmail}");
             }
+            else
+            {
+                Debug.Log("❌ PayPal not configured");
+            }
         }
 
         private void DrawConfiguredState()
         {
-            // Get the actual PayPal email to display
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string paypalEmail = (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
-                ? creatorData.PayPalEmail
-                : EditorPrefs.GetString("U3D_PayPalEmail", "");
+            // UNIFIED: Get PayPal email from centralized source
+            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
 
             EditorGUILayout.HelpBox(
                 $"PayPal Connected: {paypalEmail}\n\n" +
@@ -707,11 +702,16 @@ namespace U3D.Editor
             // Use the public method to assign references
             dualTransaction.AssignUIReferences(paymentButton, statusText, priceText, amountInput);
 
-            // Set PayPal email directly from ScriptableObject
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+            // UNIFIED: Get PayPal email from centralized system and assign it
+            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            if (!string.IsNullOrEmpty(paypalEmail))
             {
-                dualTransaction.SetCreatorPayPalEmail(creatorData.PayPalEmail);
+                dualTransaction.SetCreatorPayPalEmail(paypalEmail);
+                Debug.Log($"✅ PayPal email assigned to {container.name}: {paypalEmail}");
+            }
+            else
+            {
+                Debug.LogWarning($"⚠️ No PayPal email available for {container.name}. Component will require setup before use.");
             }
 
             Debug.Log($"UI References assigned to {container.name}: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInput != null}");
@@ -946,16 +946,10 @@ namespace U3D.Editor
 
         #region Validation and Logging
 
-        // NEW: On-demand validation that follows SetupTab's optimistic pattern
+        // UNIFIED: Simplified validation using centralized system
         private bool ValidatePayPalSetupOnDemand()
         {
-            // Check both sources (same as CheckPayPalConfiguration)
-            string paypalEmailFromPrefs = EditorPrefs.GetString("U3D_PayPalEmail", "");
-
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            string paypalEmailFromData = (creatorData != null) ? creatorData.PayPalEmail : "";
-
-            string paypalEmail = !string.IsNullOrEmpty(paypalEmailFromData) ? paypalEmailFromData : paypalEmailFromPrefs;
+            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
 
             if (string.IsNullOrEmpty(paypalEmail))
             {
