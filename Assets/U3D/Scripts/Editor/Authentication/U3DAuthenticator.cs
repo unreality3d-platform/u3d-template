@@ -1,13 +1,14 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using U3D;
 using U3D.Editor;
-using UnityEngine;
 using UnityEditor;
+using UnityEngine;
 
 public static class U3DAuthenticator
 {
@@ -16,29 +17,34 @@ public static class U3DAuthenticator
     private static string _userEmail;
     private static string _displayName;
     private static string _creatorUsername;
-    private static bool _stayLoggedIn = true; // Default to true for convenience
+    private static string _paypalEmail;
+    private static bool _stayLoggedIn = true;
     private static HttpClient _sharedHttpClient;
     private static bool _networkConfigured = false;
-    private static bool _credentialsLoaded = false; // Track if we've loaded credentials
+    private static bool _credentialsLoaded = false;
 
-    // Static credential keys - no dependencies on user data
+    // Static credential keys
     private const string ID_TOKEN_KEY = "U3D_IdToken";
     private const string REFRESH_TOKEN_KEY = "U3D_RefreshToken";
     private const string USER_EMAIL_KEY = "U3D_UserEmail";
     private const string DISPLAY_NAME_KEY = "U3D_DisplayName";
     private const string CREATOR_USERNAME_KEY = "U3D_CreatorUsername";
+    private const string PAYPAL_EMAIL_KEY = "U3D_PayPalEmail";
     private const string STAY_LOGGED_IN_KEY = "U3D_StayLoggedIn";
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
     public static string DisplayName => _displayName;
     public static string CreatorUsername => _creatorUsername;
+    public static string PayPalEmail => _paypalEmail;
+
     public static class CurrentUser
     {
         public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
         public static string Email => U3DAuthenticator.UserEmail;
         public static string DisplayName => U3DAuthenticator.DisplayName;
         public static string CreatorUsername => U3DAuthenticator.CreatorUsername;
+        public static string PayPalEmail => U3DAuthenticator.PayPalEmail;
         public static string UserType => "creator";
     }
 
@@ -52,7 +58,6 @@ public static class U3DAuthenticator
             _stayLoggedIn = value;
             EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, value);
 
-            // If user unchecks "stay logged in", clear stored credentials
             if (!value)
             {
                 ClearCredentials();
@@ -60,13 +65,55 @@ public static class U3DAuthenticator
         }
     }
 
-    // Static constructor to configure networking ONCE when class is first used
+    // PayPal email management
+    public static void SetPayPalEmail(string email)
+    {
+        _paypalEmail = email;
+        SaveCredentials();
+        SyncPayPalToScriptableObject(email);
+    }
+
+    public static string GetPayPalEmail()
+    {
+        return _paypalEmail ?? "";
+    }
+
+    public static bool HasPayPalEmail()
+    {
+        return !string.IsNullOrEmpty(_paypalEmail);
+    }
+
+    private static void SyncPayPalToScriptableObject(string email)
+    {
+        try
+        {
+            var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
+
+            var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
+            if (data == null)
+            {
+                data = ScriptableObject.CreateInstance<U3DCreatorData>();
+                if (!AssetDatabase.IsValidFolder("Assets/U3D/Resources"))
+                {
+                    AssetDatabase.CreateFolder("Assets/U3D", "Resources");
+                }
+                AssetDatabase.CreateAsset(data, assetPath);
+            }
+
+            data.PayPalEmail = email;
+            EditorUtility.SetDirty(data);
+            AssetDatabase.SaveAssets();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Could not sync PayPal email to ScriptableObject: {ex.Message}");
+        }
+    }
+
     static U3DAuthenticator()
     {
         ConfigureNetworking();
-
         LoadCredentials();
-
         MigrateFromOldKeys();
     }
 
@@ -76,18 +123,13 @@ public static class U3DAuthenticator
 
         try
         {
-            // Configure ServicePointManager ONCE (global .NET settings)
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
             ServicePointManager.DefaultConnectionLimit = 100;
             ServicePointManager.Expect100Continue = false;
             ServicePointManager.UseNagleAlgorithm = false;
             ServicePointManager.MaxServicePointIdleTime = 90000;
+            ServicePointManager.DnsRefreshTimeout = 60000;
 
-            // CRITICAL FIX: Set ConnectionLeaseTimeout to solve DNS cache issues with Cloudflare
-            // This forces DNS refresh every 60 seconds to prevent stale IP addresses
-            ServicePointManager.DnsRefreshTimeout = 60000; // 60 seconds
-
-            // Alternative approach: Force connection lease timeout for all endpoints
             var allEndpoints = new[]
             {
                 "https://unreality3d.web.app",
@@ -102,7 +144,7 @@ public static class U3DAuthenticator
                 try
                 {
                     var servicePoint = ServicePointManager.FindServicePoint(new Uri(endpoint));
-                    servicePoint.ConnectionLeaseTimeout = 60000; // 60 seconds
+                    servicePoint.ConnectionLeaseTimeout = 60000;
                 }
                 catch (Exception ex)
                 {
@@ -110,21 +152,18 @@ public static class U3DAuthenticator
                 }
             }
 
-            // Create HttpClientHandler with Unity Editor optimized settings  
             var handler = new HttpClientHandler()
             {
-                UseProxy = false, // Critical: Bypass Unity Editor proxy detection
+                UseProxy = false,
                 UseCookies = false,
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
 
-            // Create shared HttpClient (recommended pattern for app lifetime)
             _sharedHttpClient = new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromMinutes(10)
             };
 
-            // Set headers once
             _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
             _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
 
@@ -138,19 +177,12 @@ public static class U3DAuthenticator
 
     public static async Task<bool> TryAutoLogin()
     {
-        // Ensure credentials are loaded
         if (!_credentialsLoaded)
         {
             LoadCredentials();
         }
 
-        // Check if user wants to stay logged in
-        if (!_stayLoggedIn)
-        {
-            return false;
-        }
-
-        if (string.IsNullOrEmpty(_idToken))
+        if (!_stayLoggedIn || string.IsNullOrEmpty(_idToken))
         {
             return false;
         }
@@ -171,7 +203,6 @@ public static class U3DAuthenticator
         }
         catch (Exception ex)
         {
-            // CRITICAL: Never throw scary errors during auto-login
             Debug.LogWarning($"Auto-login failed gracefully: {ex.Message}");
             ClearCredentials();
             return false;
@@ -218,37 +249,26 @@ public static class U3DAuthenticator
             }
             else
             {
-                try
-                {
-                    var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-                    var errorMessage = "Login failed";
+                var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+                var errorMessage = "Login failed";
 
-                    if (error.ContainsKey("error"))
+                if (error.ContainsKey("error"))
+                {
+                    var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
+                    if (errorData.ContainsKey("message"))
                     {
-                        var errorData = JsonConvert.DeserializeObject<Dictionary<string, object>>(error["error"].ToString());
-                        if (errorData.ContainsKey("message"))
+                        var message = errorData["message"].ToString();
+                        errorMessage = message switch
                         {
-                            var message = errorData["message"].ToString();
-                            errorMessage = message switch
-                            {
-                                "INVALID_LOGIN_CREDENTIALS" => "Invalid email or password",
-                                "USER_DISABLED" => "Account has been disabled",
-                                "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
-                                _ => $"Login failed: {message}"
-                            };
-                        }
+                            "INVALID_LOGIN_CREDENTIALS" => "Invalid email or password",
+                            "USER_DISABLED" => "Account has been disabled",
+                            "TOO_MANY_ATTEMPTS_TRY_LATER" => "Too many failed attempts. Please try again later.",
+                            _ => $"Login failed: {message}"
+                        };
                     }
-                    else
-                    {
-                        errorMessage = $"Login failed: {responseText}";
-                    }
+                }
 
-                    throw new Exception(errorMessage);
-                }
-                catch (JsonException)
-                {
-                    throw new Exception($"Login failed: {responseText}");
-                }
+                throw new Exception(errorMessage);
             }
 
             return false;
@@ -405,25 +425,19 @@ public static class U3DAuthenticator
 
     public static void Logout()
     {
-        // Preserve Firebase config before clearing credentials
         var currentConfig = FirebaseConfigManager.CurrentConfig;
 
         ClearCredentials();
 
-        // CRITICAL FIX: Clear authorization headers from HttpClient
         if (_sharedHttpClient != null)
         {
             _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
         }
 
-        // Re-establish Firebase configuration to prevent login failures
         if (currentConfig != null && !string.IsNullOrEmpty(currentConfig.apiKey))
         {
             FirebaseConfigManager.SetEnvironmentConfig("production", currentConfig);
         }
-
-        // DON'T clear GitHub token - users want to keep their GitHub setup!
-        // GitHubTokenManager.ClearToken(); // ← REMOVE THIS LINE
     }
 
     private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, object data)
@@ -441,22 +455,16 @@ public static class U3DAuthenticator
                 var json = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                // Always clear existing Authorization header first
                 _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
 
-                // Only add auth header if we have a valid token
                 if (!string.IsNullOrEmpty(_idToken))
                 {
                     _sharedHttpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_idToken}");
                 }
 
                 var functionEndpoint = FirebaseConfigManager.CurrentConfig.GetFunctionEndpoint(functionName);
-
-                var startTime = DateTime.Now;
                 var response = await _sharedHttpClient.PostAsync(functionEndpoint, content);
                 var responseText = await response.Content.ReadAsStringAsync();
-
-                var duration = DateTime.Now - startTime;
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -467,7 +475,6 @@ public static class U3DAuthenticator
                 }
                 else
                 {
-                    Debug.LogWarning($"HTTP Error: {response.StatusCode} - {responseText}");
                     var error = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
                     var errorMessage = "Function call failed";
 
@@ -485,59 +492,16 @@ public static class U3DAuthenticator
             }
             catch (HttpRequestException ex) when (ex.Message.Contains("An error occurred while sending the request") && attempt < maxRetries)
             {
-                Debug.LogWarning($"HttpClient corrupted, recreating on attempt {attempt}/{maxRetries}: {ex.Message}");
-
-                // Dispose corrupted HttpClient and recreate
                 RecreateHttpClient();
-
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"Retrying in {delay}ms with fresh HttpClient...");
-                await Task.Delay(delay);
-                continue;
-            }
-            catch (HttpRequestException ex) when (attempt < maxRetries)
-            {
-                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"HttpRequestException on attempt {attempt}/{maxRetries}: {ex.Message}");
-
-                // Log inner exception details for debugging
-                if (ex.InnerException != null)
-                {
-                    Debug.LogWarning($"Inner exception: {ex.InnerException.GetType().Name} - {ex.InnerException.Message}");
-                }
-
-                Debug.LogWarning($"Retrying in {delay}ms...");
-                await Task.Delay(delay);
-                continue;
-            }
-            catch (TaskCanceledException ex) when (attempt < maxRetries && !ex.CancellationToken.IsCancellationRequested)
-            {
-                var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"Timeout on attempt {attempt}/{maxRetries}: {ex.Message}");
-                Debug.LogWarning($"Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
             }
             catch (Exception ex) when (attempt < maxRetries && IsRetriableNetworkError(ex))
             {
                 var delay = (int)(baseDelayMs * Math.Pow(2, attempt - 1));
-                Debug.LogWarning($"Network error on attempt {attempt}/{maxRetries}: {ex.Message}");
-                Debug.LogWarning($"Retrying in {delay}ms...");
                 await Task.Delay(delay);
                 continue;
-            }
-            catch (HttpRequestException ex)
-            {
-                Debug.LogError($"Network request failed after {maxRetries} attempts: {ex.Message}");
-
-                // Provide specific guidance for Unity Editor network issues
-                string guidance = "This appears to be a Unity Editor network configuration issue. Try:\n" +
-                                "1. Restart Unity Editor\n" +
-                                "2. Check Windows Firewall settings\n" +
-                                "3. Disable proxy/VPN temporarily\n" +
-                                "4. Try from a different network";
-
-                throw new Exception($"Network connection failed: {ex.Message}\n\n{guidance}");
             }
         }
 
@@ -548,10 +512,8 @@ public static class U3DAuthenticator
     {
         try
         {
-            // Dispose old client
             _sharedHttpClient?.Dispose();
 
-            // Create fresh HttpClientHandler
             var handler = new HttpClientHandler()
             {
                 UseProxy = false,
@@ -559,13 +521,11 @@ public static class U3DAuthenticator
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
 
-            // Create new HttpClient
             _sharedHttpClient = new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromMinutes(10)
             };
 
-            // Set headers
             _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK/1.0");
             _sharedHttpClient.DefaultRequestHeaders.Add("Connection", "keep-alive");
         }
@@ -622,7 +582,6 @@ public static class U3DAuthenticator
                 var configJson = await response.Content.ReadAsStringAsync();
                 var firebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(configJson);
 
-                // Create production config from response
                 var productionConfig = new FirebaseEnvironmentConfig
                 {
                     apiKey = firebaseConfig.ContainsKey("apiKey") ? firebaseConfig["apiKey"].ToString() : "",
@@ -634,60 +593,16 @@ public static class U3DAuthenticator
                     measurementId = firebaseConfig.ContainsKey("measurementId") ? firebaseConfig["measurementId"].ToString() : ""
                 };
 
-                // Fetch development config from secure endpoint too
-                var developmentConfig = new FirebaseEnvironmentConfig();
-
-                try
+                var developmentConfig = new FirebaseEnvironmentConfig
                 {
-                    var devConfigUrl = "https://unreality3d2025.web.app/api/config";
-                    var devResponse = await _sharedHttpClient.GetAsync(devConfigUrl);
-
-                    if (devResponse.IsSuccessStatusCode)
-                    {
-                        var devConfigJson = await devResponse.Content.ReadAsStringAsync();
-                        var devFirebaseConfig = JsonConvert.DeserializeObject<Dictionary<string, object>>(devConfigJson);
-
-                        developmentConfig = new FirebaseEnvironmentConfig
-                        {
-                            apiKey = devFirebaseConfig.ContainsKey("apiKey") ? devFirebaseConfig["apiKey"].ToString() : "setup-required",
-                            authDomain = "unreality3d2025.firebaseapp.com",
-                            projectId = "unreality3d2025",
-                            storageBucket = "unreality3d2025.firebasestorage.app",
-                            messagingSenderId = "244081840635",
-                            appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                            measurementId = "G-YXC3XB3PFL"
-                        };
-                    }
-                    else
-                    {
-                        // Fallback if dev endpoint unavailable
-                        developmentConfig = new FirebaseEnvironmentConfig
-                        {
-                            apiKey = "setup-required", // No hardcoded keys
-                            authDomain = "unreality3d2025.firebaseapp.com",
-                            projectId = "unreality3d2025",
-                            storageBucket = "unreality3d2025.firebasestorage.app",
-                            messagingSenderId = "244081840635",
-                            appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                            measurementId = "G-YXC3XB3PFL"
-                        };
-                    }
-                }
-                catch (Exception devEx)
-                {
-                    Debug.LogWarning($"Could not fetch development config: {devEx.Message}");
-                    // Safe fallback
-                    developmentConfig = new FirebaseEnvironmentConfig
-                    {
-                        apiKey = "setup-required", // No hardcoded keys
-                        authDomain = "unreality3d2025.firebaseapp.com",
-                        projectId = "unreality3d2025",
-                        storageBucket = "unreality3d2025.firebasestorage.app",
-                        messagingSenderId = "244081840635",
-                        appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
-                        measurementId = "G-YXC3XB3PFL"
-                    };
-                }
+                    apiKey = "setup-required",
+                    authDomain = "unreality3d2025.firebaseapp.com",
+                    projectId = "unreality3d2025",
+                    storageBucket = "unreality3d2025.firebasestorage.app",
+                    messagingSenderId = "244081840635",
+                    appId = "1:244081840635:web:71c37efb6b172a706dbb5e",
+                    measurementId = "G-YXC3XB3PFL"
+                };
 
                 FirebaseConfigManager.SetEnvironmentConfig("production", productionConfig);
                 FirebaseConfigManager.SetEnvironmentConfig("development", developmentConfig);
@@ -707,7 +622,6 @@ public static class U3DAuthenticator
 
     private static async Task<bool> RefreshIdTokenIfNeeded()
     {
-        // Don't attempt refresh if we don't have a refresh token
         if (string.IsNullOrEmpty(_refreshToken))
         {
             return false;
@@ -738,7 +652,6 @@ public static class U3DAuthenticator
                 {
                     _idToken = result["id_token"].ToString();
 
-                    // Update refresh token if provided
                     if (result.ContainsKey("refresh_token"))
                     {
                         _refreshToken = result["refresh_token"].ToString();
@@ -750,14 +663,10 @@ public static class U3DAuthenticator
             }
             else
             {
-                Debug.LogWarning($"Token refresh failed: {response.StatusCode} - {responseText}");
-
-                // If refresh token is invalid, clear credentials
                 if (response.StatusCode == HttpStatusCode.BadRequest)
                 {
                     ClearCredentials();
                 }
-
                 return false;
             }
         }
@@ -774,13 +683,11 @@ public static class U3DAuthenticator
     {
         try
         {
-            // Don't validate if we don't have a token
             if (string.IsNullOrEmpty(_idToken))
             {
                 return false;
             }
 
-            // First attempt with current token
             try
             {
                 var result = await CallFirebaseFunction("getUserProfile", new { });
@@ -794,13 +701,11 @@ public static class U3DAuthenticator
             {
                 var message = ex.Message?.ToLower() ?? "";
 
-                // If token is expired/unauthenticated, try to refresh
                 if (message.Contains("unauthenticated") || message.Contains("unauthorized"))
                 {
                     bool refreshed = await RefreshIdTokenIfNeeded();
                     if (refreshed)
                     {
-                        // Try validation again with refreshed token
                         try
                         {
                             var retryResult = await CallFirebaseFunction("getUserProfile", new { });
@@ -809,9 +714,9 @@ public static class U3DAuthenticator
                                 return true;
                             }
                         }
-                        catch (Exception retryEx)
+                        catch
                         {
-                            Debug.LogWarning($"Validation failed even after refresh: {retryEx.Message}");
+                            // Silent failure on retry
                         }
                     }
 
@@ -819,14 +724,11 @@ public static class U3DAuthenticator
                     return false;
                 }
 
-                // Handle network issues gracefully
                 if (IsRetriableNetworkError(ex))
                 {
-                    Debug.LogWarning($"Network issue during token validation: {ex.Message}");
                     return false;
                 }
 
-                Debug.LogWarning($"Token validation failed: {ex.Message}");
                 ClearCredentials();
                 return false;
             }
@@ -847,26 +749,23 @@ public static class U3DAuthenticator
         {
             var result = await CallFirebaseFunction("getUserProfile", new { });
 
-            // FIX: Always update all fields, use empty string if not present
             _creatorUsername = result.ContainsKey("creatorUsername") && result["creatorUsername"] != null
                 ? result["creatorUsername"].ToString()
                 : "";
 
             _userEmail = result.ContainsKey("email") && result["email"] != null
                 ? result["email"].ToString()
-                : _userEmail; // Keep existing if not provided
+                : _userEmail;
 
             _displayName = result.ContainsKey("displayName") && result["displayName"] != null
                 ? result["displayName"].ToString()
-                : _displayName; // Keep existing if not provided
+                : _displayName;
 
-            // FIX: Always save after profile load to keep EditorPrefs in sync
             SaveCredentials();
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Profile load failed: {ex.Message}");
-            // Don't change _creatorUsername on failure - let existing logic handle it
         }
     }
 
@@ -887,7 +786,7 @@ public static class U3DAuthenticator
         catch (Exception ex)
         {
             Debug.LogWarning($"Username verification failed: {ex.Message}");
-            return false; // Assume no username on verification failure
+            return false;
         }
     }
 
@@ -904,9 +803,8 @@ public static class U3DAuthenticator
             if (!string.IsNullOrEmpty(_displayName))
                 EditorPrefs.SetString(DISPLAY_NAME_KEY, _displayName);
 
-            // FIX: ALWAYS save creatorUsername, even if empty
-            // This ensures EditorPrefs stays in sync with memory
             EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername ?? "");
+            EditorPrefs.SetString(PAYPAL_EMAIL_KEY, _paypalEmail ?? "");
         }
         EditorPrefs.SetBool(STAY_LOGGED_IN_KEY, _stayLoggedIn);
     }
@@ -920,18 +818,18 @@ public static class U3DAuthenticator
         _userEmail = EditorPrefs.GetString(USER_EMAIL_KEY, "");
         _displayName = EditorPrefs.GetString(DISPLAY_NAME_KEY, "");
         _creatorUsername = EditorPrefs.GetString(CREATOR_USERNAME_KEY, "");
+        _paypalEmail = EditorPrefs.GetString(PAYPAL_EMAIL_KEY, "");
         _stayLoggedIn = EditorPrefs.GetBool(STAY_LOGGED_IN_KEY, true);
         _credentialsLoaded = true;
     }
 
     private static void MigrateFromOldKeys()
     {
-        // Try to find credentials from various old key patterns
         var possiblePrefixes = new[]
         {
-        $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_",
-        $"U3D_Creator_{PlayerSettings.companyName}_"
-    };
+            $"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_",
+            $"U3D_Creator_{PlayerSettings.companyName}_"
+        };
 
         foreach (var oldPrefix in possiblePrefixes)
         {
@@ -944,10 +842,8 @@ public static class U3DAuthenticator
                 _creatorUsername = EditorPrefs.GetString(oldPrefix + "creatorUsername", "");
                 _stayLoggedIn = EditorPrefs.GetBool(oldPrefix + "stayLoggedIn", true);
 
-                // Save with new simple keys
                 SaveCredentials();
 
-                // Clean up old keys
                 EditorPrefs.DeleteKey(oldPrefix + "idToken");
                 EditorPrefs.DeleteKey(oldPrefix + "refreshToken");
                 EditorPrefs.DeleteKey(oldPrefix + "userEmail");
@@ -959,43 +855,37 @@ public static class U3DAuthenticator
             }
         }
 
-        // Migrate PayPal email from old email-dependent keys
         MigratePayPalEmailKeys();
     }
 
     private static void MigratePayPalEmailKeys()
     {
-        // Check if PayPal email is already migrated
-        if (EditorPrefs.HasKey("U3D_PayPalEmail"))
+        if (!string.IsNullOrEmpty(_paypalEmail))
             return;
 
-        // Try to find PayPal email from old email-dependent keys
-        var possibleEmails = new[] { _userEmail };
-
-        // Also try loading email from old keys if not loaded yet
-        if (string.IsNullOrEmpty(_userEmail))
+        var possibleKeys = new[]
         {
-            possibleEmails = new[]
-            {
-            EditorPrefs.GetString("U3D_UserEmail", ""),
-            EditorPrefs.GetString($"U3D_{PlayerSettings.companyName}.{PlayerSettings.productName}_userEmail", "")
+            "U3D_PayPalEmail",
+            $"U3D_PayPalEmail_{_userEmail}",
+            EditorPrefs.HasKey("U3D_UserEmail") ? $"U3D_PayPalEmail_{EditorPrefs.GetString("U3D_UserEmail", "")}" : "",
+            $"U3D_PayPalEmail_{PlayerSettings.companyName}_{PlayerSettings.productName}"
         };
-        }
 
-        foreach (var email in possibleEmails)
+        foreach (var key in possibleKeys)
         {
-            if (!string.IsNullOrEmpty(email))
+            if (!string.IsNullOrEmpty(key) && EditorPrefs.HasKey(key))
             {
-                string oldKey = $"U3D_PayPalEmail_{email}";
-                if (EditorPrefs.HasKey(oldKey))
+                string paypalEmail = EditorPrefs.GetString(key, "");
+                if (!string.IsNullOrEmpty(paypalEmail))
                 {
-                    string paypalEmail = EditorPrefs.GetString(oldKey, "");
-                    if (!string.IsNullOrEmpty(paypalEmail))
+                    _paypalEmail = paypalEmail;
+                    SaveCredentials();
+
+                    if (key != PAYPAL_EMAIL_KEY)
                     {
-                        EditorPrefs.SetString("U3D_PayPalEmail", paypalEmail);
-                        EditorPrefs.DeleteKey(oldKey);
-                        break;
+                        EditorPrefs.DeleteKey(key);
                     }
+                    break;
                 }
             }
         }
@@ -1008,13 +898,14 @@ public static class U3DAuthenticator
         EditorPrefs.DeleteKey(USER_EMAIL_KEY);
         EditorPrefs.DeleteKey(DISPLAY_NAME_KEY);
         EditorPrefs.DeleteKey(CREATOR_USERNAME_KEY);
-        // Don't clear STAY_LOGGED_IN_KEY - preserve user preference
+        EditorPrefs.DeleteKey(PAYPAL_EMAIL_KEY);
 
         _idToken = "";
         _refreshToken = "";
         _userEmail = "";
         _displayName = "";
         _creatorUsername = "";
+        _paypalEmail = "";
     }
 }
 

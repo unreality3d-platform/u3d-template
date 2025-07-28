@@ -59,7 +59,6 @@ namespace U3D
             if (creatorData != null)
             {
                 this.creatorPayPalEmail = creatorData.PayPalEmail;
-                Debug.Log($"PayPal email loaded from Resources: {this.creatorPayPalEmail}");
             }
             else
             {
@@ -104,11 +103,11 @@ namespace U3D
             // All good - ready for payments with appropriate message
             if (allowVariableAmount)
             {
-                SetStatus("Ready to send tip");
+                SetStatus("Ready to send tip (95% Creator, 5% Platform)");
             }
             else
             {
-                SetStatus("Ready to accept payments");
+                SetStatus("Ready to accept payments (95% Creator, 5% Platform)");
             }
 
             if (paymentButton != null)
@@ -240,11 +239,11 @@ namespace U3D
             // Clear any previous error messages on valid amount
             if (allowVariableAmount)
             {
-                SetStatus("Ready to send tip");
+                SetStatus("Ready to send tip (95% Creator, 5% Platform)");
             }
             else
             {
-                SetStatus("Ready to purchase");
+                SetStatus("Ready to purchase (95% Creator, 5% Platform)");
             }
 
             return true;
@@ -312,7 +311,7 @@ namespace U3D
                 // Different success messages based on payment type
                 if (allowVariableAmount)
                 {
-                    SetStatus("Tip sent successfully! Thank you! ❤️");
+                    SetStatus("Tip sent successfully! Thank you!");
                 }
                 else
                 {
@@ -384,7 +383,6 @@ namespace U3D
                 statusText.text = message;
             }
             OnStatusChanged?.Invoke(message);
-            Debug.Log($"PayPal Status: {message}");
         }
 
         private void SetProcessingState(bool processing)
@@ -434,6 +432,20 @@ namespace U3D
         {
             creatorPayPalEmail = email;
             ValidateSetup();
+        }
+
+        public void RefreshPayPalEmail()
+        {
+            // Runtime refresh from ScriptableObject
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+            {
+                if (creatorData.PayPalEmail != creatorPayPalEmail)
+                {
+                    creatorPayPalEmail = creatorData.PayPalEmail;
+                    ValidateSetup();
+                }
+            }
         }
 
         public string GetCreatorPayPalEmail()
@@ -496,8 +508,6 @@ namespace U3D
             // Update UI with current settings
             UpdateUI();
             ValidateSetup();
-
-            Debug.Log($"UI References assigned to PayPalDualTransaction: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInputField != null}");
         }
 
         /// <summary>
@@ -525,13 +535,11 @@ namespace U3D
         /// <summary>
         /// Enhanced method to configure tip jar specifically
         /// </summary>
-        public void SetupAsTipJar(float minAmount = 1.00f, float maxAmount = 100.00f, string message = "Thank you for supporting my work! ❤️")
+        public void SetupAsTipJar(float minAmount = 1.00f, float maxAmount = 100.00f, string message = "Thank you for supporting my work!")
         {
             SetItemDetails("Creator Tip", message, 5.00f);
             SetVariableAmount(true, minAmount, maxAmount);
             SetCreatorMessage(message);
-
-            Debug.Log($"Configured as tip jar: ${minAmount:F2} - ${maxAmount:F2}, Message: {message}");
         }
 
         /// <summary>
@@ -625,6 +633,57 @@ namespace U3D
 
             if (maximumAmount < minimumAmount)
                 maximumAmount = minimumAmount;
+        }
+
+        private void OnEnable()
+        {
+            // Validate setup when component becomes active (both in editor and runtime)
+            if (Application.isPlaying)
+            {
+                // Runtime validation happens in Start()
+                return;
+            }
+
+            // Editor validation
+            ValidateSetupInEditor();
+        }
+
+        private void ValidateSetupInEditor()
+        {
+            // Check if PayPal email exists in ScriptableObject
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            bool hasPayPalEmail = creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail);
+
+            if (!hasPayPalEmail)
+            {
+                // Update status text to show configuration needed
+                if (statusText != null)
+                {
+                    if (allowVariableAmount)
+                    {
+                        statusText.text = "PayPal email address required in Setup";
+                    }
+                    else
+                    {
+                        statusText.text = "PayPal email address required in Setup";
+                    }
+                }
+            }
+            else
+            {
+                // Show ready state
+                if (statusText != null)
+                {
+                    if (allowVariableAmount)
+                    {
+                        statusText.text = "Ready to send tip (95% Creator, 5% Platform)";
+                    }
+                    else
+                    {
+                        statusText.text = "Ready to accept payments (95% Creator, 5% Platform)";
+                    }
+                }
+            }
         }
     }
 }
