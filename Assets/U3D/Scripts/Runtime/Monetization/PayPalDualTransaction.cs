@@ -28,9 +28,9 @@ namespace U3D
         [SerializeField] private GameObject loadingIndicator;
 
         [Header("Events")]
-        public UnityEngine.Events.UnityEvent OnPaymentSuccess;
-        public UnityEngine.Events.UnityEvent OnPaymentFailed;
-        public UnityEngine.Events.UnityEvent<string> OnStatusChanged;
+        public UnityEngine.Events.UnityEvent OnPaymentSuccess = new UnityEngine.Events.UnityEvent();
+        public UnityEngine.Events.UnityEvent OnPaymentFailed = new UnityEngine.Events.UnityEvent();
+        public UnityEngine.Events.UnityEvent<string> OnStatusChanged = new UnityEngine.Events.UnityEvent<string>();
 
         [Header("Tip Jar Customization")]
         [SerializeField] private string creatorMessage = "Thank you for supporting my work!";
