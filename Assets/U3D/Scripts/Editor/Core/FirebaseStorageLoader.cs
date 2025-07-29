@@ -139,6 +139,10 @@ public class FirebaseStorageUploader
 
             var fileList = files.ConvertAll(f => f.StoragePath);
 
+            // 🚨 CRITICAL FIX: Add PayPal email to deployment request
+            var paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");s
+
             var deploymentRequest = new Dictionary<string, object>
         {
             { "project", baseProjectName },
@@ -147,6 +151,7 @@ public class FirebaseStorageUploader
             { "fileList", fileList },
             { "githubToken", GitHubTokenManager.Token },
             { "deploymentIntent", deploymentIntent }
+                            { "creatorPayPalEmail", paypalEmail ?? "" }
         };
 
             var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
@@ -305,6 +310,10 @@ public class FirebaseStorageUploader
 
             var fileList = files.ConvertAll(f => f.StoragePath);
 
+            // 🚨 CRITICAL FIX: Add PayPal email to deployment request
+            var paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");
+
             var deploymentRequest = new Dictionary<string, object>
             {
                 { "project", projectName },
@@ -312,6 +321,7 @@ public class FirebaseStorageUploader
                 { "githubOwner", GitHubTokenManager.GitHubUsername },  // For GitHub operations
                 { "fileList", fileList },
                 { "githubToken", GitHubTokenManager.Token }
+                { "creatorPayPalEmail", paypalEmail ?? "" }
             };
 
             // Use reflection to access the private CallFirebaseFunction method (same pattern as PublishTab)
