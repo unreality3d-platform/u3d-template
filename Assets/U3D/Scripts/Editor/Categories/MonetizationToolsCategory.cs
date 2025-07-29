@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
 using TMPro;
+using U3D;
 
 namespace U3D.Editor
 {
@@ -74,7 +75,7 @@ namespace U3D.Editor
             {
                 EditorGUILayout.Space(5);
                 EditorGUILayout.HelpBox(
-                    "All monetization tools require PayPal configuration to function.",
+                    "All monetization tools require PayPal email to function.",
                     MessageType.Info);
             }
         }
@@ -90,11 +91,11 @@ namespace U3D.Editor
             // Debug log to verify detection
             if (paypalConfigured)
             {
-                Debug.Log($"✅ PayPal configured: {paypalEmail}");
+                Debug.Log($"✅ PayPal email: {paypalEmail}");
             }
             else
             {
-                Debug.Log("❌ PayPal not configured");
+                Debug.Log("❌ PayPal email not added");
             }
         }
 
@@ -116,7 +117,7 @@ namespace U3D.Editor
         private void DrawUnconfiguredState()
         {
             EditorGUILayout.HelpBox(
-                "PayPal Not Configured\n\n" +
+                "PayPal Email Not Added\n\n" +
                 "To enable monetization:\n" +
                 "1. Go to the Setup tab\n" +
                 "2. Add your PayPal email address\n" +
@@ -164,17 +165,8 @@ namespace U3D.Editor
         {
             if (!ValidatePayPalSetupOnDemand()) return;
 
-            // Find or create Canvas using Unity 6+ method
-            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
-            if (canvas == null)
-            {
-                var canvasObject = new GameObject("Canvas");
-                canvas = canvasObject.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.WorldSpace;
-                canvasObject.AddComponent<CanvasScaler>();
-                canvasObject.AddComponent<GraphicRaycaster>();
-                canvas.transform.localScale = Vector3.one * 0.01f;
-            }
+            // FIXED: Always create new Canvas for each tool
+            Canvas canvas = CreateNewWorldSpaceCanvas("Tip Jar Canvas");
 
             // COMPLIANT: Use DefaultControls for panel creation
             var uiResources = new DefaultControls.Resources();
@@ -248,7 +240,8 @@ namespace U3D.Editor
             // COMPLIANT: Use existing AssignUIReferences method
             AssignUIReferences(container, dualTransaction);
 
-            Selection.activeGameObject = container;
+            // FIXED: Select the Canvas (top-level parent) instead of container
+            Selection.activeGameObject = canvas.gameObject;
             LogToolCreation("Tip Jar", "Variable donation system with 95%/5% split");
         }
 
@@ -259,7 +252,7 @@ namespace U3D.Editor
             GameObject gateObject = CreatePaymentUI("Scene Gate", CreateSceneGateUI);
 
             var dualTransaction = gateObject.AddComponent<PayPalDualTransaction>();
-            var gateController = gateObject.AddComponent<SceneGateController>();
+            var gateController = gateObject.AddComponent<U3D.SceneGateController>();
 
             dualTransaction.SetItemDetails("Scene Access", "Premium scene entry fee", 3.00f);
             dualTransaction.SetVariableAmount(false);
@@ -277,7 +270,7 @@ namespace U3D.Editor
 
             GameObject shopObject = CreatePaymentUI("Shop Object", CreateShopObjectUI);
 
-            var shopController = shopObject.AddComponent<ShopController>();
+            var shopController = shopObject.AddComponent<U3D.ShopController>();
 
             LogToolCreation("Shop Object", "Multi-item 3D shop with individual dual transactions");
         }
@@ -289,7 +282,7 @@ namespace U3D.Editor
             GameObject eventObject = CreatePaymentUI("Event Gate", CreateEventGateUI);
 
             var dualTransaction = eventObject.AddComponent<PayPalDualTransaction>();
-            var eventController = eventObject.AddComponent<EventGateController>();
+            var eventController = eventObject.AddComponent<U3D.EventGateController>();
 
             dualTransaction.SetItemDetails("Event Access", "Special event ticket", 10.00f);
             dualTransaction.SetVariableAmount(false);
@@ -307,7 +300,7 @@ namespace U3D.Editor
 
             GameObject screenShop = CreateScreenOverlayUI("Screen Shop", CreateScreenShopUI);
 
-            var screenShopController = screenShop.AddComponent<ScreenShopController>();
+            var screenShopController = screenShop.AddComponent<U3D.ScreenShopController>();
 
             LogToolCreation("Screen Shop", "Overlay shop interface with dual transaction support");
         }
@@ -316,19 +309,39 @@ namespace U3D.Editor
 
         #region UI Creation Helpers
 
+        /// <summary>
+        /// Creates a new WorldSpace Canvas for monetization tools - never reuses existing Canvas
+        /// </summary>
+        private Canvas CreateNewWorldSpaceCanvas(string canvasName)
+        {
+            var canvasObject = new GameObject(canvasName);
+            var canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvasObject.AddComponent<CanvasScaler>();
+            canvasObject.AddComponent<GraphicRaycaster>();
+            canvas.transform.localScale = Vector3.one * 0.01f;
+
+            return canvas;
+        }
+
+        /// <summary>
+        /// Creates a new ScreenSpaceOverlay Canvas for overlay tools
+        /// </summary>
+        private Canvas CreateNewOverlayCanvas(string canvasName)
+        {
+            var canvasObject = new GameObject(canvasName);
+            var canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasObject.AddComponent<CanvasScaler>();
+            canvasObject.AddComponent<GraphicRaycaster>();
+
+            return canvas;
+        }
+
         private GameObject CreatePaymentUI(string name, System.Action<GameObject> customSetup)
         {
-            // Find or create Canvas using Unity 6+ method
-            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
-            if (canvas == null)
-            {
-                var canvasObject = new GameObject("Canvas");
-                canvas = canvasObject.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.WorldSpace;
-                canvasObject.AddComponent<CanvasScaler>();
-                canvasObject.AddComponent<GraphicRaycaster>();
-                canvas.transform.localScale = Vector3.one * 0.01f;
-            }
+            // FIXED: Always create new Canvas for each tool with descriptive name
+            Canvas canvas = CreateNewWorldSpaceCanvas($"{name} Canvas");
 
             var uiResources = new DefaultControls.Resources();
             GameObject container = DefaultControls.CreatePanel(uiResources);
@@ -345,22 +358,15 @@ namespace U3D.Editor
 
             customSetup?.Invoke(container);
 
-            Selection.activeGameObject = container;
+            // FIXED: Select the Canvas (top-level parent) instead of container
+            Selection.activeGameObject = canvas.gameObject;
             return container;
         }
 
         private GameObject CreateScreenOverlayUI(string name, System.Action<GameObject> customSetup)
         {
-            // Find or create Canvas (Screen Space Overlay) using Unity 6+ method
-            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
-            if (canvas == null)
-            {
-                var canvasObject = new GameObject("UI Canvas");
-                canvas = canvasObject.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvasObject.AddComponent<CanvasScaler>();
-                canvasObject.AddComponent<GraphicRaycaster>();
-            }
+            // FIXED: Always create new ScreenSpaceOverlay Canvas with descriptive name
+            Canvas canvas = CreateNewOverlayCanvas($"{name} Canvas");
 
             var uiResources = new DefaultControls.Resources();
             GameObject container = DefaultControls.CreatePanel(uiResources);
@@ -376,7 +382,8 @@ namespace U3D.Editor
             CreateCleanHeaderUI(container, name);
             customSetup?.Invoke(container);
 
-            Selection.activeGameObject = container;
+            // FIXED: Select the Canvas (top-level parent) instead of container
+            Selection.activeGameObject = canvas.gameObject;
             return container;
         }
 
@@ -464,6 +471,7 @@ namespace U3D.Editor
                 priceTMP.text = "$5.00";
                 priceTMP.fontSize = 18;
                 priceTMP.color = new Color32(50, 50, 50, 255); // #323232
+                priceTMP.alignment = TextAlignmentOptions.Center;
                 priceTMP.raycastTarget = false;
             }
 
@@ -473,8 +481,8 @@ namespace U3D.Editor
             button.transform.SetParent(container.transform, false);
 
             var buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0.1f, 0.1f);
-            buttonRect.anchorMax = new Vector2(0.9f, 0.4f);
+            buttonRect.anchorMin = new Vector2(0.1f, 0.25f);
+            buttonRect.anchorMax = new Vector2(0.9f, 0.45f);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
@@ -499,17 +507,18 @@ namespace U3D.Editor
             descText.transform.SetParent(container.transform, false);
 
             var descRect = descText.GetComponent<RectTransform>();
-            descRect.anchorMin = new Vector2(0, 0.6f);
-            descRect.anchorMax = new Vector2(1, 0.75f);
+            descRect.anchorMin = new Vector2(0, 0.5f);
+            descRect.anchorMax = new Vector2(1, 0.7f);
             descRect.offsetMin = new Vector2(10, 0);
             descRect.offsetMax = new Vector2(-10, 0);
 
             var descTMP = descText.GetComponent<TextMeshProUGUI>();
             if (descTMP != null)
             {
-                descTMP.text = "Premium Scene Access Required";
+                descTMP.text = "Premium Scene Access Required\nPay to unlock this area";
                 descTMP.fontSize = 12;
                 descTMP.color = new Color32(50, 50, 50, 255); // #323232
+                descTMP.alignment = TextAlignmentOptions.Center;
                 descTMP.raycastTarget = false;
             }
 
@@ -519,8 +528,8 @@ namespace U3D.Editor
             button.transform.SetParent(container.transform, false);
 
             var buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0.1f, 0.35f);
-            buttonRect.anchorMax = new Vector2(0.9f, 0.55f);
+            buttonRect.anchorMin = new Vector2(0.1f, 0.25f);
+            buttonRect.anchorMax = new Vector2(0.9f, 0.45f);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
@@ -546,8 +555,8 @@ namespace U3D.Editor
             shopTitle.transform.SetParent(container.transform, false);
 
             var titleRect = shopTitle.GetComponent<RectTransform>();
-            titleRect.anchorMin = new Vector2(0, 0.7f);
-            titleRect.anchorMax = new Vector2(1, 0.85f);
+            titleRect.anchorMin = new Vector2(0, 0.65f);
+            titleRect.anchorMax = new Vector2(1, 0.78f);
             titleRect.offsetMin = new Vector2(10, 0);
             titleRect.offsetMax = new Vector2(-10, 0);
 
@@ -557,6 +566,7 @@ namespace U3D.Editor
                 titleTMP.text = "Creator Shop";
                 titleTMP.fontSize = 14;
                 titleTMP.color = new Color32(50, 50, 50, 255); // #323232
+                titleTMP.alignment = TextAlignmentOptions.Center;
                 titleTMP.raycastTarget = false;
             }
 
@@ -567,7 +577,7 @@ namespace U3D.Editor
 
             var scrollRect = scrollView.GetComponent<RectTransform>();
             scrollRect.anchorMin = new Vector2(0.05f, 0.2f);
-            scrollRect.anchorMax = new Vector2(0.95f, 0.65f);
+            scrollRect.anchorMax = new Vector2(0.95f, 0.6f);
             scrollRect.offsetMin = Vector2.zero;
             scrollRect.offsetMax = Vector2.zero;
 
@@ -595,6 +605,7 @@ namespace U3D.Editor
                 infoTMP.text = "Special Event Access";
                 infoTMP.fontSize = 12;
                 infoTMP.color = new Color32(50, 50, 50, 255); // #323232
+                infoTMP.alignment = TextAlignmentOptions.Center;
                 infoTMP.raycastTarget = false;
             }
 
@@ -615,6 +626,7 @@ namespace U3D.Editor
                 timerTMP.text = "Event Active";
                 timerTMP.fontSize = 10;
                 timerTMP.color = new Color32(50, 50, 50, 255); // #323232
+                timerTMP.alignment = TextAlignmentOptions.Center;
                 timerTMP.raycastTarget = false;
             }
 
@@ -624,7 +636,7 @@ namespace U3D.Editor
             button.transform.SetParent(container.transform, false);
 
             var buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0.1f, 0.2f);
+            buttonRect.anchorMin = new Vector2(0.1f, 0.25f);
             buttonRect.anchorMax = new Vector2(0.9f, 0.4f);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
@@ -652,7 +664,7 @@ namespace U3D.Editor
 
             var closeRect = closeButton.GetComponent<RectTransform>();
             closeRect.anchorMin = new Vector2(0.9f, 0.9f);
-            closeRect.anchorMax = new Vector2(1f, 1f);
+            closeRect.anchorMax = new Vector2(0.98f, 0.98f);
             closeRect.offsetMin = Vector2.zero;
             closeRect.offsetMax = Vector2.zero;
 
@@ -719,231 +731,6 @@ namespace U3D.Editor
 
         #endregion
 
-        #region Helper Components
-
-        // Scene Gate Controller Component
-        public class SceneGateController : MonoBehaviour
-        {
-            [SerializeField] private GameObject gateObject;
-            [SerializeField] private bool isOpen = false;
-
-            public void OpenGate()
-            {
-                isOpen = true;
-                if (gateObject != null)
-                {
-                    gateObject.SetActive(false);
-                }
-                Debug.Log("Scene gate opened - access granted!");
-
-                var statusText = GetComponentInChildren<TextMeshProUGUI>();
-                if (statusText != null && statusText.name == "StatusText")
-                {
-                    statusText.text = "Access granted!";
-                }
-            }
-
-            public bool IsOpen() => isOpen;
-        }
-
-        // Shop Controller Component
-        public class ShopController : MonoBehaviour
-        {
-            [System.Serializable]
-            public class ShopItem
-            {
-                public string itemName = "Item";
-                public string description = "Shop item description";
-                public float price = 5.00f;
-                public Sprite icon;
-            }
-
-            [SerializeField] private List<ShopItem> shopItems = new List<ShopItem>();
-            [SerializeField] private Transform itemContainer;
-
-            private void Start()
-            {
-                SetupDefaultItems();
-                CreateItemUI();
-            }
-
-            private void SetupDefaultItems()
-            {
-                if (shopItems.Count == 0)
-                {
-                    shopItems.Add(new ShopItem { itemName = "Premium Avatar", description = "Exclusive creator avatar", price = 10.00f });
-                    shopItems.Add(new ShopItem { itemName = "Special Effect", description = "Unique visual effect", price = 5.00f });
-                    shopItems.Add(new ShopItem { itemName = "Creator Pack", description = "Bundle of creator content", price = 15.00f });
-                }
-            }
-
-            private void CreateItemUI()
-            {
-                var scrollView = GetComponentInChildren<ScrollRect>();
-                if (scrollView != null)
-                {
-                    itemContainer = scrollView.content;
-                }
-
-                if (itemContainer == null) return;
-
-                foreach (var item in shopItems)
-                {
-                    CreateShopItemButton(item);
-                }
-            }
-
-            private void CreateShopItemButton(ShopItem item)
-            {
-                var tmpResources = new TMP_DefaultControls.Resources();
-                GameObject itemButton = TMP_DefaultControls.CreateButton(tmpResources);
-                itemButton.name = $"Item_{item.itemName}";
-                itemButton.transform.SetParent(itemContainer, false);
-
-                var buttonRect = itemButton.GetComponent<RectTransform>();
-                buttonRect.sizeDelta = new Vector2(250, 40);
-
-                var dualTransaction = itemButton.AddComponent<PayPalDualTransaction>();
-                dualTransaction.SetItemDetails(item.itemName, item.description, item.price);
-                dualTransaction.SetVariableAmount(false);
-
-                // Auto-assign UI references for shop item buttons
-                dualTransaction.AssignEssentialReferences(
-                    itemButton.GetComponent<Button>(),
-                    null // Shop items don't have individual status text
-                );
-
-                var buttonText = itemButton.GetComponentInChildren<TextMeshProUGUI>();
-                if (buttonText != null)
-                {
-                    buttonText.text = $"{item.itemName} - ${item.price:F2}";
-                    buttonText.color = new Color32(50, 50, 50, 255); // #323232
-                }
-            }
-        }
-
-        // Event Gate Controller Component
-        public class EventGateController : MonoBehaviour
-        {
-            [SerializeField] private float eventDuration = 3600f; // 1 hour
-            [SerializeField] private bool eventActive = true;
-            [SerializeField] private bool accessGranted = false;
-
-            private float timeRemaining;
-            private TextMeshProUGUI timerText;
-
-            private void Start()
-            {
-                timeRemaining = eventDuration;
-                timerText = transform.Find("TimerText")?.GetComponent<TextMeshProUGUI>();
-            }
-
-            private void Update()
-            {
-                if (eventActive && timeRemaining > 0)
-                {
-                    timeRemaining -= Time.deltaTime;
-                    UpdateTimerDisplay();
-
-                    if (timeRemaining <= 0)
-                    {
-                        EndEvent();
-                    }
-                }
-            }
-
-            private void UpdateTimerDisplay()
-            {
-                if (timerText != null)
-                {
-                    int minutes = Mathf.FloorToInt(timeRemaining / 60);
-                    int seconds = Mathf.FloorToInt(timeRemaining % 60);
-                    timerText.text = $"{minutes:00}:{seconds:00} remaining";
-                }
-            }
-
-            private void EndEvent()
-            {
-                eventActive = false;
-                if (timerText != null)
-                {
-                    timerText.text = "Event Ended";
-                }
-
-                var button = GetComponentInChildren<Button>();
-                if (button != null)
-                {
-                    button.interactable = false;
-                    var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-                    if (buttonText != null)
-                    {
-                        buttonText.text = "Event Ended";
-                    }
-                }
-            }
-
-            public void GrantAccess()
-            {
-                if (eventActive)
-                {
-                    accessGranted = true;
-                    Debug.Log("Event access granted!");
-
-                    var statusText = transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
-                    if (statusText != null)
-                    {
-                        statusText.text = "Event access granted!";
-                    }
-                }
-            }
-
-            public bool HasAccess() => accessGranted && eventActive;
-        }
-
-        // Screen Shop Controller Component
-        public class ScreenShopController : MonoBehaviour
-        {
-            [SerializeField] private bool isVisible = true;
-
-            private void Start()
-            {
-                var closeButton = transform.Find("CloseButton")?.GetComponent<Button>();
-                if (closeButton != null)
-                {
-                    closeButton.onClick.AddListener(CloseShop);
-                }
-
-                SetupShopContent();
-            }
-
-            private void SetupShopContent()
-            {
-                var scrollView = GetComponentInChildren<ScrollRect>();
-                if (scrollView != null)
-                {
-                    var content = scrollView.content;
-                    // Add shop items to content area
-                    // This would be similar to ShopController.CreateItemUI()
-                }
-            }
-
-            public void CloseShop()
-            {
-                gameObject.SetActive(false);
-                isVisible = false;
-            }
-
-            public void OpenShop()
-            {
-                gameObject.SetActive(true);
-                isVisible = true;
-            }
-
-            public bool IsVisible() => isVisible;
-        }
-
-        #endregion
-
         #region Validation and Logging
 
         // UNIFIED: Simplified validation using centralized system
@@ -955,8 +742,8 @@ namespace U3D.Editor
             {
                 // Show dialog and offer to go to Setup tab
                 bool goToSetup = EditorUtility.DisplayDialog(
-                    "PayPal Setup Required",
-                    "Please configure your PayPal email to enable monetization tools.\n\n" +
+                    "PayPal email Required",
+                    "Please add your PayPal email to enable monetization tools.\n\n" +
                     "This enables the dual transaction system where you keep 95% of earnings.\n\n" +
                     "Would you like to go to the Setup tab now?",
                     "Yes, Take Me There", "Cancel"
