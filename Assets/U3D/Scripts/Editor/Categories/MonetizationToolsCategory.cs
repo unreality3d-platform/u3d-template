@@ -1,9 +1,10 @@
-﻿using System.Collections.Generic;
-using UnityEngine;
-using UnityEditor;
-using UnityEngine.UI;
+﻿using System;
+using System.Collections.Generic;
 using TMPro;
 using U3D;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace U3D.Editor
 {
@@ -82,8 +83,27 @@ namespace U3D.Editor
 
         private void CheckPayPalConfiguration()
         {
-            // UNIFIED: Use centralized U3DAuthenticator for PayPal email
-            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            // CRITICAL FIX: Check all possible sources in priority order
+            string paypalEmail = "";
+
+            // 1. First check EditorPrefs (most reliable for editor)
+            paypalEmail = EditorPrefs.GetString("U3D_PayPalEmail", "");
+
+            // 2. If not found, check ScriptableObject
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+                if (creatorData != null)
+                {
+                    paypalEmail = creatorData.PayPalEmail;
+                }
+            }
+
+            // 3. Check U3DAuthenticator (method exists in your code)
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            }
 
             paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
             paypalConfigurationChecked = true;
@@ -91,11 +111,19 @@ namespace U3D.Editor
             // Debug log to verify detection
             if (paypalConfigured)
             {
-                Debug.Log($"✅ PayPal email: {paypalEmail}");
+                Debug.Log($"✅ PayPal configured: {paypalEmail}");
             }
             else
             {
-                Debug.Log("❌ PayPal email not added");
+                Debug.Log("❌ PayPal email not found in any storage location");
+
+                // DIAGNOSTIC: List what we checked
+                Debug.Log("🔍 PayPal email search results:");
+                Debug.Log($"   EditorPrefs['U3D_PayPalEmail']: '{EditorPrefs.GetString("U3D_PayPalEmail", "")}'");
+                Debug.Log($"   U3DAuthenticator.GetPayPalEmail(): '{U3DAuthenticator.GetPayPalEmail()}'");
+
+                var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+                Debug.Log($"   ScriptableObject: {(creatorData != null ? $"Found, email='{creatorData.PayPalEmail}'" : "Not found")}");
             }
         }
 
@@ -848,14 +876,34 @@ namespace U3D.Editor
         // UNIFIED: Simplified validation using centralized system
         private bool ValidatePayPalSetupOnDemand()
         {
-            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            // CRITICAL FIX: Use the same multi-source check as CheckPayPalConfiguration
+            string paypalEmail = "";
+
+            // 1. Check EditorPrefs first
+            paypalEmail = EditorPrefs.GetString("U3D_PayPalEmail", "");
+
+            // 2. Check ScriptableObject if EditorPrefs empty
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+                if (creatorData != null)
+                {
+                    paypalEmail = creatorData.PayPalEmail;
+                }
+            }
+
+            // 3. Check U3DAuthenticator (method exists in your code)
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            }
 
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 // Show dialog and offer to go to Setup tab
                 bool goToSetup = EditorUtility.DisplayDialog(
-                    "PayPal email Required",
-                    "Please add your PayPal email to enable monetization tools.\n\n" +
+                    "PayPal Setup Required",
+                    "Please configure your PayPal email to enable monetization tools.\n\n" +
                     "This enables the dual transaction system where you keep 95% of earnings.\n\n" +
                     "Would you like to go to the Setup tab now?",
                     "Yes, Take Me There", "Cancel"

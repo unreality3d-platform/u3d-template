@@ -89,20 +89,43 @@ public static class U3DAuthenticator
         {
             var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
 
+            // CRITICAL FIX: Ensure the Resources folder structure exists
+            var resourcesPath = "Assets/U3D/Resources";
+            if (!AssetDatabase.IsValidFolder(resourcesPath))
+            {
+                // Create the full path structure
+                if (!AssetDatabase.IsValidFolder("Assets/U3D"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "U3D");
+                }
+                AssetDatabase.CreateFolder("Assets/U3D", "Resources");
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+
             var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
             if (data == null)
             {
                 data = ScriptableObject.CreateInstance<U3DCreatorData>();
-                if (!AssetDatabase.IsValidFolder("Assets/U3D/Resources"))
-                {
-                    AssetDatabase.CreateFolder("Assets/U3D", "Resources");
-                }
                 AssetDatabase.CreateAsset(data, assetPath);
+                Debug.Log($"✅ Created new U3DCreatorData asset at {assetPath}");
             }
 
             data.PayPalEmail = email;
             EditorUtility.SetDirty(data);
             AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            // CRITICAL FIX: Verify the asset was created and saved
+            var verifyData = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
+            if (verifyData != null && verifyData.PayPalEmail == email)
+            {
+                Debug.Log($"✅ U3DAuthenticator: PayPal email '{email}' verified in ScriptableObject");
+            }
+            else
+            {
+                Debug.LogError($"❌ Failed to verify U3DCreatorData asset. Expected: '{email}', Got: '{verifyData?.PayPalEmail ?? "null"}'");
+            }
         }
         catch (Exception ex)
         {
