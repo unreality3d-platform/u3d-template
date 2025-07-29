@@ -249,19 +249,131 @@ namespace U3D.Editor
         {
             if (!ValidatePayPalSetupOnDemand()) return;
 
-            GameObject gateObject = CreatePaymentUI("Scene Gate", CreateSceneGateUI);
+            // Use screen overlay UI instead of world space
+            GameObject gateObject = CreateScreenOverlayUI("Scene Gate", CreateSceneGateOverlayUI);
 
             var dualTransaction = gateObject.AddComponent<PayPalDualTransaction>();
-            var gateController = gateObject.AddComponent<U3D.SceneGateController>();
+            var gateController = gateObject.AddComponent<SceneGateController>();
 
-            dualTransaction.SetItemDetails("Scene Access", "Premium scene entry fee", 3.00f);
+            dualTransaction.SetItemDetails("Scene Access", "Premium scene access required", 3.00f);
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(gateController.OpenGate);
 
             // Auto-assign UI references
             AssignUIReferences(gateObject, dualTransaction);
 
-            LogToolCreation("Scene Gate", "Entry payment gate with automatic unlocking");
+            LogToolCreation("Scene Gate", "Full-screen access gate that blocks gameplay until payment");
+        }
+
+        private void CreateSceneGateOverlayUI(GameObject container)
+        {
+            var tmpResources = new TMP_DefaultControls.Resources();
+            var uiResources = new DefaultControls.Resources();
+
+            // Make the container cover the full screen
+            var containerRect = container.GetComponent<RectTransform>();
+            containerRect.anchorMin = Vector2.zero;
+            containerRect.anchorMax = Vector2.one;
+            containerRect.offsetMin = Vector2.zero;
+            containerRect.offsetMax = Vector2.zero;
+
+            // Add a semi-transparent background to block interaction
+            var containerImage = container.GetComponent<Image>();
+            if (containerImage == null)
+            {
+                containerImage = container.AddComponent<Image>();
+            }
+            containerImage.color = new Color(0, 0, 0, 0.8f); // Dark overlay
+            containerImage.raycastTarget = true; // Block clicks
+
+            // Create centered content panel
+            GameObject contentPanel = DefaultControls.CreatePanel(uiResources);
+            contentPanel.name = "ContentPanel";
+            contentPanel.transform.SetParent(container.transform, false);
+
+            var contentRect = contentPanel.GetComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0.5f, 0.5f);
+            contentRect.anchorMax = new Vector2(0.5f, 0.5f);
+            contentRect.sizeDelta = new Vector2(400, 300);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            // Style the content panel
+            var contentImage = contentPanel.GetComponent<Image>();
+            if (contentImage != null)
+            {
+                contentImage.color = new Color(1f, 1f, 1f, 0.95f); // White background
+            }
+
+            // Create header
+            CreateCleanHeaderUI(contentPanel, "Scene Access Required");
+
+            // Create main message text
+            GameObject messageText = TMP_DefaultControls.CreateText(tmpResources);
+            messageText.name = "MessageText";
+            messageText.transform.SetParent(contentPanel.transform, false);
+
+            var messageRect = messageText.GetComponent<RectTransform>();
+            messageRect.anchorMin = new Vector2(0.1f, 0.5f);
+            messageRect.anchorMax = new Vector2(0.9f, 0.75f);
+            messageRect.offsetMin = Vector2.zero;
+            messageRect.offsetMax = Vector2.zero;
+
+            var messageTMP = messageText.GetComponent<TextMeshProUGUI>();
+            if (messageTMP != null)
+            {
+                messageTMP.text = "This premium content requires payment to access.\n\nSupport the creator and unlock this experience!";
+                messageTMP.fontSize = 14;
+                messageTMP.color = new Color32(50, 50, 50, 255); // #323232
+                messageTMP.alignment = TextAlignmentOptions.Center;
+                messageTMP.raycastTarget = false;
+            }
+
+            // Create unlock button
+            GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
+            button.name = "UnlockButton";
+            button.transform.SetParent(contentPanel.transform, false);
+
+            var buttonRect = button.GetComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0.2f, 0.25f);
+            buttonRect.anchorMax = new Vector2(0.8f, 0.4f);
+            buttonRect.offsetMin = Vector2.zero;
+            buttonRect.offsetMax = Vector2.zero;
+
+            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
+            if (buttonText != null)
+            {
+                buttonText.text = "Unlock Scene - $3.00";
+                buttonText.fontSize = 16;
+                buttonText.color = new Color32(50, 50, 50, 255); // #323232
+            }
+
+            // Style the button
+            var buttonImage = button.GetComponent<Image>();
+            if (buttonImage != null)
+            {
+                buttonImage.color = new Color32(100, 200, 100, 255); // Green button
+            }
+
+            // Create status text
+            GameObject statusText = TMP_DefaultControls.CreateText(tmpResources);
+            statusText.name = "StatusText";
+            statusText.transform.SetParent(contentPanel.transform, false);
+
+            var statusRect = statusText.GetComponent<RectTransform>();
+            statusRect.anchorMin = new Vector2(0.1f, 0.05f);
+            statusRect.anchorMax = new Vector2(0.9f, 0.2f);
+            statusRect.offsetMin = Vector2.zero;
+            statusRect.offsetMax = Vector2.zero;
+
+            var statusTMP = statusText.GetComponent<TextMeshProUGUI>();
+            if (statusTMP != null)
+            {
+                statusTMP.text = "Ready to accept payment (95% Creator, 5% Platform)";
+                statusTMP.fontSize = 10;
+                statusTMP.color = new Color32(50, 50, 50, 255); // #323232
+                statusTMP.alignment = TextAlignmentOptions.Center;
+                statusTMP.raycastTarget = false;
+            }
         }
 
         private void CreateShopObject()

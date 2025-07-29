@@ -5,24 +5,35 @@ namespace U3D
 {
     /// <summary>
     /// Controller for Scene Gate monetization tool.
-    /// Manages scene access control after PayPal payment completion.
+    /// Manages full-screen overlay that blocks access until payment is made.
     /// </summary>
     public class SceneGateController : MonoBehaviour
     {
         [Header("Gate Configuration")]
-        [SerializeField] private GameObject gateObject;
         [SerializeField] private bool isOpen = false;
+        [SerializeField] private bool blockGameplayInput = true;
 
-        [Header("Access Control")]
-        [SerializeField] private string requiredSceneName = "";
-        [SerializeField] private bool blockMovement = true;
+        [Header("Scene Control")]
+        [SerializeField] private string blockedMessage = "Payment required to access this content";
+
+        private Canvas gateCanvas;
 
         private void Start()
         {
-            // Ensure gate starts closed
-            if (gateObject != null)
+            gateCanvas = GetComponentInParent<Canvas>();
+
+            // Ensure gate starts closed and blocks everything
+            if (gateCanvas != null)
             {
-                gateObject.SetActive(!isOpen);
+                // Set canvas to highest sort order to block everything
+                gateCanvas.sortingOrder = 1000;
+                gateCanvas.gameObject.SetActive(!isOpen);
+            }
+
+            // Block input if specified
+            if (blockGameplayInput && !isOpen)
+            {
+                BlockGameplayInput();
             }
         }
 
@@ -33,32 +44,29 @@ namespace U3D
         {
             isOpen = true;
 
-            // Hide/disable the gate object
-            if (gateObject != null)
+            Debug.Log("Scene gate opened - full access granted!");
+
+            // Hide the gate overlay
+            if (gateCanvas != null)
             {
-                gateObject.SetActive(false);
+                gateCanvas.gameObject.SetActive(false);
             }
 
-            Debug.Log("Scene gate opened - access granted!");
+            // Re-enable gameplay input
+            if (blockGameplayInput)
+            {
+                EnableGameplayInput();
+            }
 
             // Update status text if available
             var statusText = GetComponentInChildren<TextMeshProUGUI>();
             if (statusText != null && statusText.name == "StatusText")
             {
-                statusText.text = "Access granted!";
+                statusText.text = "Access granted! Welcome!";
             }
 
-            // Update button if available
-            var unlockButton = GetComponentInChildren<UnityEngine.UI.Button>();
-            if (unlockButton != null)
-            {
-                unlockButton.interactable = false;
-                var buttonText = unlockButton.GetComponentInChildren<TextMeshProUGUI>();
-                if (buttonText != null)
-                {
-                    buttonText.text = "Access Granted";
-                }
-            }
+            // Optional: Add a brief success message before hiding
+            StartCoroutine(ShowSuccessMessage());
         }
 
         /// <summary>
@@ -68,15 +76,21 @@ namespace U3D
         {
             isOpen = false;
 
-            if (gateObject != null)
+            if (gateCanvas != null)
             {
-                gateObject.SetActive(true);
+                gateCanvas.gameObject.SetActive(true);
+                gateCanvas.sortingOrder = 1000;
+            }
+
+            if (blockGameplayInput)
+            {
+                BlockGameplayInput();
             }
 
             var statusText = GetComponentInChildren<TextMeshProUGUI>();
             if (statusText != null && statusText.name == "StatusText")
             {
-                statusText.text = "Ready to accept payments";
+                statusText.text = "Ready to accept payment (95% Creator, 5% Platform)";
             }
 
             var unlockButton = GetComponentInChildren<UnityEngine.UI.Button>();
@@ -86,7 +100,7 @@ namespace U3D
                 var buttonText = unlockButton.GetComponentInChildren<TextMeshProUGUI>();
                 if (buttonText != null)
                 {
-                    buttonText.text = "Unlock Scene";
+                    buttonText.text = "Unlock Scene - $3.00";
                 }
             }
         }
@@ -97,31 +111,93 @@ namespace U3D
         public bool IsOpen() => isOpen;
 
         /// <summary>
-        /// Set the gate object to control
+        /// Block all gameplay input (you can expand this based on your input system)
         /// </summary>
-        public void SetGateObject(GameObject gate)
+        private void BlockGameplayInput()
         {
-            gateObject = gate;
-            if (gateObject != null)
+            // Disable common input components - expand based on your game's input system
+            var playerInputs = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            foreach (var input in playerInputs)
             {
-                gateObject.SetActive(!isOpen);
+                // You can add specific input component disabling here
+                // For example: if (input is PlayerController) input.enabled = false;
+            }
+
+            // Set time scale to 0 to pause the game (optional)
+            // Time.timeScale = 0f;
+        }
+
+        /// <summary>
+        /// Re-enable gameplay input
+        /// </summary>
+        private void EnableGameplayInput()
+        {
+            // Re-enable input components
+            var playerInputs = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            foreach (var input in playerInputs)
+            {
+                // Re-enable specific input components
+                // For example: if (input is PlayerController) input.enabled = true;
+            }
+
+            // Restore time scale
+            // Time.timeScale = 1f;
+        }
+
+        /// <summary>
+        /// Show a brief success message before hiding the gate
+        /// </summary>
+        private System.Collections.IEnumerator ShowSuccessMessage()
+        {
+            // Update button to show success
+            var unlockButton = GetComponentInChildren<UnityEngine.UI.Button>();
+            if (unlockButton != null)
+            {
+                unlockButton.interactable = false;
+                var buttonText = unlockButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Access Granted!";
+                }
+            }
+
+            // Wait 2 seconds then hide the gate
+            yield return new WaitForSeconds(2f);
+
+            if (gateCanvas != null)
+            {
+                gateCanvas.gameObject.SetActive(false);
             }
         }
 
         /// <summary>
-        /// Set required scene name for access control
+        /// Set custom blocked message
         /// </summary>
-        public void SetRequiredScene(string sceneName)
+        public void SetBlockedMessage(string message)
         {
-            requiredSceneName = sceneName;
+            blockedMessage = message;
+
+            var messageText = transform.Find("ContentPanel/MessageText")?.GetComponent<TextMeshProUGUI>();
+            if (messageText != null)
+            {
+                messageText.text = message;
+            }
+        }
+
+        /// <summary>
+        /// Set whether to block gameplay input
+        /// </summary>
+        public void SetBlockGameplayInput(bool block)
+        {
+            blockGameplayInput = block;
         }
 
         // Editor validation
         private void OnValidate()
         {
-            if (gateObject != null && Application.isPlaying)
+            if (Application.isPlaying && gateCanvas != null)
             {
-                gateObject.SetActive(!isOpen);
+                gateCanvas.gameObject.SetActive(!isOpen);
             }
         }
     }
