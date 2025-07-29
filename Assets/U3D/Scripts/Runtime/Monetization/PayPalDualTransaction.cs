@@ -3,6 +3,9 @@ using System.Runtime.InteropServices;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace U3D
 {
@@ -54,17 +57,8 @@ namespace U3D
 
         private void InitializeComponent()
         {
-            // Runtime access: Get PayPal email from ScriptableObject in Resources
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            if (creatorData != null)
-            {
-                this.creatorPayPalEmail = creatorData.PayPalEmail;
-            }
-            else
-            {
-                Debug.LogWarning("U3DCreatorData asset not found in Resources folder. Please ensure Setup is completed.");
-                this.creatorPayPalEmail = "";
-            }
+            // CRITICAL FIX: Multi-source PayPal email detection for maximum reliability
+            LoadCreatorPayPalEmail();
 
             // Setup UI
             if (paymentButton != null)
@@ -82,8 +76,153 @@ namespace U3D
             UpdateUI();
         }
 
+        // CRITICAL FIX: New method to reliably load PayPal email from all possible sources
+        private void LoadCreatorPayPalEmail()
+        {
+            string paypalEmail = "";
+
+            // Method 1: Try ScriptableObject first (runtime-accessible)
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
+            {
+                paypalEmail = creatorData.PayPalEmail;
+                Debug.Log($"✅ PayPal email loaded from ScriptableObject: {paypalEmail}");
+            }
+
+#if UNITY_EDITOR
+            // Method 2: In editor, also check EditorPrefs as fallback
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                paypalEmail = EditorPrefs.GetString("U3D_PayPalEmail", "");
+                if (!string.IsNullOrEmpty(paypalEmail))
+                {
+                    Debug.Log($"✅ PayPal email loaded from EditorPrefs: {paypalEmail}");
+
+                    // CRITICAL FIX: If found in EditorPrefs but not ScriptableObject, sync them
+                    SyncPayPalEmailToScriptableObject(paypalEmail);
+                }
+            }
+
+            // Method 3: Try U3DAuthenticator via reflection (EDITOR ONLY - runtime can't access editor classes)
+            if (string.IsNullOrEmpty(paypalEmail))
+            {
+                try
+                {
+                    var authenticatorType = System.Type.GetType("U3DAuthenticator");
+                    if (authenticatorType != null)
+                    {
+                        var getPayPalMethod = authenticatorType.GetMethod("GetPayPalEmail", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                        if (getPayPalMethod != null)
+                        {
+                            var authEmail = (string)getPayPalMethod.Invoke(null, null);
+                            if (!string.IsNullOrEmpty(authEmail))
+                            {
+                                paypalEmail = authEmail;
+                                Debug.Log($"✅ PayPal email loaded from U3DAuthenticator: {paypalEmail}");
+
+                                // CRITICAL FIX: If found in U3DAuthenticator but not ScriptableObject, sync them
+                                SyncPayPalEmailToScriptableObject(paypalEmail);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Could not access U3DAuthenticator via reflection: {ex.Message}");
+                }
+            }
+#endif
+
+            this.creatorPayPalEmail = paypalEmail;
+
+            // DIAGNOSTIC: Log the final result
+            if (string.IsNullOrEmpty(this.creatorPayPalEmail))
+            {
+                Debug.LogWarning("❌ PayPal email not found in any storage location");
+                Debug.LogWarning("🔍 Checked: ScriptableObject, EditorPrefs, U3DAuthenticator");
+
+                // Additional diagnostic info
+                Debug.LogWarning($"🔍 ScriptableObject exists: {(creatorData != null)}");
+                Debug.LogWarning($"🔍 ScriptableObject PayPal: '{creatorData?.PayPalEmail ?? "null"}'");
+
+#if UNITY_EDITOR
+                Debug.LogWarning($"🔍 EditorPrefs PayPal: '{EditorPrefs.GetString("U3D_PayPalEmail", "")}'");
+
+                // Try U3DAuthenticator via reflection
+                try
+                {
+                    var authenticatorType = System.Type.GetType("U3DAuthenticator");
+                    if (authenticatorType != null)
+                    {
+                        var getPayPalMethod = authenticatorType.GetMethod("GetPayPalEmail", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                        if (getPayPalMethod != null)
+                        {
+                            var authEmail = (string)getPayPalMethod.Invoke(null, null);
+                            Debug.LogWarning($"🔍 U3DAuthenticator PayPal: '{authEmail ?? "null"}'");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"🔍 U3DAuthenticator: Could not access via reflection: {ex.Message}");
+                }
+#else
+                Debug.LogWarning("🔍 Runtime build - EditorPrefs and U3DAuthenticator not accessible");
+#endif
+            }
+            else
+            {
+                Debug.Log($"✅ Final PayPal email for runtime: {this.creatorPayPalEmail}");
+            }
+        }
+
+#if UNITY_EDITOR
+        // CRITICAL FIX: Method to sync PayPal email to ScriptableObject when found elsewhere
+        private void SyncPayPalEmailToScriptableObject(string email)
+        {
+            try
+            {
+                var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
+
+                // Ensure the Resources folder exists
+                var resourcesPath = "Assets/U3D/Resources";
+                if (!AssetDatabase.IsValidFolder(resourcesPath))
+                {
+                    if (!AssetDatabase.IsValidFolder("Assets/U3D"))
+                    {
+                        AssetDatabase.CreateFolder("Assets", "U3D");
+                    }
+                    AssetDatabase.CreateFolder("Assets/U3D", "Resources");
+                }
+
+                var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
+                if (data == null)
+                {
+                    data = ScriptableObject.CreateInstance<U3DCreatorData>();
+                    AssetDatabase.CreateAsset(data, assetPath);
+                }
+
+                data.PayPalEmail = email;
+                EditorUtility.SetDirty(data);
+                AssetDatabase.SaveAssets();
+
+                Debug.Log($"✅ Synced PayPal email to ScriptableObject: {email}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Could not sync PayPal email to ScriptableObject: {ex.Message}");
+            }
+        }
+#endif
+
         private void ValidateSetup()
         {
+            // CRITICAL FIX: Re-check PayPal email if it's empty (might have been set after initialization)
+            if (string.IsNullOrEmpty(creatorPayPalEmail))
+            {
+                LoadCreatorPayPalEmail();
+            }
+
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
                 SetStatus("PayPal email not saved. Please complete setup first.");
@@ -112,6 +251,14 @@ namespace U3D
 
             if (paymentButton != null)
                 paymentButton.interactable = true;
+        }
+
+        // CRITICAL FIX: Add public method to refresh PayPal email (callable from editor)
+        public void RefreshPayPalEmail()
+        {
+            LoadCreatorPayPalEmail();
+            ValidateSetup();
+            Debug.Log($"🔄 PayPal email refreshed: {creatorPayPalEmail}");
         }
 
         private void UpdateUI()
@@ -434,20 +581,6 @@ namespace U3D
             ValidateSetup();
         }
 
-        public void RefreshPayPalEmail()
-        {
-            // Runtime refresh from ScriptableObject
-            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-            if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
-            {
-                if (creatorData.PayPalEmail != creatorPayPalEmail)
-                {
-                    creatorPayPalEmail = creatorData.PayPalEmail;
-                    ValidateSetup();
-                }
-            }
-        }
-
         public string GetCreatorPayPalEmail()
         {
             return creatorPayPalEmail;
@@ -644,10 +777,13 @@ namespace U3D
                 return;
             }
 
+#if UNITY_EDITOR
             // Editor validation
             ValidateSetupInEditor();
+#endif
         }
 
+#if UNITY_EDITOR
         private void ValidateSetupInEditor()
         {
             // Check if PayPal email exists in ScriptableObject
@@ -685,5 +821,6 @@ namespace U3D
                 }
             }
         }
+#endif
     }
 }

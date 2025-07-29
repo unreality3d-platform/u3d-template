@@ -926,15 +926,21 @@ namespace U3D.Editor
         private void SavePayPalEmail()
         {
             savingPayPalEmail = true;
-
             try
             {
-                // Save to EditorPrefs using standard Unity EditorPrefs instead of U3DCreatorPrefs
+                // CRITICAL FIX: Save to EditorPrefs first
                 SavePayPalEmailToPrefs(paypalEmail);
                 paypalEmailSaved = true;
 
-                // NEW: Also sync to ScriptableObject for Runtime access
+                // CRITICAL FIX: Sync to ScriptableObject for Runtime access
                 UpdateRuntimeDataAsset();
+
+                // CRITICAL FIX: Sync to U3DAuthenticator (SetPayPalEmail method exists in your code)
+                U3DAuthenticator.SetPayPalEmail(paypalEmail);
+                UnityDebug.Log("✅ PayPal email synced to U3DAuthenticator");
+
+                // CRITICAL FIX: Refresh MonetizationToolsCategory immediately
+                RefreshMonetizationToolsCategory();
 
                 EditorUtility.DisplayDialog("PayPal Email Saved!",
                     $"PayPal email '{paypalEmail}' saved successfully!\n\n" +
@@ -965,20 +971,74 @@ namespace U3D.Editor
         {
             var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
 
+            // CRITICAL FIX: Ensure the Resources folder structure exists
+            var resourcesPath = "Assets/U3D/Resources";
+            if (!AssetDatabase.IsValidFolder(resourcesPath))
+            {
+                // Create the full path structure
+                if (!AssetDatabase.IsValidFolder("Assets/U3D"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "U3D");
+                }
+                AssetDatabase.CreateFolder("Assets/U3D", "Resources");
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+
             var data = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
             if (data == null)
             {
                 data = ScriptableObject.CreateInstance<U3DCreatorData>();
-                if (!AssetDatabase.IsValidFolder("Assets/U3D/Resources"))
-                {
-                    AssetDatabase.CreateFolder("Assets/U3D", "Resources");
-                }
                 AssetDatabase.CreateAsset(data, assetPath);
+                UnityDebug.Log($"✅ Created new U3DCreatorData asset at {assetPath}");
             }
 
             data.PayPalEmail = paypalEmail;
             EditorUtility.SetDirty(data);
             AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            // CRITICAL FIX: Verify the asset was created and saved
+            var verifyData = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
+            if (verifyData != null && verifyData.PayPalEmail == paypalEmail)
+            {
+                UnityDebug.Log($"✅ U3DCreatorData verified: PayPal email '{paypalEmail}' saved to {assetPath}");
+            }
+            else
+            {
+                   UnityDebug.LogError($"❌ Failed to verify U3DCreatorData asset. Expected: '{paypalEmail}', Got: '{verifyData?.PayPalEmail ?? "null"}'");
+            }
+        }
+
+        // CRITICAL FIX: Add method to refresh MonetizationToolsCategory
+        private void RefreshMonetizationToolsCategory()
+        {
+            try
+            {
+                // Find any open U3DCreatorWindow and refresh its MonetizationToolsCategory
+                var windowType = System.Type.GetType("U3D.Editor.U3DCreatorWindow,Assembly-CSharp-Editor");
+                if (windowType != null)
+                {
+                    var windowMethod = windowType.GetMethod("GetWindow", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (windowMethod != null)
+                    {
+                        var window = windowMethod.Invoke(null, new object[] { windowType, false });
+                        if (window != null)
+                        {
+                            // Try to refresh the monetization category
+                            var refreshMethod = windowType.GetMethod("RefreshMonetizationCategory", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                            if (refreshMethod != null)
+                            {
+                                refreshMethod.Invoke(window, null);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityDebug.LogWarning($"Could not refresh MonetizationToolsCategory: {ex.Message}");
+            }
         }
 
         private void SavePayPalEmailToPrefs(string email)
