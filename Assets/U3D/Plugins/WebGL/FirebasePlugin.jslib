@@ -446,18 +446,71 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-// Add these functions to your existing FirebasePlugin.jslib
-// Insert after the existing PayPal functions section
+    // ========== ENHANCED: DUAL TRANSACTION FUNCTIONS WITH GAMEOBJECT NAME SUPPORT ==========
 
-    // ========== NEW: DUAL TRANSACTION FUNCTIONS ==========
+    // CRITICAL FIX: Store the current GameObject name for SendMessage calls
+    currentPayPalGameObject: '',
 
-    UnityStartDualTransaction: function (itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
+    // NEW: Enhanced method that accepts GameObject name - THIS IS THE MAIN METHOD TO USE
+    UnityStartDualTransactionWithGameObject: function (gameObjectNamePtr, itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
+        console.log('🚀 Unity dual transaction initiated with GameObject name');
+        
+        // Convert pointers to strings
+        var gameObjectName = UTF8ToString(gameObjectNamePtr);
         var itemName = UTF8ToString(itemNamePtr);
         var itemDescription = UTF8ToString(itemDescriptionPtr);
         var price = UTF8ToString(pricePtr);
         var transactionId = UTF8ToString(transactionIdPtr);
         
-        console.log('Unity starting dual transaction:', {
+        // CRITICAL FIX: Store the GameObject name for later SendMessage calls
+        window.currentPayPalGameObject = gameObjectName;
+        
+        console.log('💳 GameObject for PayPal callbacks:', gameObjectName);
+        console.log('💰 Transaction details:', { itemName, itemDescription, price, transactionId });
+        
+        if (typeof window.UnityStartDualTransaction === 'function') {
+            window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
+        } else {
+            console.warn('UnityStartDualTransaction not available in browser context');
+            // FIXED: Use the stored GameObject name instead of hardcoded component name
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
+                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnPaymentComplete', 'false');
+            }
+        }
+    },
+
+    // NEW: Enhanced authentication check that accepts GameObject name
+    UnityCheckAuthenticationStatusWithGameObject: function (gameObjectNamePtr) {
+        var gameObjectName = UTF8ToString(gameObjectNamePtr);
+        
+        console.log('Unity checking authentication status for GameObject:', gameObjectName);
+        
+        // Store the GameObject name for later callbacks
+        window.currentPayPalGameObject = gameObjectName;
+        
+        if (typeof window.UnityCheckAuthenticationStatus === 'function') {
+            window.UnityCheckAuthenticationStatus();
+        } else {
+            console.log('UnityCheckAuthenticationStatus not available - using no-auth mode');
+            // For dual transactions, no auth is required - always return true
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
+                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnAuthenticationChecked', 'true');
+            }
+        }
+    },
+
+    // LEGACY: Keep original method for backward compatibility, but mark it deprecated
+    UnityStartDualTransaction: function (itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
+        console.warn('⚠️ UnityStartDualTransaction (without GameObject name) is deprecated');
+        console.warn('⚠️ This may cause "SendMessage: object PayPalDualTransaction not found!" errors');
+        console.warn('⚠️ Use UnityStartDualTransactionWithGameObject instead');
+        
+        var itemName = UTF8ToString(itemNamePtr);
+        var itemDescription = UTF8ToString(itemDescriptionPtr);
+        var price = UTF8ToString(pricePtr);
+        var transactionId = UTF8ToString(transactionIdPtr);
+        
+        console.log('Unity starting dual transaction (legacy method):', {
             itemName: itemName,
             itemDescription: itemDescription,
             price: price,
@@ -468,21 +521,23 @@ mergeInto(LibraryManager.library, {
             window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
         } else {
             console.warn('UnityStartDualTransaction not available in browser context');
-            // Send failure back to Unity
+            // This will likely fail with "object not found" error because we're hardcoding the component name
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('PayPalDualTransaction', 'OnPaymentComplete', 'false');
             }
         }
     },
 
+    // LEGACY: Keep original authentication method for backward compatibility
     UnityCheckAuthenticationStatus: function () {
-        console.log('Unity checking authentication status for dual transaction');
+        console.warn('⚠️ UnityCheckAuthenticationStatus (without GameObject name) is deprecated');
+        console.log('Unity checking authentication status for dual transaction (legacy method)');
         
         if (typeof window.UnityCheckAuthenticationStatus === 'function') {
             window.UnityCheckAuthenticationStatus();
         } else {
             console.log('UnityCheckAuthenticationStatus not available - using no-auth mode');
-            // For dual transactions, no auth is required - always return true
+            // This will likely fail with "object not found" error
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('PayPalDualTransaction', 'OnAuthenticationChecked', 'true');
             }

@@ -38,7 +38,14 @@ namespace U3D
         [Header("Tip Jar Customization")]
         [SerializeField] private string creatorMessage = "Thank you for supporting my work!";
 
-        // JavaScript bridge imports
+        // JavaScript bridge imports - UPDATED with GameObject name support
+        [DllImport("__Internal")]
+        private static extern void UnityStartDualTransactionWithGameObject(string gameObjectName, string itemName, string itemDescription, string price, string transactionId);
+
+        [DllImport("__Internal")]
+        private static extern void UnityCheckAuthenticationStatusWithGameObject(string gameObjectName);
+
+        // Keep original methods for backward compatibility
         [DllImport("__Internal")]
         private static extern void UnityStartDualTransaction(string itemName, string itemDescription, string price, string transactionId);
 
@@ -321,11 +328,19 @@ namespace U3D
             try
             {
 #if UNITY_WEBGL && !UNITY_EDITOR
-                // Check authentication first
-                UnityCheckAuthenticationStatus();
+                // CRITICAL FIX: Use new method that passes GameObject name
+                Debug.Log($"🚀 Starting dual transaction for GameObject: {gameObject.name}");
+                UnityStartDualTransactionWithGameObject(
+                    gameObject.name,           // ← CRITICAL: Pass the actual GameObject name
+                    itemName,
+                    itemDescription,
+                    finalAmount.ToString("F2"),
+                    currentTransactionId
+                );
 #else
                 // Editor testing
                 Debug.Log($"[EDITOR] Would start dual transaction: {itemName} - ${finalAmount:F2}");
+                Debug.Log($"[EDITOR] GameObject name: {gameObject.name}");
                 Debug.Log($"[EDITOR] Creator email: {creatorPayPalEmail}");
                 Debug.Log($"[EDITOR] Creator amount: ${(finalAmount * 0.95f):F2}");
                 Debug.Log($"[EDITOR] Platform amount: ${(finalAmount * 0.05f):F2}");
@@ -432,12 +447,8 @@ namespace U3D
             try
             {
 #if UNITY_WEBGL && !UNITY_EDITOR
-                UnityStartDualTransaction(
-                    itemName,
-                    itemDescription,
-                    finalAmount.ToString("F2"),
-                    currentTransactionId
-                );
+                // Check authentication first with GameObject name
+                UnityCheckAuthenticationStatusWithGameObject(gameObject.name);
 #endif
             }
             catch (Exception ex)
