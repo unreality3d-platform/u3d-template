@@ -131,6 +131,7 @@ public class FirebaseStorageUploader
         }
     }
 
+    // Method 1: TriggerGitHubDeploymentWithIntent (around line 151)
     private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files)
     {
         try
@@ -141,7 +142,7 @@ public class FirebaseStorageUploader
 
             // 🚨 CRITICAL FIX: Add PayPal email to deployment request
             var paypalEmail = U3DAuthenticator.GetPayPalEmail();
-            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");s
+            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");
 
             var deploymentRequest = new Dictionary<string, object>
         {
@@ -150,8 +151,8 @@ public class FirebaseStorageUploader
             { "githubOwner", GitHubTokenManager.GitHubUsername },
             { "fileList", fileList },
             { "githubToken", GitHubTokenManager.Token },
-            { "deploymentIntent", deploymentIntent }
-                            { "creatorPayPalEmail", paypalEmail ?? "" }
+            { "deploymentIntent", deploymentIntent },
+            { "creatorPayPalEmail", paypalEmail ?? "" }  // ← ADD THIS LINE
         };
 
             var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
@@ -315,14 +316,14 @@ public class FirebaseStorageUploader
             Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");
 
             var deploymentRequest = new Dictionary<string, object>
-            {
-                { "project", projectName },
-                { "creatorUsername", creatorUsername },  // For professional URL
-                { "githubOwner", GitHubTokenManager.GitHubUsername },  // For GitHub operations
-                { "fileList", fileList },
-                { "githubToken", GitHubTokenManager.Token }
-                { "creatorPayPalEmail", paypalEmail ?? "" }
-            };
+        {
+            { "project", projectName },
+            { "creatorUsername", creatorUsername },
+            { "githubOwner", GitHubTokenManager.GitHubUsername },
+            { "fileList", fileList },
+            { "githubToken", GitHubTokenManager.Token },
+            { "creatorPayPalEmail", paypalEmail ?? "" }  // ← ADD THIS LINE
+        };
 
             // Use reflection to access the private CallFirebaseFunction method (same pattern as PublishTab)
             var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
