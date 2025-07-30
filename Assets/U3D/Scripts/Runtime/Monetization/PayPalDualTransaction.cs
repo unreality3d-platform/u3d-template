@@ -11,6 +11,7 @@ namespace U3D
 {
     /// <summary>
     /// Core component for PayPal dual transaction processing.
+    /// DIRECT PayPal Orders v2 API integration - bypasses Firebase Functions entirely.
     /// Handles automatic 95%/5% payment splitting between creator and platform.
     /// </summary>
     public class PayPalDualTransaction : MonoBehaviour
@@ -38,19 +39,19 @@ namespace U3D
         [Header("Tip Jar Customization")]
         [SerializeField] private string creatorMessage = "Thank you for supporting my work!";
 
-        // JavaScript bridge imports - UPDATED with GameObject name support
+        // DIRECT PayPal API JavaScript bridge imports - NO Firebase Functions
+        [DllImport("__Internal")]
+        private static extern void UnityStartDirectPayPalTransaction(string gameObjectName, string itemName, string itemDescription, string price, string creatorEmail, string transactionId);
+
+        [DllImport("__Internal")]
+        private static extern void UnityTestDirectPayPalConnection(string gameObjectName);
+
+        // Keep legacy methods for backward compatibility (will be deprecated)
         [DllImport("__Internal")]
         private static extern void UnityStartDualTransactionWithGameObject(string gameObjectName, string itemName, string itemDescription, string price, string transactionId);
 
         [DllImport("__Internal")]
         private static extern void UnityCheckAuthenticationStatusWithGameObject(string gameObjectName);
-
-        // Keep original methods for backward compatibility
-        [DllImport("__Internal")]
-        private static extern void UnityStartDualTransaction(string itemName, string itemDescription, string price, string transactionId);
-
-        [DllImport("__Internal")]
-        private static extern void UnityCheckAuthenticationStatus();
 
         private string currentTransactionId;
         private bool isProcessing = false;
@@ -64,7 +65,7 @@ namespace U3D
 
         private void InitializeComponent()
         {
-            // CRITICAL FIX: Multi-source PayPal email detection for maximum reliability
+            // Load creator PayPal email from all possible sources
             LoadCreatorPayPalEmail();
 
             // Setup UI
@@ -83,7 +84,6 @@ namespace U3D
             UpdateUI();
         }
 
-        // CRITICAL FIX: New method to reliably load PayPal email from all possible sources
         private void LoadCreatorPayPalEmail()
         {
             string paypalEmail = "";
@@ -104,13 +104,11 @@ namespace U3D
                 if (!string.IsNullOrEmpty(paypalEmail))
                 {
                     Debug.Log($"✅ PayPal email loaded from EditorPrefs: {paypalEmail}");
-
-                    // CRITICAL FIX: If found in EditorPrefs but not ScriptableObject, sync them
                     SyncPayPalEmailToScriptableObject(paypalEmail);
                 }
             }
 
-            // Method 3: Try U3DAuthenticator via reflection (EDITOR ONLY - runtime can't access editor classes)
+            // Method 3: Try U3DAuthenticator via reflection (EDITOR ONLY)
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 try
@@ -126,8 +124,6 @@ namespace U3D
                             {
                                 paypalEmail = authEmail;
                                 Debug.Log($"✅ PayPal email loaded from U3DAuthenticator: {paypalEmail}");
-
-                                // CRITICAL FIX: If found in U3DAuthenticator but not ScriptableObject, sync them
                                 SyncPayPalEmailToScriptableObject(paypalEmail);
                             }
                         }
@@ -142,56 +138,24 @@ namespace U3D
 
             this.creatorPayPalEmail = paypalEmail;
 
-            // DIAGNOSTIC: Log the final result
             if (string.IsNullOrEmpty(this.creatorPayPalEmail))
             {
                 Debug.LogWarning("❌ PayPal email not found in any storage location");
-                Debug.LogWarning("🔍 Checked: ScriptableObject, EditorPrefs, U3DAuthenticator");
-
-                // Additional diagnostic info
-                Debug.LogWarning($"🔍 ScriptableObject exists: {(creatorData != null)}");
-                Debug.LogWarning($"🔍 ScriptableObject PayPal: '{creatorData?.PayPalEmail ?? "null"}'");
-
-#if UNITY_EDITOR
-                Debug.LogWarning($"🔍 EditorPrefs PayPal: '{EditorPrefs.GetString("U3D_PayPalEmail", "")}'");
-
-                // Try U3DAuthenticator via reflection
-                try
-                {
-                    var authenticatorType = System.Type.GetType("U3DAuthenticator");
-                    if (authenticatorType != null)
-                    {
-                        var getPayPalMethod = authenticatorType.GetMethod("GetPayPalEmail", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                        if (getPayPalMethod != null)
-                        {
-                            var authEmail = (string)getPayPalMethod.Invoke(null, null);
-                            Debug.LogWarning($"🔍 U3DAuthenticator PayPal: '{authEmail ?? "null"}'");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"🔍 U3DAuthenticator: Could not access via reflection: {ex.Message}");
-                }
-#else
-                Debug.LogWarning("🔍 Runtime build - EditorPrefs and U3DAuthenticator not accessible");
-#endif
+                Debug.LogWarning("🔍 Direct PayPal integration requires creator email for dual transactions");
             }
             else
             {
-                Debug.Log($"✅ Final PayPal email for runtime: {this.creatorPayPalEmail}");
+                Debug.Log($"✅ Direct PayPal integration ready with creator email: {this.creatorPayPalEmail}");
             }
         }
 
 #if UNITY_EDITOR
-        // CRITICAL FIX: Method to sync PayPal email to ScriptableObject when found elsewhere
         private void SyncPayPalEmailToScriptableObject(string email)
         {
             try
             {
                 var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
 
-                // Ensure the Resources folder exists
                 var resourcesPath = "Assets/U3D/Resources";
                 if (!AssetDatabase.IsValidFolder(resourcesPath))
                 {
@@ -224,7 +188,6 @@ namespace U3D
 
         private void ValidateSetup()
         {
-            // CRITICAL FIX: Re-check PayPal email if it's empty (might have been set after initialization)
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
                 LoadCreatorPayPalEmail();
@@ -232,7 +195,7 @@ namespace U3D
 
             if (string.IsNullOrEmpty(creatorPayPalEmail))
             {
-                SetStatus("PayPal email not saved. Please complete setup first.");
+                SetStatus("PayPal email required. Please complete setup first.");
                 if (paymentButton != null)
                     paymentButton.interactable = false;
                 return;
@@ -246,21 +209,20 @@ namespace U3D
                 return;
             }
 
-            // All good - ready for payments with appropriate message
+            // Ready for direct PayPal payments
             if (allowVariableAmount)
             {
-                SetStatus("Ready to send tip (95% Creator, 5% Platform)");
+                SetStatus("Ready to send tip (Direct PayPal, 95% Creator, 5% Platform)");
             }
             else
             {
-                SetStatus("Ready to accept payments (95% Creator, 5% Platform)");
+                SetStatus("Ready to accept payments (Direct PayPal, 95% Creator, 5% Platform)");
             }
 
             if (paymentButton != null)
                 paymentButton.interactable = true;
         }
 
-        // CRITICAL FIX: Add public method to refresh PayPal email (callable from editor)
         public void RefreshPayPalEmail()
         {
             LoadCreatorPayPalEmail();
@@ -323,27 +285,32 @@ namespace U3D
             currentTransactionId = Guid.NewGuid().ToString();
 
             SetProcessingState(true);
-            SetStatus("Initializing payment...");
+            SetStatus("Initializing direct PayPal payment...");
 
             try
             {
 #if UNITY_WEBGL && !UNITY_EDITOR
-                // CRITICAL FIX: Use new method that passes GameObject name
-                Debug.Log($"🚀 Starting dual transaction for GameObject: {gameObject.name}");
-                UnityStartDualTransactionWithGameObject(
-                    gameObject.name,           // ← CRITICAL: Pass the actual GameObject name
+                // DIRECT PayPal Orders v2 API integration - NO Firebase Functions
+                Debug.Log($"🚀 Starting DIRECT PayPal dual transaction for GameObject: {gameObject.name}");
+                Debug.Log($"💰 Creator: {creatorPayPalEmail} receives ${(finalAmount * 0.95f):F2} (95%)");
+                Debug.Log($"💰 Platform: laurie@unreality3d.com receives ${(finalAmount * 0.05f):F2} (5%)");
+                
+                UnityStartDirectPayPalTransaction(
+                    gameObject.name,
                     itemName,
                     itemDescription,
                     finalAmount.ToString("F2"),
+                    creatorPayPalEmail,
                     currentTransactionId
                 );
 #else
                 // Editor testing
-                Debug.Log($"[EDITOR] Would start dual transaction: {itemName} - ${finalAmount:F2}");
+                Debug.Log($"[EDITOR] Would start DIRECT PayPal dual transaction: {itemName} - ${finalAmount:F2}");
                 Debug.Log($"[EDITOR] GameObject name: {gameObject.name}");
                 Debug.Log($"[EDITOR] Creator email: {creatorPayPalEmail}");
-                Debug.Log($"[EDITOR] Creator amount: ${(finalAmount * 0.95f):F2}");
-                Debug.Log($"[EDITOR] Platform amount: ${(finalAmount * 0.05f):F2}");
+                Debug.Log($"[EDITOR] Creator amount: ${(finalAmount * 0.95f):F2} (95%)");
+                Debug.Log($"[EDITOR] Platform amount: ${(finalAmount * 0.05f):F2} (5%)");
+                Debug.Log($"[EDITOR] DIRECT API - No Firebase Functions required");
 
                 // Simulate success in editor
                 StartCoroutine(SimulateEditorPayment());
@@ -351,9 +318,37 @@ namespace U3D
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Payment initialization failed: {ex.Message}");
+                Debug.LogError($"Direct PayPal payment initialization failed: {ex.Message}");
                 SetStatus("Payment initialization failed");
                 SetProcessingState(false);
+            }
+        }
+
+        // NEW: Test direct PayPal connection
+        public void TestDirectPayPalConnection()
+        {
+            if (string.IsNullOrEmpty(creatorPayPalEmail))
+            {
+                SetStatus("PayPal email required for connection test");
+                return;
+            }
+
+            SetStatus("Testing direct PayPal connection...");
+
+            try
+            {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                Debug.Log($"🧪 Testing direct PayPal connection for GameObject: {gameObject.name}");
+                UnityTestDirectPayPalConnection(gameObject.name);
+#else
+                Debug.Log($"[EDITOR] Would test direct PayPal connection");
+                StartCoroutine(SimulateConnectionTest());
+#endif
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Connection test failed: {ex.Message}");
+                SetStatus("Connection test failed");
             }
         }
 
@@ -361,6 +356,12 @@ namespace U3D
         {
             yield return new UnityEngine.WaitForSeconds(2f);
             OnPaymentComplete("true");
+        }
+
+        private System.Collections.IEnumerator SimulateConnectionTest()
+        {
+            yield return new UnityEngine.WaitForSeconds(1f);
+            OnConnectionTestComplete("true");
         }
 
         private float GetFinalAmount()
@@ -398,14 +399,13 @@ namespace U3D
                 return false;
             }
 
-            // Clear any previous error messages on valid amount
             if (allowVariableAmount)
             {
-                SetStatus("Ready to send tip (95% Creator, 5% Platform)");
+                SetStatus("Ready to send tip (Direct PayPal, 95% Creator, 5% Platform)");
             }
             else
             {
-                SetStatus("Ready to purchase (95% Creator, 5% Platform)");
+                SetStatus("Ready to purchase (Direct PayPal, 95% Creator, 5% Platform)");
             }
 
             return true;
@@ -415,7 +415,7 @@ namespace U3D
         {
             if (float.TryParse(value, out float amount))
             {
-                ValidateAmount(amount); // Add real-time validation
+                ValidateAmount(amount);
                 UpdateUI();
             }
             else if (!string.IsNullOrEmpty(value))
@@ -424,49 +424,13 @@ namespace U3D
             }
         }
 
-        // Called by JavaScript when authentication check completes
-        public void OnAuthenticationChecked(string isAuthenticated)
-        {
-            if (isAuthenticated == "true")
-            {
-                ContinueWithPayment();
-            }
-            else
-            {
-                SetStatus("Please log in to make payments");
-                SetProcessingState(false);
-            }
-        }
-
-        private void ContinueWithPayment()
-        {
-            float finalAmount = GetFinalAmount();
-
-            SetStatus("Starting PayPal payment...");
-
-            try
-            {
-#if UNITY_WEBGL && !UNITY_EDITOR
-                // Check authentication first with GameObject name
-                UnityCheckAuthenticationStatusWithGameObject(gameObject.name);
-#endif
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"PayPal payment failed: {ex.Message}");
-                SetStatus("Payment failed to start");
-                SetProcessingState(false);
-            }
-        }
-
-        // Called by JavaScript when payment completes
+        // Called by JavaScript when direct PayPal payment completes
         public void OnPaymentComplete(string success)
         {
             SetProcessingState(false);
 
             if (success == "true")
             {
-                // Different success messages based on payment type
                 if (allowVariableAmount)
                 {
                     SetStatus("Tip sent successfully! Thank you!");
@@ -478,7 +442,6 @@ namespace U3D
 
                 OnPaymentSuccess?.Invoke();
 
-                // For one-time purchases, disable the button
                 if (!allowVariableAmount && paymentButton != null)
                 {
                     paymentButton.interactable = false;
@@ -488,35 +451,33 @@ namespace U3D
                         buttonText.text = "Paid";
                     }
                 }
-                // For tip jars, reset to ready state after a delay
                 else if (allowVariableAmount)
                 {
                     StartCoroutine(ResetTipJarAfterDelay());
                 }
 
-                Debug.Log($"Dual transaction completed successfully for {itemName}");
+                Debug.Log($"Direct PayPal dual transaction completed successfully for {itemName}");
             }
             else
             {
                 SetStatus("Payment failed. Please try again.");
                 OnPaymentFailed?.Invoke();
-                Debug.LogWarning($"Dual transaction failed for {itemName}");
+                Debug.LogWarning($"Direct PayPal dual transaction failed for {itemName}");
             }
         }
 
-        private System.Collections.IEnumerator ResetTipJarAfterDelay()
+        // Called by JavaScript when connection test completes
+        public void OnConnectionTestComplete(string success)
         {
-            yield return new UnityEngine.WaitForSeconds(3f);
-
-            if (allowVariableAmount)
+            if (success == "true")
             {
-                SetStatus("Ready to send tip");
-
-                // Optionally reset amount to default
-                if (amountInputField != null)
-                {
-                    amountInputField.text = itemPrice.ToString("F2");
-                }
+                SetStatus("✅ Direct PayPal connection successful!");
+                Debug.Log("Direct PayPal connection test passed");
+            }
+            else
+            {
+                SetStatus("❌ Direct PayPal connection failed");
+                Debug.LogWarning("Direct PayPal connection test failed");
             }
         }
 
@@ -526,11 +487,26 @@ namespace U3D
             try
             {
                 var data = JsonUtility.FromJson<TransactionDetails>(transactionData);
-                Debug.Log($"Transaction details received: Creator: {data.creatorTransactionId}, Platform: {data.platformTransactionId}");
+                Debug.Log($"Direct PayPal transaction details: Creator: {data.creatorTransactionId}, Platform: {data.platformTransactionId}");
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"Failed to parse transaction details: {ex.Message}");
+            }
+        }
+
+        private System.Collections.IEnumerator ResetTipJarAfterDelay()
+        {
+            yield return new UnityEngine.WaitForSeconds(3f);
+
+            if (allowVariableAmount)
+            {
+                SetStatus("Ready to send tip (Direct PayPal)");
+
+                if (amountInputField != null)
+                {
+                    amountInputField.text = itemPrice.ToString("F2");
+                }
             }
         }
 
@@ -607,12 +583,8 @@ namespace U3D
             return totalAmount * 0.05f;
         }
 
-        /// <summary>
-        /// Assigns UI references programmatically after component creation
-        /// </summary>
         public void AssignUIReferences(Button payButton, TMP_Text statusTextComponent, TMP_Text priceTextComponent = null, TMP_InputField amountInput = null)
         {
-            // Clear existing listeners to prevent duplicates
             if (paymentButton != null)
             {
                 paymentButton.onClick.RemoveAllListeners();
@@ -623,62 +595,44 @@ namespace U3D
                 amountInputField.onValueChanged.RemoveAllListeners();
             }
 
-            // Assign new references
             paymentButton = payButton;
             statusText = statusTextComponent;
             priceText = priceTextComponent;
             amountInputField = amountInput;
 
-            // Setup button listener
             if (paymentButton != null)
             {
                 paymentButton.onClick.AddListener(StartPayment);
             }
 
-            // Setup amount input listener and configuration
             if (amountInputField != null)
             {
                 amountInputField.gameObject.SetActive(allowVariableAmount);
                 amountInputField.onValueChanged.AddListener(OnAmountChanged);
                 amountInputField.text = itemPrice.ToString("F2");
-
-                // Set character limit for currency input
-                amountInputField.characterLimit = 7; // Allows up to "999.99"
-
-                // Ensure decimal number content type
+                amountInputField.characterLimit = 7;
                 amountInputField.contentType = TMP_InputField.ContentType.DecimalNumber;
             }
 
-            // Update UI with current settings
             UpdateUI();
             ValidateSetup();
         }
 
-        /// <summary>
-        /// Sets a custom creator message for tip jars and donations
-        /// </summary>
         public void SetCreatorMessage(string message)
         {
             creatorMessage = message;
 
-            // Update the item description with the creator message
             if (!string.IsNullOrEmpty(message))
             {
                 itemDescription = message;
             }
         }
 
-        /// <summary>
-        /// Gets the current creator message
-        /// </summary>
         public string GetCreatorMessage()
         {
             return creatorMessage;
         }
 
-        /// <summary>
-        /// Enhanced method to configure tip jar specifically
-        /// </summary>
         public void SetupAsTipJar(float minAmount = 1.00f, float maxAmount = 100.00f, string message = "Thank you for supporting my work!")
         {
             SetItemDetails("Creator Tip", message, 5.00f);
@@ -686,9 +640,6 @@ namespace U3D
             SetCreatorMessage(message);
         }
 
-        /// <summary>
-        /// Validates UI components and provides clear feedback about missing references
-        /// </summary>
         public bool ValidateUIComponents()
         {
             bool isValid = true;
@@ -719,26 +670,19 @@ namespace U3D
             }
             else
             {
-                Debug.Log("✅ PayPal UI components validated successfully");
+                Debug.Log("✅ Direct PayPal UI components validated successfully");
             }
 
             return isValid;
         }
 
-        /// <summary>
-        /// Quick method to assign just the essential button and status text
-        /// </summary>
         public void AssignEssentialReferences(Button payButton, TMP_Text statusTextComponent)
         {
             AssignUIReferences(payButton, statusTextComponent, null, null);
         }
 
-        /// <summary>
-        /// Automatically find and assign UI references by searching child components
-        /// </summary>
         public void AutoAssignUIReferences()
         {
-            // Search for components in children
             var foundButton = GetComponentInChildren<Button>();
             var foundStatusText = transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
             var foundPriceText = transform.Find("PriceText")?.GetComponent<TextMeshProUGUI>();
@@ -747,9 +691,6 @@ namespace U3D
             AssignUIReferences(foundButton, foundStatusText, foundPriceText, foundAmountInput);
         }
 
-        /// <summary>
-        /// Check if UI references are properly assigned
-        /// </summary>
         public bool HasValidUIReferences()
         {
             return paymentButton != null && statusText != null;
@@ -766,7 +707,6 @@ namespace U3D
             public float totalAmount;
         }
 
-        // Inspector validation
         private void OnValidate()
         {
             if (itemPrice < 0)
@@ -781,15 +721,12 @@ namespace U3D
 
         private void OnEnable()
         {
-            // Validate setup when component becomes active (both in editor and runtime)
             if (Application.isPlaying)
             {
-                // Runtime validation happens in Start()
                 return;
             }
 
 #if UNITY_EDITOR
-            // Editor validation
             ValidateSetupInEditor();
 #endif
         }
@@ -797,37 +734,27 @@ namespace U3D
 #if UNITY_EDITOR
         private void ValidateSetupInEditor()
         {
-            // Check if PayPal email exists in ScriptableObject
             var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
             bool hasPayPalEmail = creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail);
 
             if (!hasPayPalEmail)
             {
-                // Update status text to show configuration needed
                 if (statusText != null)
                 {
-                    if (allowVariableAmount)
-                    {
-                        statusText.text = "PayPal email address required in Setup";
-                    }
-                    else
-                    {
-                        statusText.text = "PayPal email address required in Setup";
-                    }
+                    statusText.text = "PayPal email required for direct integration";
                 }
             }
             else
             {
-                // Show ready state
                 if (statusText != null)
                 {
                     if (allowVariableAmount)
                     {
-                        statusText.text = "Ready to send tip (95% Creator, 5% Platform)";
+                        statusText.text = "Ready to send tip (Direct PayPal, 95% Creator, 5% Platform)";
                     }
                     else
                     {
-                        statusText.text = "Ready to accept payments (95% Creator, 5% Platform)";
+                        statusText.text = "Ready to accept payments (Direct PayPal, 95% Creator, 5% Platform)";
                     }
                 }
             }
