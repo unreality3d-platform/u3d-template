@@ -1,6 +1,91 @@
 mergeInto(LibraryManager.library, {
 
-    // ========== EXISTING PAYPAL FUNCTIONS (UNCHANGED) ==========
+    // ========== DIRECT PAYPAL ORDERS V2 API INTEGRATION ==========
+    // No Firebase Functions required - Unity SDK → PayPal Orders v2 API direct
+
+    // MAIN: Direct PayPal dual transaction - bypasses Firebase entirely
+    UnityStartDirectPayPalTransaction: function (gameObjectNamePtr, itemNamePtr, itemDescriptionPtr, pricePtr, creatorEmailPtr, transactionIdPtr) {
+        var gameObjectName = UTF8ToString(gameObjectNamePtr);
+        var itemName = UTF8ToString(itemNamePtr);
+        var itemDescription = UTF8ToString(itemDescriptionPtr);
+        var price = parseFloat(UTF8ToString(pricePtr));
+        var creatorEmail = UTF8ToString(creatorEmailPtr);
+        var transactionId = UTF8ToString(transactionIdPtr);
+
+        console.log('🚀 DIRECT PayPal dual transaction initiated');
+        console.log('💳 GameObject for callbacks:', gameObjectName);
+        console.log('💰 Item:', itemName, '-', itemDescription);
+        console.log('💵 Total amount:', '$' + price.toFixed(2));
+        console.log('📧 Creator email:', creatorEmail);
+        console.log('🆔 Transaction ID:', transactionId);
+
+        // Store the GameObject name for SendMessage callbacks
+        window.currentPayPalGameObject = gameObjectName;
+
+        // Calculate dual transaction amounts
+        var creatorAmount = Math.round(price * 0.95 * 100) / 100; // 95% to creator
+        var platformAmount = Math.round(price * 0.05 * 100) / 100; // 5% to platform
+
+        console.log('💰 Creator receives:', '$' + creatorAmount.toFixed(2), '(95%)');
+        console.log('💰 Platform receives:', '$' + platformAmount.toFixed(2), '(5%)');
+
+        // Check if direct PayPal function is available
+        if (typeof window.StartDirectPayPalDualTransaction === 'function') {
+            window.StartDirectPayPalDualTransaction({
+                itemName: itemName,
+                itemDescription: itemDescription,
+                totalAmount: price,
+                creatorAmount: creatorAmount,
+                platformAmount: platformAmount,
+                creatorEmail: creatorEmail,
+                platformEmail: 'laurie@unreality3d.com',
+                transactionId: transactionId,
+                gameObjectName: gameObjectName
+            });
+        } else {
+            console.warn('❌ Direct PayPal function not available');
+            console.warn('🔍 Make sure PayPal SDK is loaded and direct integration is configured');
+            
+            // Send failure back to Unity
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
+                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnPaymentComplete', 'false');
+            }
+        }
+    },
+
+    // Test direct PayPal connection
+    UnityTestDirectPayPalConnection: function (gameObjectNamePtr) {
+        var gameObjectName = UTF8ToString(gameObjectNamePtr);
+        
+        console.log('🧪 Testing direct PayPal connection for GameObject:', gameObjectName);
+        
+        // Store the GameObject name
+        window.currentPayPalGameObject = gameObjectName;
+
+        // Check if PayPal SDK is available
+        if (typeof paypal !== 'undefined' && paypal.Buttons) {
+            console.log('✅ PayPal SDK is available');
+            
+            // Test connection
+            if (typeof window.TestDirectPayPalConnection === 'function') {
+                window.TestDirectPayPalConnection(gameObjectName);
+            } else {
+                console.log('✅ PayPal SDK available, direct integration ready');
+                // Send success back to Unity
+                if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
+                    window.unityInstance.SendMessage(gameObjectName, 'OnConnectionTestComplete', 'true');
+                }
+            }
+        } else {
+            console.log('❌ PayPal SDK not available');
+            // Send failure back to Unity
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
+                window.unityInstance.SendMessage(gameObjectName, 'OnConnectionTestComplete', 'false');
+            }
+        }
+    },
+
+    // ========== EXISTING PAYPAL FUNCTIONS (LEGACY - FIREBASE DEPENDENT) ==========
     
     UnityCallTestFunction: function () {
         if (typeof window.UnityCallTestFunction === 'function') {
@@ -29,7 +114,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== NEW: PROFESSIONAL URL DETECTION ==========
+    // ========== PROFESSIONAL URL DETECTION ==========
 
     UnityGetCurrentURL: function () {
         var currentUrl = window.location.href;
@@ -51,21 +136,17 @@ mergeInto(LibraryManager.library, {
             deploymentType: 'unknown'
         };
 
-        // Detect professional URL pattern: username.unreality3d.com/project/
         var hostname = window.location.hostname.toLowerCase();
         var pathname = window.location.pathname;
 
         if (hostname.endsWith('.unreality3d.com') && hostname !== 'unreality3d.com') {
-            // Professional URL detected
             deploymentInfo.isProfessionalURL = true;
             deploymentInfo.isProduction = true;
             deploymentInfo.deploymentType = 'professional';
             
-            // Extract creator username (subdomain)
             var subdomain = hostname.replace('.unreality3d.com', '');
             deploymentInfo.creatorUsername = subdomain;
             
-            // Extract project name from path
             var pathParts = pathname.split('/').filter(part => part.length > 0);
             if (pathParts.length > 0) {
                 deploymentInfo.projectName = pathParts[0];
@@ -74,31 +155,26 @@ mergeInto(LibraryManager.library, {
             console.log('Professional URL detected:', deploymentInfo.creatorUsername + '.unreality3d.com/' + deploymentInfo.projectName);
             
         } else if (hostname.includes('unreality3d.web.app') || hostname.includes('unreality3d.firebaseapp.com')) {
-            // Firebase hosting URL (current system)
             deploymentInfo.isProduction = hostname.includes('unreality3d.web.app');
             deploymentInfo.deploymentType = deploymentInfo.isProduction ? 'firebase-production' : 'firebase-development';
             
             console.log('Firebase hosting detected:', deploymentInfo.deploymentType);
             
         } else if (hostname.includes('unreality3d2025.web.app') || hostname.includes('unreality3d2025.firebaseapp.com')) {
-            // Development environment
             deploymentInfo.isProduction = false;
             deploymentInfo.deploymentType = 'firebase-development';
             
             console.log('Development environment detected');
             
         } else if (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('127.0.0.1')) {
-            // Local development
             deploymentInfo.deploymentType = 'local';
             console.log('Local development detected');
             
         } else {
-            // Unknown deployment
             deploymentInfo.deploymentType = 'unknown';
             console.log('Unknown deployment type for hostname:', hostname);
         }
 
-        // Convert to JSON string for Unity
         var jsonString = JSON.stringify(deploymentInfo);
         var bufferSize = lengthBytesUTF8(jsonString) + 1;
         var buffer = _malloc(bufferSize);
@@ -116,7 +192,6 @@ mergeInto(LibraryManager.library, {
             timestamp: new Date().toISOString()
         });
         
-        // Send metrics to analytics if available
         if (typeof window.UnityReportAnalyticsEvent === 'function') {
             window.UnityReportAnalyticsEvent('deployment_metrics', JSON.stringify({
                 deploymentType: deploymentType,
@@ -127,7 +202,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== PHOTON FUSION MULTIPLAYER FUNCTIONS (UNCHANGED) ==========
+    // ========== PHOTON FUSION MULTIPLAYER FUNCTIONS ==========
 
     UnityGetPhotonToken: function (roomNamePtr, contentIdPtr) {
         var roomName = UTF8ToString(roomNamePtr);
@@ -139,7 +214,6 @@ mergeInto(LibraryManager.library, {
             window.UnityGetPhotonToken(roomName, contentId);
         } else {
             console.warn('UnityGetPhotonToken not available in browser context');
-            // Send error back to Unity
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived', 
                     JSON.stringify({ error: 'Multiplayer functions not available' }));
@@ -158,7 +232,6 @@ mergeInto(LibraryManager.library, {
             window.UnityCreateMultiplayerSession(contentId, sessionName, maxPlayers);
         } else {
             console.warn('UnityCreateMultiplayerSession not available in browser context');
-            // Send error back to Unity
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated', 
                     JSON.stringify({ error: 'Session creation not available' }));
@@ -175,7 +248,6 @@ mergeInto(LibraryManager.library, {
             window.UnityJoinMultiplayerSession(roomName);
         } else {
             console.warn('UnityJoinMultiplayerSession not available in browser context');
-            // Send error back to Unity
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse', 
                     JSON.stringify({ error: 'Session join not available' }));
@@ -183,7 +255,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== USER PROFILE FUNCTIONS (UNCHANGED) ==========
+    // ========== USER PROFILE FUNCTIONS ==========
 
     UnityGetUserProfile: function () {
         console.log('Unity requesting user profile');
@@ -192,7 +264,6 @@ mergeInto(LibraryManager.library, {
             window.UnityGetUserProfile();
         } else {
             console.warn('UnityGetUserProfile not available in browser context');
-            // Send default visitor profile back to Unity
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 var defaultProfile = {
                     userId: 'guest',
@@ -221,7 +292,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== NETWORKING STATUS FUNCTIONS (UNCHANGED) ==========
+    // ========== NETWORKING STATUS FUNCTIONS ==========
 
     UnityReportNetworkStatus: function (statusPtr, playerCountPtr) {
         var status = UTF8ToString(statusPtr);
@@ -255,7 +326,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== ANALYTICS AND TELEMETRY (UNCHANGED) ==========
+    // ========== ANALYTICS AND TELEMETRY ==========
 
     UnityReportAnalyticsEvent: function (eventNamePtr, eventDataPtr) {
         var eventName = UTF8ToString(eventNamePtr);
@@ -278,7 +349,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== BROWSER INTEGRATION FUNCTIONS (UNCHANGED) ==========
+    // ========== BROWSER INTEGRATION FUNCTIONS ==========
 
     UnityRequestFullscreen: function () {
         console.log('Unity requesting fullscreen');
@@ -286,7 +357,6 @@ mergeInto(LibraryManager.library, {
         if (typeof window.UnityRequestFullscreen === 'function') {
             window.UnityRequestFullscreen();
         } else {
-            // Fallback to direct fullscreen request
             if (document.documentElement.requestFullscreen) {
                 document.documentElement.requestFullscreen();
             } else if (document.documentElement.webkitRequestFullscreen) {
@@ -303,7 +373,6 @@ mergeInto(LibraryManager.library, {
         if (typeof window.UnityExitFullscreen === 'function') {
             window.UnityExitFullscreen();
         } else {
-            // Fallback to direct fullscreen exit
             if (document.exitFullscreen) {
                 document.exitFullscreen();
             } else if (document.webkitExitFullscreen) {
@@ -336,7 +405,7 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== ERROR HANDLING AND DEBUGGING (UNCHANGED) ==========
+    // ========== ERROR HANDLING AND DEBUGGING ==========
 
     UnityReportError: function (errorMessagePtr, stackTracePtr) {
         var errorMessage = UTF8ToString(errorMessagePtr);
@@ -349,7 +418,6 @@ mergeInto(LibraryManager.library, {
             window.UnityReportError(errorMessage, stackTrace);
         }
         
-        // Send to analytics if available
         if (typeof window.UnityReportAnalyticsEvent === 'function') {
             window.UnityReportAnalyticsEvent('unity_error', JSON.stringify({
                 message: errorMessage,
@@ -383,14 +451,13 @@ mergeInto(LibraryManager.library, {
         }
     },
 
-    // ========== UTILITY FUNCTIONS (UNCHANGED) ==========
+    // ========== UTILITY FUNCTIONS ==========
 
     UnityGetTimestamp: function () {
         return Date.now();
     },
 
     UnityGetRandomGUID: function () {
-        // Generate a simple GUID for Unity
         var guid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             var r = Math.random() * 16 | 0;
             var v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -409,10 +476,10 @@ mergeInto(LibraryManager.library, {
         
         try {
             localStorage.setItem('U3D_' + key, value);
-            return 1; // Success
+            return 1;
         } catch (e) {
             console.warn('Failed to set localStorage:', e);
-            return 0; // Failure
+            return 0;
         }
     },
 
@@ -439,78 +506,33 @@ mergeInto(LibraryManager.library, {
         
         try {
             localStorage.removeItem('U3D_' + key);
-            return 1; // Success
+            return 1;
         } catch (e) {
             console.warn('Failed to remove localStorage:', e);
-            return 0; // Failure
+            return 0;
         }
     },
 
-    // ========== ENHANCED: DUAL TRANSACTION FUNCTIONS WITH GAMEOBJECT NAME SUPPORT ==========
+    // ========== LEGACY DUAL TRANSACTION FUNCTIONS (FIREBASE DEPENDENT) ==========
+    // These are kept for backward compatibility but marked as deprecated
 
-    // CRITICAL FIX: Store the current GameObject name for SendMessage calls
     currentPayPalGameObject: '',
 
-    // NEW: Enhanced method that accepts GameObject name - THIS IS THE MAIN METHOD TO USE
+    // DEPRECATED: Firebase Functions-based dual transaction
     UnityStartDualTransactionWithGameObject: function (gameObjectNamePtr, itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
-        console.log('🚀 Unity dual transaction initiated with GameObject name');
+        console.warn('⚠️ UnityStartDualTransactionWithGameObject is DEPRECATED');
+        console.warn('⚠️ This method requires Firebase Functions authentication');
+        console.warn('⚠️ Use UnityStartDirectPayPalTransaction for direct PayPal integration');
         
-        // Convert pointers to strings
         var gameObjectName = UTF8ToString(gameObjectNamePtr);
         var itemName = UTF8ToString(itemNamePtr);
         var itemDescription = UTF8ToString(itemDescriptionPtr);
         var price = UTF8ToString(pricePtr);
         var transactionId = UTF8ToString(transactionIdPtr);
         
-        // CRITICAL FIX: Store the GameObject name for later SendMessage calls
         window.currentPayPalGameObject = gameObjectName;
         
-        console.log('💳 GameObject for PayPal callbacks:', gameObjectName);
-        console.log('💰 Transaction details:', { itemName, itemDescription, price, transactionId });
-        
-        if (typeof window.UnityStartDualTransaction === 'function') {
-            window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
-        } else {
-            console.warn('UnityStartDualTransaction not available in browser context');
-            // FIXED: Use the stored GameObject name instead of hardcoded component name
-            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
-                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnPaymentComplete', 'false');
-            }
-        }
-    },
-
-    // NEW: Enhanced authentication check that accepts GameObject name
-    UnityCheckAuthenticationStatusWithGameObject: function (gameObjectNamePtr) {
-        var gameObjectName = UTF8ToString(gameObjectNamePtr);
-        
-        console.log('Unity checking authentication status for GameObject:', gameObjectName);
-        
-        // Store the GameObject name for later callbacks
-        window.currentPayPalGameObject = gameObjectName;
-        
-        if (typeof window.UnityCheckAuthenticationStatus === 'function') {
-            window.UnityCheckAuthenticationStatus();
-        } else {
-            console.log('UnityCheckAuthenticationStatus not available - using no-auth mode');
-            // For dual transactions, no auth is required - always return true
-            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
-                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnAuthenticationChecked', 'true');
-            }
-        }
-    },
-
-    // LEGACY: Keep original method for backward compatibility, but mark it deprecated
-    UnityStartDualTransaction: function (itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
-        console.warn('⚠️ UnityStartDualTransaction (without GameObject name) is deprecated');
-        console.warn('⚠️ This may cause "SendMessage: object PayPalDualTransaction not found!" errors');
-        console.warn('⚠️ Use UnityStartDualTransactionWithGameObject instead');
-        
-        var itemName = UTF8ToString(itemNamePtr);
-        var itemDescription = UTF8ToString(itemDescriptionPtr);
-        var price = UTF8ToString(pricePtr);
-        var transactionId = UTF8ToString(transactionIdPtr);
-        
-        console.log('Unity starting dual transaction (legacy method):', {
+        console.log('Unity dual transaction (DEPRECATED Firebase method):', {
             itemName: itemName,
             itemDescription: itemDescription,
             price: price,
@@ -520,24 +542,72 @@ mergeInto(LibraryManager.library, {
         if (typeof window.UnityStartDualTransaction === 'function') {
             window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
         } else {
-            console.warn('UnityStartDualTransaction not available in browser context');
-            // This will likely fail with "object not found" error because we're hardcoding the component name
+            console.warn('Firebase-based UnityStartDualTransaction not available');
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
+                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnPaymentComplete', 'false');
+            }
+        }
+    },
+
+    // DEPRECATED: Firebase Functions-based authentication check
+    UnityCheckAuthenticationStatusWithGameObject: function (gameObjectNamePtr) {
+        console.warn('⚠️ UnityCheckAuthenticationStatusWithGameObject is DEPRECATED');
+        console.warn('⚠️ Direct PayPal integration does not require authentication');
+        
+        var gameObjectName = UTF8ToString(gameObjectNamePtr);
+        
+        console.log('Unity authentication check (DEPRECATED) for GameObject:', gameObjectName);
+        
+        window.currentPayPalGameObject = gameObjectName;
+        
+        if (typeof window.UnityCheckAuthenticationStatus === 'function') {
+            window.UnityCheckAuthenticationStatus();
+        } else {
+            console.log('No auth required for direct PayPal - returning success');
+            if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
+                window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnAuthenticationChecked', 'true');
+            }
+        }
+    },
+
+    // ULTRA-DEPRECATED: Original methods without GameObject name support
+    UnityStartDualTransaction: function (itemNamePtr, itemDescriptionPtr, pricePtr, transactionIdPtr) {
+        console.warn('⚠️ UnityStartDualTransaction (without GameObject name) is ULTRA-DEPRECATED');
+        console.warn('⚠️ Will cause "SendMessage: object not found!" errors');
+        console.warn('⚠️ Use UnityStartDirectPayPalTransaction instead');
+        
+        var itemName = UTF8ToString(itemNamePtr);
+        var itemDescription = UTF8ToString(itemDescriptionPtr);
+        var price = UTF8ToString(pricePtr);
+        var transactionId = UTF8ToString(transactionIdPtr);
+        
+        console.log('Unity dual transaction (ULTRA-DEPRECATED method):', {
+            itemName: itemName,
+            itemDescription: itemDescription,
+            price: price,
+            transactionId: transactionId
+        });
+        
+        if (typeof window.UnityStartDualTransaction === 'function') {
+            window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
+        } else {
+            console.warn('Firebase-based UnityStartDualTransaction not available');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('PayPalDualTransaction', 'OnPaymentComplete', 'false');
             }
         }
     },
 
-    // LEGACY: Keep original authentication method for backward compatibility
     UnityCheckAuthenticationStatus: function () {
-        console.warn('⚠️ UnityCheckAuthenticationStatus (without GameObject name) is deprecated');
-        console.log('Unity checking authentication status for dual transaction (legacy method)');
+        console.warn('⚠️ UnityCheckAuthenticationStatus (without GameObject name) is ULTRA-DEPRECATED');
+        console.warn('⚠️ Will cause "SendMessage: object not found!" errors');
+        
+        console.log('Unity authentication check (ULTRA-DEPRECATED method)');
         
         if (typeof window.UnityCheckAuthenticationStatus === 'function') {
             window.UnityCheckAuthenticationStatus();
         } else {
-            console.log('UnityCheckAuthenticationStatus not available - using no-auth mode');
-            // This will likely fail with "object not found" error
+            console.log('No auth required for direct PayPal - returning success');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
                 window.unityInstance.SendMessage('PayPalDualTransaction', 'OnAuthenticationChecked', 'true');
             }
