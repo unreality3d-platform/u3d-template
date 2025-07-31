@@ -543,21 +543,9 @@ namespace U3D.Editor
                 "We'll handle the rest - you just click 'Make It Live!'",
                 MessageType.Info);
 
-            if (!GitHubTokenManager.HasValidToken)
-            {
-                EditorGUILayout.HelpBox(
-                    "💡 Already have a token? You can retrieve it from GitHub:",
-                    MessageType.Info);
-
-                EditorGUILayout.Space(5);
-
-                if (GUILayout.Button("🔗 View My GitHub Tokens", GUILayout.Height(30)))
-                {
-                    Application.OpenURL("https://github.com/settings/tokens");
-                }
-
-                EditorGUILayout.Space(5);
-            }
+            EditorGUILayout.HelpBox(
+                "💡 Already have a token? If you saved it, paste it below. If not, you'll need to create a new one.  It's ok, your published products aren't affected.",
+                MessageType.Info);
 
             EditorGUILayout.Space(10);
 
