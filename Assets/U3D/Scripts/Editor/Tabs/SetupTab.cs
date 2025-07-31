@@ -111,7 +111,6 @@ namespace U3D.Editor
         {
             U3DAuthenticator.Logout();
             // DON'T clear GitHub token - it should persist across U3D sessions
-            // GitHubTokenManager.ClearToken(); // ← REMOVE THIS LINE
 
             // DON'T clear PayPal email - it should persist independently
 
