@@ -3,6 +3,7 @@ using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using U3D.Input;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -89,6 +90,8 @@ namespace U3D.Networking
         private InputAction _turnRightAction;
         private InputAction _autoRunToggleAction;
 
+        private U3DSimpleTouchZones touchZones;
+
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
         public static event Action<PlayerRef> OnPlayerJoinedEvent;
@@ -124,11 +127,34 @@ namespace U3D.Networking
             InitializeNetworking();
             SetupInputActions();
 
+            if (Application.isMobilePlatform || Application.isEditor)
+            {
+                SetupTouchControls();
+            }
+
+            if (autoStartHost)
+            {
+                _ = StartNetworking("DefaultRoom");
+            }
+
             if (autoStartHost)
             {
                 _ = StartNetworking("DefaultRoom");
             }
         }
+
+        void SetupTouchControls()
+{
+    // Find existing or create touch zone controller
+    touchZones = UnityEngine.Object.FindFirstObjectByType<U3DSimpleTouchZones>();
+    if (touchZones == null)
+    {
+        GameObject touchControllerObj = new GameObject("TouchZoneController");
+        touchZones = touchControllerObj.AddComponent<U3DSimpleTouchZones>();
+        DontDestroyOnLoad(touchControllerObj);
+        Debug.Log("✅ Touch zone controller created for mobile input");
+    }
+}
 
         void InitializeNetworking()
         {
@@ -200,70 +226,108 @@ namespace U3D.Networking
 
             if (!shouldProcessInput) return;
 
-            // Cache input values for Fusion's OnInput callback
-            _cachedMovementInput = _moveAction.ReadValue<Vector2>();
-
-            if (_lookAction != null)
-                _cachedLookInput = _lookAction.ReadValue<Vector2>();
-
-            // Cache button states using proper Input System polling
-            if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
-                _jumpPressed = true;
-
-            if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
-                _sprintPressed = true;
-
-            if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
-                _crouchPressed = true;
-
-            if (_flyAction != null && _flyAction.WasPressedThisFrame())
-                _flyPressed = true;
-
-            if (_interactAction != null && _interactAction.WasPressedThisFrame())
-                _interactPressed = true;
-
-            // Direct double-click teleportation (bypasses network button system)
-            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+            if (Application.isMobilePlatform && touchZones != null)
             {
-                float currentTime = Time.time;
-                if (currentTime - _lastTeleportClickTime < 0.5f) // Within 0.5 seconds
+                // On mobile, use touch zones
+                _cachedMovementInput = touchZones.MovementInput;
+                _cachedLookInput = touchZones.LookInput;
+
+                // Handle touch gestures
+                if (touchZones.JumpRequested)
+                    _jumpPressed = true;
+                if (touchZones.SprintActive)
+                    _sprintPressed = true;
+                if (touchZones.CrouchRequested)
+                    _crouchPressed = true;
+                if (touchZones.FlyRequested)
+                    _flyPressed = true;
+                if (touchZones.InteractRequested)
+                    _interactPressed = true;
+            }
+            else
+            {
+                // On desktop, use traditional input (existing code)
+                _cachedMovementInput = _moveAction.ReadValue<Vector2>();
+
+                if (_lookAction != null)
+                    _cachedLookInput = _lookAction.ReadValue<Vector2>();
+
+                // Cache button states using proper Input System polling
+                if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
+                    _jumpPressed = true;
+
+                if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
+                    _sprintPressed = true;
+
+                if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
+                    _crouchPressed = true;
+
+                if (_flyAction != null && _flyAction.WasPressedThisFrame())
+                    _flyPressed = true;
+
+                if (_interactAction != null && _interactAction.WasPressedThisFrame())
+                    _interactPressed = true;
+
+                // NEW: Handle zoom from pinch gesture
+                if (Mathf.Abs(touchZones.ZoomInput) > 0.01f)
                 {
-                    Debug.Log("✅ Double-click teleport detected - triggering directly");
-                    TriggerDirectTeleport();
+                    // Use zoom input for FOV adjustment
+                    _zoomPressed = touchZones.ZoomInput > 0; // Pinch out = zoom in
+
+                    // Or use it for smooth scroll value
+                    _perspectiveScrollValue = touchZones.ZoomInput * 5f; // Scale as needed
                 }
-                _lastTeleportClickTime = currentTime;
+
+                // NEW: Handle perspective switch from large pinch
+                if (touchZones.PerspectiveSwitchRequested)
+                {
+                    // Toggle perspective mode
+                    _perspectiveScrollValue = 10f; // Large value to trigger switch
+                }
+
+                // Direct double-click teleportation (bypasses network button system)
+                if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+                {
+                    float currentTime = Time.time;
+                    if (currentTime - _lastTeleportClickTime < 0.5f) // Within 0.5 seconds
+                    {
+                        Debug.Log("✅ Double-click teleport detected - triggering directly");
+                        TriggerDirectTeleport();
+                    }
+                    _lastTeleportClickTime = currentTime;
+                }
+
+                if (_zoomAction != null)
+                    _zoomPressed = _zoomAction.IsPressed();
+
+                if (_perspectiveSwitchAction != null)
+                {
+                    float scroll = _perspectiveSwitchAction.ReadValue<float>();
+                    if (Mathf.Abs(scroll) > 0.1f)
+                        _perspectiveScrollValue = scroll;
+                }
+
+                // Advanced AAA-style mouse controls
+                if (_mouseLeftAction != null)
+                    _leftMouseHeld = _mouseLeftAction.IsPressed();
+                if (_mouseRightAction != null)
+                    _rightMouseHeld = _mouseRightAction.IsPressed();
+                _bothMouseHeld = _leftMouseHeld && _rightMouseHeld;
+
+                // Advanced keyboard movement
+                if (_strafeLeftAction != null)
+                    _strafeLeftPressed = _strafeLeftAction.IsPressed();
+                if (_strafeRightAction != null)
+                    _strafeRightPressed = _strafeRightAction.IsPressed();
+                if (_turnLeftAction != null)
+                    _turnLeftPressed = _turnLeftAction.IsPressed();
+                if (_turnRightAction != null)
+                    _turnRightPressed = _turnRightAction.IsPressed();
+
+                // NumLock auto-run toggle (one-shot press)
+                if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
+                    _autoRunTogglePressed = true;
             }
-
-            if (_zoomAction != null)
-                _zoomPressed = _zoomAction.IsPressed();
-
-            if (_perspectiveSwitchAction != null)
-            {
-                float scroll = _perspectiveSwitchAction.ReadValue<float>();
-                if (Mathf.Abs(scroll) > 0.1f)
-                    _perspectiveScrollValue = scroll;
-            }
-
-            // Advanced AAA-style mouse controls
-            if (_mouseLeftAction != null)
-                _leftMouseHeld = _mouseLeftAction.IsPressed();
-            if (_mouseRightAction != null)
-                _rightMouseHeld = _mouseRightAction.IsPressed();
-            _bothMouseHeld = _leftMouseHeld && _rightMouseHeld;
-
-            // Advanced keyboard movement
-            if (_strafeLeftAction != null)
-                _strafeLeftPressed = _strafeLeftAction.IsPressed();
-            if (_strafeRightAction != null)
-                _strafeRightPressed = _strafeRightAction.IsPressed();
-            if (_turnLeftAction != null)
-                _turnLeftPressed = _turnLeftAction.IsPressed();
-            if (_turnRightAction != null)
-                _turnRightPressed = _turnRightAction.IsPressed();
-
-            // NumLock auto-run toggle (one-shot press)
-            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
-                _autoRunTogglePressed = true;
         }
 
         /// <summary>
