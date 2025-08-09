@@ -20,15 +20,16 @@ namespace U3D
         /// <summary>
         /// The interact key configured in PlayerController (cached for Quest system)
         /// </summary>
-        private static KeyCode playerInteractKey = KeyCode.E;
+        private static KeyCode playerInteractKey = KeyCode.R;
 
         /// <summary>
         /// Recommended alternative keys for different interaction systems
         /// </summary>
         private static readonly Dictionary<KeyCode, List<KeyCode>> keyAlternatives = new Dictionary<KeyCode, List<KeyCode>>()
         {
-            { KeyCode.E, new List<KeyCode> { KeyCode.F, KeyCode.R, KeyCode.T, KeyCode.G } },
-            { KeyCode.F, new List<KeyCode> { KeyCode.R, KeyCode.T, KeyCode.G, KeyCode.Q } },
+            { KeyCode.R, new List<KeyCode> { KeyCode.F, KeyCode.T, KeyCode.G, KeyCode.X } },
+            { KeyCode.E, new List<KeyCode> { KeyCode.F, KeyCode.T, KeyCode.G, KeyCode.X } },
+            { KeyCode.F, new List<KeyCode> { KeyCode.T, KeyCode.G, KeyCode.X, KeyCode.V } },
             { KeyCode.C, new List<KeyCode> { KeyCode.V, KeyCode.B, KeyCode.N, KeyCode.X } },
             { KeyCode.Space, new List<KeyCode> { KeyCode.LeftControl, KeyCode.RightControl } }
         };
@@ -38,8 +39,8 @@ namespace U3D
         /// </summary>
         private static readonly List<KeyCode> safeInteractionKeys = new List<KeyCode>()
         {
-            KeyCode.R, KeyCode.T, KeyCode.G, KeyCode.Q,
-            KeyCode.X, KeyCode.Z, KeyCode.V, KeyCode.B,
+            KeyCode.F, KeyCode.T, KeyCode.G, KeyCode.X,
+            KeyCode.V, KeyCode.B, KeyCode.Z,
             KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5
         };
 

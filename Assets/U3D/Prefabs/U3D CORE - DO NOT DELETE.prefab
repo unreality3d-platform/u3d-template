@@ -44,25 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c43ddd2462df9ee4596f834f8a233477, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  spawnPoints: []
-  randomizeSpawnOrder: 1
-  spawnRadius: 2
-  minDistanceBetweenPlayers: 3
-  enableGroundCheck: 1
-  groundCheckDistance: 5
-  groundLayerMask:
-    serializedVersion: 2
-    m_Bits: 1
-  enableObstacleCheck: 1
-  playerCapsuleHeight: 2
-  playerCapsuleRadius: 0.5
   defaultSpawnPosition: {x: 0, y: 0, z: 0}
-  createDefaultSpawnIfEmpty: 1
-  maxSpawnAttempts: 10
-  showGizmos: 1
-  spawnPointColor: {r: 0, g: 1, b: 0, a: 1}
-  occupiedSpawnColor: {r: 1, g: 0, b: 0, a: 1}
-  safeZoneColor: {r: 0, g: 0, b: 1, a: 1}
 --- !u!1 &3318377179651868313
 GameObject:
   m_ObjectHideFlags: 0

@@ -88,7 +88,7 @@ public class U3DPlayerController : NetworkBehaviour
     [SerializeField] private float[] additionalJumps = new float[] { 4f };
 
     [Header("Interaction")]
-    [SerializeField] private KeyCode interactKey = KeyCode.E;
+    [SerializeField] private KeyCode interactKey = KeyCode.R;
 
     [Header("Network Synchronization")]
     [SerializeField] private float networkSendRate = 20f;

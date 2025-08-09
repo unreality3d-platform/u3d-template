@@ -229,7 +229,7 @@ namespace U3D.Editor
             EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.EndVertical();
 
-            bool canExecute = !tool.requiresSelection || Selection.activeGameObject != null;
+            bool canExecute = CanExecuteTool(tool);
             EditorGUI.BeginDisabledGroup(!canExecute);
 
             if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
@@ -245,12 +245,16 @@ namespace U3D.Editor
             {
                 EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
             }
+            else if (tool.title == "Make Throwable" && !HasGrabbableComponent())
+            {
+                EditorGUILayout.LabelField("Select a Grabbable object", EditorStyles.centeredGreyMiniLabel);
+            }
 
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }
 
-        // Public method for tool categories - exact copy of CheckFixTab pattern
+        // Public method for tool categories - exact copy of CheckFixTab pattern with special handling for Throwable
         public static void DrawCategoryTool(CreatorTool tool)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -261,7 +265,7 @@ namespace U3D.Editor
             EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.EndVertical();
 
-            bool canExecute = !tool.requiresSelection || Selection.activeGameObject != null;
+            bool canExecute = CanExecuteTool(tool);
             EditorGUI.BeginDisabledGroup(!canExecute);
 
             if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
@@ -277,9 +281,34 @@ namespace U3D.Editor
             {
                 EditorGUILayout.LabelField("Select an object", EditorStyles.centeredGreyMiniLabel);
             }
+            else if (tool.title == "Make Throwable" && !HasGrabbableComponent())
+            {
+                EditorGUILayout.LabelField("Select a Grabbable object", EditorStyles.centeredGreyMiniLabel);
+            }
 
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
+        }
+
+        private static bool CanExecuteTool(CreatorTool tool)
+        {
+            // Special handling for Make Throwable
+            if (tool.title == "Make Throwable")
+            {
+                return Selection.activeGameObject != null && HasGrabbableComponent();
+            }
+
+            // Default handling
+            return !tool.requiresSelection || Selection.activeGameObject != null;
+        }
+
+        private static bool HasGrabbableComponent()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null) return false;
+
+            return selected.GetComponent<U3DGrabbableNear>() != null ||
+                   selected.GetComponent<U3DGrabbableFar>() != null;
         }
     }
 }
