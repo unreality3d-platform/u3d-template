@@ -160,12 +160,12 @@ public class ProjectStartupConfiguration
     /// <summary>
     /// Menu item to reset template configuration (for testing)
     /// </summary>
-    [MenuItem("U3D SDK/Debug/Reset Template Configuration")]
-    private static void ResetTemplateConfiguration()
-    {
-        EditorPrefs.DeleteKey(TEMPLATE_CHECK_KEY);
-        EditorPrefs.DeleteKey(BUILD_TARGET_SPECIFIC_KEY);
-        EditorPrefs.DeleteKey(SCENE_LOADED_KEY);
-        Debug.Log("🔄 U3D SDK: Template configuration reset. Restart Unity to test first-time setup.");
-    }
+    //[MenuItem("U3D/Reset Template Configuration")]
+    //private static void ResetTemplateConfiguration()
+    //{
+    //    EditorPrefs.DeleteKey(TEMPLATE_CHECK_KEY);
+    //    EditorPrefs.DeleteKey(BUILD_TARGET_SPECIFIC_KEY);
+    //    EditorPrefs.DeleteKey(SCENE_LOADED_KEY);
+    //    Debug.Log("🔄 U3D SDK: Template configuration reset. Restart Unity to test first-time setup.");
+    //}
 }
