@@ -6,10 +6,12 @@ public class ProjectStartupConfiguration
 {
     private const string STARTUP_SCENE_PATH = "Assets/Scenes/_My Scene.unity";
     private const string BUILD_TARGET_KEY = "HasSetWebGLTarget";
+    private const string TEMPLATE_WEBGL_CHECK_KEY = "U3D_TemplateWebGLCheck";
 
     // Project-specific keys to avoid cross-template conflicts
     private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
     private static string SCENE_LOADED_KEY => $"U3D_HasLoadedStartupScene_{Application.dataPath.GetHashCode()}";
+    private static string TEMPLATE_CHECK_KEY => $"{TEMPLATE_WEBGL_CHECK_KEY}_{Application.dataPath.GetHashCode()}";
 
     /// <summary>
     /// CRITICAL: Check if we should skip operations during builds
@@ -48,123 +50,122 @@ public class ProjectStartupConfiguration
             return;
         }
 
-        // FIXED: Use build guards for EditorPrefs access
-        bool hasSetBuildTarget = false;
+        // Check if this is first time opening template
+        bool hasCheckedTemplate = false;
         if (!ShouldSkipDuringBuild())
         {
-            hasSetBuildTarget = EditorPrefs.GetBool(BUILD_TARGET_SPECIFIC_KEY, false);
+            hasCheckedTemplate = EditorPrefs.GetBool(TEMPLATE_CHECK_KEY, false);
         }
 
         try
         {
-            // FIX #1: Always switch to WebGL if not already set (removed hasSetBuildTarget check)
-            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
-            {
-                Debug.Log("🔄 U3D SDK: Switching build target to WebGL...");
+            // NEW: Always verify WebGL is available and provide clear feedback
+            bool webglSupported = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL);
 
-                bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(
-                    BuildTargetGroup.WebGL,
-                    BuildTarget.WebGL
+            if (!webglSupported)
+            {
+                Debug.LogError("❌ U3D SDK: WEBGL BUILD SUPPORT NOT INSTALLED");
+                Debug.LogError("📋 TO FIX: Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support");
+
+                EditorUtility.DisplayDialog(
+                    "WebGL Build Support Required",
+                    "This Unreality3D template requires WebGL Build Support to function properly.\n\n" +
+                    "To install:\n" +
+                    "1. Open Unity Hub\n" +
+                    "2. Go to Installs tab\n" +
+                    "3. Click the gear icon next to your Unity version\n" +
+                    "4. Select 'Add Modules'\n" +
+                    "5. Check 'WebGL Build Support'\n" +
+                    "6. Install and restart Unity\n\n" +
+                    "Note: The template will function but builds will fail until WebGL support is installed.",
+                    "OK"
                 );
 
-                if (success)
+                // Mark as checked to avoid repeated warnings
+                if (!ShouldSkipDuringBuild())
                 {
-                    Debug.Log("✅ U3D SDK: Build target switched to WebGL successfully");
-                    if (!ShouldSkipDuringBuild())
+                    EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
+                }
+                return;
+            }
+
+            // Check current build target
+            if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
+            {
+                if (!hasCheckedTemplate)
+                {
+                    Debug.Log("🔄 U3D SDK: Template opened with non-WebGL build target. Switching to WebGL...");
+
+                    bool success = EditorUserBuildSettings.SwitchActiveBuildTarget(
+                        BuildTargetGroup.WebGL,
+                        BuildTarget.WebGL
+                    );
+
+                    if (success)
                     {
-                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
+                        Debug.Log("✅ U3D SDK: Build target switched to WebGL successfully");
+                        Debug.Log("💡 U3D SDK: Template is now configured for WebGL deployment");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("⚠️ U3D SDK: Failed to switch to WebGL. Please switch manually via Build Settings.");
                     }
                 }
                 else
                 {
-                    Debug.LogError("❌ U3D SDK: WEBGL BUILD SUPPORT NOT INSTALLED");
-                    Debug.LogError("📋 TO FIX: Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support");
-
-                    EditorUtility.DisplayDialog(
-                        "WebGL Build Support Required",
-                        "This Unreality3D template requires WebGL Build Support to function properly.\n\n" +
-                        "To install:\n" +
-                        "1. Open Unity Hub\n" +
-                        "2. Go to Installs tab\n" +
-                        "3. Click the gear icon next to your Unity version\n" +
-                        "4. Select 'Add Modules'\n" +
-                        "5. Check 'WebGL Build Support'\n" +
-                        "6. Install and restart Unity",
-                        "OK"
-                    );
-                    return;
+                    Debug.LogWarning($"⚠️ U3D SDK: Build target is {EditorUserBuildSettings.activeBuildTarget}, but template expects WebGL");
+                    Debug.LogWarning("💡 U3D SDK: Switch to WebGL in Build Settings for proper deployment");
                 }
             }
-            else if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.WebGL)
+            else
             {
-                if (!hasSetBuildTarget)
+                if (!hasCheckedTemplate)
                 {
-                    Debug.Log("✅ U3D SDK: Build target is already set to WebGL");
-                    if (!ShouldSkipDuringBuild())
-                    {
-                        EditorPrefs.SetBool(BUILD_TARGET_SPECIFIC_KEY, true);
-                    }
+                    Debug.Log("✅ U3D SDK: Template opened with WebGL build target (correct configuration)");
                 }
             }
 
-            bool hasLoadedStartupScene = false;
-
+            // Mark template as checked
             if (!ShouldSkipDuringBuild())
             {
-                // Use the SAME key as U3DCreatorWindow for consistency
+                EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
+            }
+
+            // Load startup scene logic (existing)
+            bool hasLoadedStartupScene = false;
+            if (!ShouldSkipDuringBuild())
+            {
                 hasLoadedStartupScene = EditorPrefs.GetBool(SCENE_LOADED_KEY, false);
             }
 
-            // CRITICAL FIX: Only load startup scene on TRUE FIRST TIME (before dashboard has opened)
             bool isFirstTimeEver = !hasLoadedStartupScene;
 
             if (isFirstTimeEver && System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
-                var currentScene = EditorSceneManager.GetActiveScene();
-                string currentScenePath = currentScene.path;
+                Debug.Log("🎯 U3D SDK: Loading startup scene for first-time template setup");
+                EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
 
-                // Enhanced empty scene detection
-                bool isEmptyScene = string.IsNullOrEmpty(currentScenePath) ||
-                                   !currentScene.IsValid() ||
-                                   currentScene.name == "Untitled" ||
-                                   currentScene.name == "" ||
-                                   currentScenePath.ToLower().Contains("untitled") ||
-                                   currentScenePath.ToLower().Contains("new scene");
-
-                // Additional check: if scene has minimal content (truly empty)
-                bool sceneIsEmpty = currentScene.rootCount == 0 ||
-                                   (currentScene.rootCount <= 2 && // Main Camera + Directional Light is Unity default
-                                    currentScene.GetRootGameObjects().Length <= 2);
-
-                bool shouldLoadStartupScene = isEmptyScene || sceneIsEmpty;
-
-                // FIX #2: Removed reference to non-existent hasOpenedBefore variable
-                Debug.Log($"🔍 U3D SDK: First time check - " +
-                         $"HasLoadedScene: {hasLoadedStartupScene}, ShouldLoad: {shouldLoadStartupScene}");
-
-                if (shouldLoadStartupScene)
-                {
-                    EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
-                    Debug.Log($"✅ U3D SDK: Opened startup scene on first launch: {STARTUP_SCENE_PATH}");
-                }
-                else
-                {
-                    Debug.Log($"ℹ️ U3D SDK: User has content in scene, respecting their choice");
-                }
-
-                // Mark scene loading as completed
                 if (!ShouldSkipDuringBuild())
                 {
                     EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
                 }
             }
-            // FIX #3: Removed the else if block that referenced hasOpenedBefore
-
-            Debug.Log("✅ U3D SDK: Project startup configuration complete");
         }
-        catch (System.Exception e)
+        catch (System.Exception ex)
         {
-            Debug.LogError($"❌ U3D SDK: Error during startup configuration: {e.Message}");
+            Debug.LogError($"❌ U3D SDK: Error in ProjectStartupConfiguration: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Menu item to reset template configuration (for testing)
+    /// </summary>
+    [MenuItem("U3D SDK/Debug/Reset Template Configuration")]
+    private static void ResetTemplateConfiguration()
+    {
+        EditorPrefs.DeleteKey(TEMPLATE_CHECK_KEY);
+        EditorPrefs.DeleteKey(BUILD_TARGET_SPECIFIC_KEY);
+        EditorPrefs.DeleteKey(SCENE_LOADED_KEY);
+        Debug.Log("🔄 U3D SDK: Template configuration reset. Restart Unity to test first-time setup.");
     }
 }

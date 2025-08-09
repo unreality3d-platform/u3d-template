@@ -1,8 +1,8 @@
 # =================================================================
-# UNREALITY3D TEMPLATE REPOSITORY .GITIGNORE - WITH CHUNK SUPPORT
+# UNREALITY3D TEMPLATE REPOSITORY .GITIGNORE - UNITY 6+ WEBGL
 # =================================================================
 # This file serves multiple purposes:
-# 1. Template repo development (ignores Unity dev files)
+# 1. Template repo development (includes WebGL build target)
 # 2. Creator deployments (modified by pipeline for WebGL hosting)
 # 3. Chunk file handling (allows temporary .part* files)
 # =================================================================
@@ -119,11 +119,17 @@ u3d-config.json
 firebase-config.json
 *-api-keys.*
 
-# Unity Settings (TEMPLATE ONLY - REMOVED IN DEPLOYMENT)  
+# Unity Settings (TEMPLATE-SPECIFIC CONFIGURATION)
 # -----------------------------------------------------------------
 ##WEBGL_DEPLOY_IGNORE_START##
-# Only ignore the main ProjectSettings file that can cause conflicts
-ProjectSettings/ProjectSettings.asset
+# CRITICAL CHANGE: ALLOW ProjectSettings to be committed for WebGL template
+# This ensures users get WebGL build target when they clone the template
+# !ProjectSettings/ProjectSettings.asset  # ALLOW - Template needs WebGL as default
+
+# HOWEVER: Ignore specific settings that can cause conflicts between machines
+ProjectSettings/Packages/
+ProjectSettings/ProjectVersion.txt
+ProjectSettings/VFXManager.asset
 
 # CRITICAL: Allow creator PayPal configuration to be committed
 !Assets/U3D_SDK/Resources/U3DCreatorData.asset
