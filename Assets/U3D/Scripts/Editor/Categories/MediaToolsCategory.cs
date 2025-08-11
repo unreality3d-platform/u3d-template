@@ -14,6 +14,7 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
+                new CreatorTool("Add Audio List", "Play random audio clips from a list through one AudioSource", ApplyAudioList, true),
                 new CreatorTool("🚧 Add Video Player Object", "Stream videos from URLs in your world", () => Debug.Log("Applied Video Player Object"), true),
                 new CreatorTool("🚧 Add Audio Trigger", "Sounds that play on player interaction", () => Debug.Log("Applied Audio Trigger"), true),
                 new CreatorTool("🚧 Add Screenshare Object", "Share desktop screens within your experience", () => Debug.Log("Applied Screenshare Object"), true),
@@ -34,6 +35,28 @@ namespace U3D.Editor
             {
                 ProjectToolsTab.DrawCategoryTool(tool);
             }
+        }
+
+        private static void ApplyAudioList()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            if (selected.GetComponent<AudioList>() != null)
+            {
+                Debug.LogWarning("Object already has an AudioList component");
+                return;
+            }
+
+            Undo.RecordObject(selected, "Add AudioList Component");
+            AudioList audioList = selected.AddComponent<AudioList>();
+
+            Debug.Log($"AudioList component added to {selected.name}");
+            EditorUtility.SetDirty(selected);
         }
     }
 }
