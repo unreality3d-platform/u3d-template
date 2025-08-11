@@ -150,6 +150,8 @@ public class U3DPlayerController : NetworkBehaviour
     private bool lookInverted;
     private float originalCameraHeight;
     private float crouchCameraOffset = -0.5f;
+    private int _spawnFrameCount = 0;
+    private const int SPAWN_PROTECTION_FRAMES = 5; // Protect spawn rotation for 5 frames
 
     // Network State
     private bool _isLocalPlayer;
@@ -177,6 +179,17 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Configure for local vs remote player
         ConfigurePlayerForNetworking();
+
+        // Reset spawn frame counter
+        _spawnFrameCount = 0;
+
+        // Initialize camera system with spawn rotation
+        if (_isLocalPlayer && enableAdvancedCamera && cameraPivot != null)
+        {
+            // Initialize camera yaw with the spawn rotation
+            cameraYaw = transform.eulerAngles.y;
+            Debug.Log($"🎯 Initialized camera yaw with spawn rotation: {cameraYaw}°");
+        }
     }
 
     void InitializeCameraPivot()
@@ -403,20 +416,27 @@ public class U3DPlayerController : NetworkBehaviour
         // Only process for local player (StateAuthority in Shared Mode)
         if (!_isLocalPlayer) return;
 
+        // Increment spawn frame counter
+        _spawnFrameCount++;
+
         // Get Fusion input instead of Unity Input System
         if (GetInput<U3DNetworkInputData>(out var input))
         {
             // Process all input in the fixed network update
             HandleGroundCheck();
             HandleMovementFusion(input);
-            HandleLookFusionFixed(input);
+
+            // Only start handling look input after spawn protection period
+            if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
+            {
+                HandleLookFusionFixed(input);
+            }
+
             HandleButtonInputsFusion(input);
             HandleTeleportFusion(input);
             HandleCameraPositioning();
             ApplyGravityFixed();
         }
-
-        // REMOVED: Integrated swimming and climbing detection (now handled by external trigger systems)
     }
 
     // REMOVED: UpdateSwimmingState() and UpdateClimbingState() methods
@@ -539,6 +559,22 @@ public class U3DPlayerController : NetworkBehaviour
         // Use Advanced movement if any Advanced controls are active
         Vector2 finalMovement = (advancedMovement.magnitude > 0.1f) ? advancedMovement : moveInput;
 
+        // NEW: Snap character to camera direction when starting to move after left-click camera orbiting
+        if (enableAdvancedCamera && cameraPivot != null)
+        {
+            bool isStartingToMove = (finalMovement.magnitude > 0.1f && !NetworkIsMoving);
+
+            if (isStartingToMove && !isRightMouseDragging)
+            {
+                // Snap character rotation to match camera facing direction
+                float targetYaw = cameraYaw;
+                transform.rotation = Quaternion.Euler(0, targetYaw, 0);
+                NetworkRotation = transform.rotation;
+
+                Debug.Log($"🔄 Character snapped to camera direction: {targetYaw}°");
+            }
+        }
+
         // Calculate movement direction relative to camera or character
         Vector3 forward, right;
 
@@ -594,7 +630,6 @@ public class U3DPlayerController : NetworkBehaviour
         NetworkIsMoving = moveVelocity.magnitude > 0.1f;
     }
 
-    // ADD THIS NEW METHOD FOR ADVANCED AAA KEYBOARD MOVEMENT
     Vector2 HandleAdvancedKeyboardMovement(U3DNetworkInputData input)
     {
         Vector2 advancedMovement = Vector2.zero;

@@ -507,25 +507,31 @@ namespace U3D.Networking
             // Wait for scene physics to initialize
             yield return new WaitForSeconds(0.3f);
 
-            // FIXED: Use the U3DPlayerSpawner instead of our own logic
+            // Get spawn data (position AND rotation) from spawner
             Vector3 spawnPosition;
+            Quaternion spawnRotation;
 
             if (U3DPlayerSpawner.Instance != null)
             {
-                // Use the proper spawn system with ground validation
-                spawnPosition = U3DPlayerSpawner.Instance.GetSpawnPosition();
-                Debug.Log($"✅ Using PlayerSpawner position: {spawnPosition}");
+                // Use the enhanced spawn system with rotation support
+                var spawnData = U3DPlayerSpawner.Instance.GetSpawnData();
+                spawnPosition = spawnData.position;
+                spawnRotation = spawnData.rotation;
+
+                Debug.Log($"✅ Using PlayerSpawner: pos={spawnPosition}, rot={spawnRotation.eulerAngles.y}°");
             }
             else
             {
                 // Fallback to old method if no spawner found
                 spawnPosition = GetSpawnPosition();
+                spawnRotation = Quaternion.identity;
                 Debug.LogWarning("⚠️ No PlayerSpawner found, using NetworkManager fallback");
             }
 
-            Debug.Log($"🎯 Spawning player {player} at: {spawnPosition}");
+            Debug.Log($"🎯 Spawning player {player} at: {spawnPosition} facing: {spawnRotation.eulerAngles.y}°");
 
-            var playerObject = runner.Spawn(playerPrefab, spawnPosition, Quaternion.identity, player);
+            // FIXED: Now spawns with both position AND rotation
+            var playerObject = runner.Spawn(playerPrefab, spawnPosition, spawnRotation, player);
 
             if (playerObject != null)
             {
