@@ -32,6 +32,20 @@
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
+# TextMeshPro Generated Assets (IGNORE - AUTO-REGENERATED)
+# -----------------------------------------------------------------
+# TextMeshPro font assets are auto-generated and should not be version controlled
+# Unity will recreate these automatically when the project is opened
+[Aa]ssets/TextMesh*Pro/
+[Aa]ssets/**/TextMesh*Pro/
+**/LiberationSans*SDF*.asset
+**/LiberationSans*SDF*.asset.meta
+**/*SDF*.asset
+**/*Atlas*.asset
+# Allow TMP Settings and Essential Resources (commented out means ALLOW)
+# ![Aa]ssets/TextMeshPro/Resources/TMP*Settings*.asset
+# ![Aa]ssets/TextMeshPro/Resources/Fonts*.asset
+
 # Development IDE Files (ALWAYS IGNORED)
 # -----------------------------------------------------------------
 # Visual Studio cache files
