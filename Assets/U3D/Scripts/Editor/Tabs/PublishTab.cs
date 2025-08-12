@@ -33,6 +33,7 @@ namespace U3D.Editor
         private bool optionsLoaded = false;
         private bool loadingOptions = false;
         private int selectedOptionIndex = -1;
+        private int previousSelectedOptionIndex = -1; // Track previous selection for sync logic
 
         private enum PublishStep
         {
@@ -325,6 +326,7 @@ namespace U3D.Editor
                 });
 
                 selectedOptionIndex = DetermineDefaultSelection();
+                previousSelectedOptionIndex = selectedOptionIndex; // Initialize tracking
                 optionsLoaded = true;
                 loadingOptions = false;
             }
@@ -358,6 +360,66 @@ namespace U3D.Editor
 
             // Default to "Create New Repository" (last option)
             return availableOptions.Count - 1;
+        }
+
+        /// <summary>
+        /// NEW METHOD: Handles Product Name synchronization when repository selection changes
+        /// </summary>
+        private void HandleRepositorySelectionChange(int newSelectedIndex)
+        {
+            if (newSelectedIndex < 0 || newSelectedIndex >= availableOptions.Count)
+                return;
+
+            var selectedOption = availableOptions[newSelectedIndex];
+
+            // Only sync Product Name for existing repositories (not "Create New")
+            if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+            {
+                // Get the repository name (this is what should match Product Name)
+                var repositoryName = selectedOption.RepositoryName;
+
+                // Convert repository name back to a proper Product Name format
+                var suggestedProductName = ConvertRepositoryNameToProductName(repositoryName);
+
+                // Only update if it's actually different to avoid unnecessary changes
+                if (!string.Equals(cachedProductName, suggestedProductName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"🔄 Repository selection changed to '{repositoryName}' - syncing Product Name: '{cachedProductName}' → '{suggestedProductName}'");
+
+                    // Update Unity's PlayerSettings and our cached value immediately
+                    // This ensures deployment pipeline gets correct Product Name
+                    PlayerSettings.productName = suggestedProductName;
+                    cachedProductName = suggestedProductName;
+                }
+            }
+
+            // Update tracking variable
+            previousSelectedOptionIndex = newSelectedIndex;
+        }
+
+        /// <summary>
+        /// NEW METHOD: Converts repository name back to a user-friendly Product Name
+        /// Reverses the GitHubAPI.SanitizeRepositoryName() process where possible
+        /// </summary>
+        private string ConvertRepositoryNameToProductName(string repositoryName)
+        {
+            if (string.IsNullOrEmpty(repositoryName))
+                return repositoryName;
+
+            // Convert hyphens back to spaces and title case the result
+            var productName = repositoryName.Replace("-", " ");
+
+            // Simple title case: capitalize first letter of each word
+            var words = productName.Split(' ');
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (words[i].Length > 0)
+                {
+                    words[i] = char.ToUpper(words[i][0]) + words[i].Substring(1).ToLower();
+                }
+            }
+
+            return string.Join(" ", words);
         }
 
         private void DrawRepositoryOptions()
@@ -413,11 +475,14 @@ namespace U3D.Editor
 
                 EditorGUILayout.BeginHorizontal();
 
-                // Radio button
+                // Radio button with selection change detection
                 var newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
                 if (newSelected && !isSelected)
                 {
                     selectedOptionIndex = i;
+
+                    // NEW: Handle Product Name sync when selection changes
+                    HandleRepositorySelectionChange(i);
                 }
 
                 // Option details
@@ -483,14 +548,19 @@ namespace U3D.Editor
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
                     EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
 
+                    // MODIFIED: Only allow editing when "Create New Repository" is selected
+                    bool isCreateNewSelected = selectedOptionIndex == i;
+
+                    GUI.enabled = isCreateNewSelected;
                     EditorGUI.BeginChangeCheck();
                     var newProductName = EditorGUILayout.TextField(cachedProductName);
                     bool nameChangedInField = EditorGUI.EndChangeCheck();
+                    GUI.enabled = true;
 
-                    // Update button logic - enabled when field differs from PlayerSettings
+                    // Update button logic - enabled when field differs from PlayerSettings AND Create New is selected
                     bool namesDiffer = !string.IsNullOrEmpty(newProductName) && newProductName != PlayerSettings.productName;
 
-                    GUI.enabled = namesDiffer;
+                    GUI.enabled = namesDiffer && isCreateNewSelected;
                     if (GUILayout.Button("Update", GUILayout.Width(60)))
                     {
                         // Update Unity's PlayerSettings
@@ -517,30 +587,34 @@ namespace U3D.Editor
                     GUI.enabled = true;
 
                     // Update cached name for real-time feedback
-                    if (nameChangedInField)
+                    if (nameChangedInField && isCreateNewSelected)
                     {
                         cachedProductName = newProductName;
                     }
 
                     EditorGUILayout.EndHorizontal();
 
-                    // ENHANCED: Smart repository name preview
-                    var wouldCreateRepo = GitHubAPI.SanitizeRepositoryName(cachedProductName);
-                    var wouldConflict = availableOptions.Any(opt =>
-                        opt.Type == ProjectOption.OptionType.UpdateExisting &&
-                        string.Equals(opt.RepositoryName, wouldCreateRepo, StringComparison.OrdinalIgnoreCase));
-
-                    if (wouldConflict)
+                    // Show sync status for existing repositories
+                    if (!isCreateNewSelected)
                     {
-                        EditorGUILayout.LabelField($"⚠️ Repository '{wouldCreateRepo}' already exists above", EditorStyles.miniLabel);
-                    }
-                    else if (isSelected) // Only show "will create" when this option is actually selected
-                    {
-                        EditorGUILayout.LabelField($"Will create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("⚠️ Product Name synced to selected repository above", EditorStyles.miniLabel);
                     }
                     else
                     {
-                        EditorGUILayout.LabelField($"Would create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
+                        // ENHANCED: Smart repository name preview
+                        var wouldCreateRepo = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                        var wouldConflict = availableOptions.Any(opt =>
+                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                            string.Equals(opt.RepositoryName, wouldCreateRepo, StringComparison.OrdinalIgnoreCase));
+
+                        if (wouldConflict)
+                        {
+                            EditorGUILayout.LabelField($"⚠️ Repository '{wouldCreateRepo}' already exists above", EditorStyles.miniLabel);
+                        }
+                        else
+                        {
+                            EditorGUILayout.LabelField($"Will create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
+                        }
                     }
                 }
 
@@ -619,7 +693,7 @@ namespace U3D.Editor
                         "Are you sure you want to continue?",
                         "Yes, Update", "Cancel"))
                     {
-                        Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name: '{cachedProductName}')");
+                        Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name synced to: '{cachedProductName}')");
                         EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
                         _ = StartFirebasePublishProcess();
                     }
