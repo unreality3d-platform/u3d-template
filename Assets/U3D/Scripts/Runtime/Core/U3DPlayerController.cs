@@ -24,7 +24,20 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float perspectiveTransitionSpeed = 8f;
     [HideInInspector][SerializeField] private bool enableCameraCollision = true;
     [HideInInspector][SerializeField] private bool enableSmoothTransitions = true;
-    [HideInInspector][SerializeField] private float mouseSensitivity = 2f;
+
+    // ENHANCED: Platform-aware mouse sensitivity system
+    [Header("Mouse Sensitivity Settings")]
+    [SerializeField] private float baseMouseSensitivity = 1.0f; // Base sensitivity for desktop
+    [SerializeField] private float webglSensitivityMultiplier = 0.25f; // WebGL reduction factor
+    [SerializeField] private float mobileSensitivityMultiplier = 0.8f; // Mobile adjustment
+    [SerializeField] private float userSensitivityMultiplier = 1.0f; // User preference (saved)
+    [SerializeField] private bool enableMouseSmoothing = true;
+    [SerializeField] private float mouseSmoothingAmount = 0.1f;
+
+    // Legacy compatibility (calculated at runtime)
+    [HideInInspector] private float mouseSensitivity; // Calculated from base + platform + user
+    [HideInInspector] private float cameraOrbitSensitivity; // Calculated from base + platform + user
+
     [HideInInspector][SerializeField] private float lookUpLimit = 80f;
     [HideInInspector][SerializeField] private float lookDownLimit = -80f;
     [HideInInspector][SerializeField] private float cameraCollisionRadius = 0.2f;
@@ -32,7 +45,6 @@ public class U3DPlayerController : NetworkBehaviour
 
     [Header("AAA Camera System")]
     [SerializeField] private bool enableAdvancedCamera = true;
-    [SerializeField] private float cameraOrbitSensitivity = 2f;
     [SerializeField] private float characterTurnSpeed = 90f;
 
     [Header("Mouse Look Behavior")]
@@ -50,6 +62,11 @@ public class U3DPlayerController : NetworkBehaviour
         new Keyframe(1f, 1.5f)    // FIXED: Third person also at eye level (1.5 units)
     );
     [SerializeField] private float transitionTime = 1.5f;
+
+    // ENHANCED: Runtime sensitivity calculation
+    private float _runtimeMouseSensitivity;
+    private float _runtimeOrbitSensitivity;
+    private RuntimePlatform _currentPlatform;
 
     // Camera transition state
     private float currentTransitionValue = 0f; // 0 = first person, 1 = third person
@@ -137,9 +154,6 @@ public class U3DPlayerController : NetworkBehaviour
     private bool isAutoRunning;
     private bool isZooming;
 
-    // REMOVED: Animation-related variables (handled by U3DNetworkedAnimator)
-    // REMOVED: Swimming/climbing controller references (now handled by separate trigger systems)
-
     // Camera State
     private float cameraPitch;
     private bool isFirstPerson = true;
@@ -169,6 +183,77 @@ public class U3DPlayerController : NetworkBehaviour
     // CORRECTED: No local input actions - NetworkManager handles all input
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
+    // ENHANCED: Mouse sensitivity calculation methods
+    void CalculateRuntimeSensitivity()
+    {
+        _currentPlatform = Application.platform;
+
+        // Start with base sensitivity
+        float platformMultiplier = 1.0f;
+
+        // Apply platform-specific adjustments based on web research
+        switch (_currentPlatform)
+        {
+            case RuntimePlatform.WebGLPlayer:
+                platformMultiplier = webglSensitivityMultiplier; // 0.25f default
+                Debug.Log($"🌐 WebGL Platform: Applying {webglSensitivityMultiplier}x sensitivity reduction");
+                break;
+
+            case RuntimePlatform.IPhonePlayer:
+            case RuntimePlatform.Android:
+                platformMultiplier = mobileSensitivityMultiplier; // 0.8f default
+                Debug.Log($"📱 Mobile Platform: Applying {mobileSensitivityMultiplier}x sensitivity adjustment");
+                break;
+
+            default:
+                platformMultiplier = 1.0f; // Desktop - no adjustment needed
+                Debug.Log("🖥️ Desktop Platform: Using base sensitivity");
+                break;
+        }
+
+        // Calculate final runtime values
+        _runtimeMouseSensitivity = baseMouseSensitivity * platformMultiplier * userSensitivityMultiplier;
+        _runtimeOrbitSensitivity = baseMouseSensitivity * platformMultiplier * userSensitivityMultiplier;
+
+        // Update legacy compatibility values
+        mouseSensitivity = _runtimeMouseSensitivity;
+        cameraOrbitSensitivity = _runtimeOrbitSensitivity;
+
+        Debug.Log($"✅ Mouse Sensitivity Calculated: Base={baseMouseSensitivity}, Platform={platformMultiplier}, User={userSensitivityMultiplier}, Final={_runtimeMouseSensitivity}");
+    }
+
+    // ENHANCED: User settings methods
+    public void SetUserSensitivity(float sensitivity)
+    {
+        userSensitivityMultiplier = Mathf.Clamp(sensitivity, 0.1f, 3.0f);
+        CalculateRuntimeSensitivity();
+        SaveSensitivitySettings();
+        Debug.Log($"🎯 User sensitivity updated: {userSensitivityMultiplier}");
+    }
+
+    public float GetUserSensitivity()
+    {
+        return userSensitivityMultiplier;
+    }
+
+    public float GetEffectiveSensitivity()
+    {
+        return _runtimeMouseSensitivity;
+    }
+
+    void LoadSensitivitySettings()
+    {
+        userSensitivityMultiplier = PlayerPrefs.GetFloat("U3D_MouseSensitivity", 1.0f);
+        Debug.Log($"📂 Loaded user sensitivity: {userSensitivityMultiplier}");
+    }
+
+    void SaveSensitivitySettings()
+    {
+        PlayerPrefs.SetFloat("U3D_MouseSensitivity", userSensitivityMultiplier);
+        PlayerPrefs.Save();
+        Debug.Log($"💾 Saved user sensitivity: {userSensitivityMultiplier}");
+    }
+
     public override void Spawned()
     {
         // In Shared Mode, each client has authority over their own player
@@ -176,6 +261,10 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Initialize components
         InitializeComponents();
+
+        // ENHANCED: Calculate platform-appropriate sensitivity
+        LoadSensitivitySettings();
+        CalculateRuntimeSensitivity();
 
         // Configure for local vs remote player
         ConfigurePlayerForNetworking();
@@ -288,8 +377,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         // Load player preferences
         LoadPlayerPreferences();
-
-        // REMOVED: Swimming/climbing controller initialization (now handled by separate systems)
     }
 
     void InitializeComponents()
@@ -438,9 +525,6 @@ public class U3DPlayerController : NetworkBehaviour
             ApplyGravityFixed();
         }
     }
-
-    // REMOVED: UpdateSwimmingState() and UpdateClimbingState() methods
-    // These are now handled by separate U3DSwimmingTrigger and U3DClimbingTrigger components
 
     // FUSION RENDER: For camera and visual updates
     public override void Render()
@@ -699,32 +783,45 @@ public class U3DPlayerController : NetworkBehaviour
         if (lookInverted)
             rawLookInput.y = -rawLookInput.y;
 
-        // Add current input to smoothing buffer
-        float currentTime = (float)Runner.SimulationTime;
-        _mouseInputBuffer.Enqueue(rawLookInput);
-        _mouseTimeBuffer.Enqueue(currentTime);
+        // ENHANCED: Apply runtime sensitivity and optional smoothing
+        Vector2 sensitivityAdjustedInput = rawLookInput * _runtimeMouseSensitivity;
 
-        // Remove old entries outside smoothing window
-        while (_mouseTimeBuffer.Count > 0 && (currentTime - _mouseTimeBuffer.Peek()) > MOUSE_SMOOTHING_WINDOW)
+        Vector2 finalLookInput;
+        if (enableMouseSmoothing)
         {
-            _mouseInputBuffer.Dequeue();
-            _mouseTimeBuffer.Dequeue();
-        }
+            // Add current input to smoothing buffer
+            float currentTime = (float)Runner.SimulationTime;
+            _mouseInputBuffer.Enqueue(sensitivityAdjustedInput);
+            _mouseTimeBuffer.Enqueue(currentTime);
 
-        // Calculate smoothed mouse input (average over smoothing window)
-        Vector2 smoothedLookInput = Vector2.zero;
-        if (_mouseInputBuffer.Count > 0)
-        {
-            foreach (Vector2 sample in _mouseInputBuffer)
+            // Remove old entries outside smoothing window
+            while (_mouseTimeBuffer.Count > 0 && (currentTime - _mouseTimeBuffer.Peek()) > MOUSE_SMOOTHING_WINDOW)
             {
-                smoothedLookInput += sample;
+                _mouseInputBuffer.Dequeue();
+                _mouseTimeBuffer.Dequeue();
             }
-            smoothedLookInput /= _mouseInputBuffer.Count;
+
+            // Calculate smoothed mouse input (average over smoothing window)
+            Vector2 smoothedLookInput = Vector2.zero;
+            if (_mouseInputBuffer.Count > 0)
+            {
+                foreach (Vector2 sample in _mouseInputBuffer)
+                {
+                    smoothedLookInput += sample;
+                }
+                smoothedLookInput /= _mouseInputBuffer.Count;
+            }
+
+            finalLookInput = Vector2.Lerp(_smoothedMouseInput, smoothedLookInput, mouseSmoothingAmount);
+        }
+        else
+        {
+            finalLookInput = sensitivityAdjustedInput;
         }
 
-        // Store smoothed input for use in other methods
-        _smoothedMouseInput = smoothedLookInput;
-        lookInput = smoothedLookInput; // Update existing lookInput for compatibility
+        // Store processed input for use in other methods
+        _smoothedMouseInput = finalLookInput;
+        lookInput = finalLookInput; // Update existing lookInput for compatibility
 
         // Handle Advanced AAA-style mouse controls first (takes priority)
         HandleAdvancedMouseControls(input);
@@ -735,10 +832,10 @@ public class U3DPlayerController : NetworkBehaviour
             if (enableAdvancedCamera && cameraPivot != null)
             {
                 // Advanced camera system: Always-on free look
-                if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
+                if (Mathf.Abs(finalLookInput.x) > 0.01f)
                 {
                     // Rotate character around Y-axis (like right-click mode but always on)
-                    float yawDelta = smoothedLookInput.x * cameraOrbitSensitivity;
+                    float yawDelta = finalLookInput.x;
                     transform.Rotate(Vector3.up, yawDelta);
 
                     // Keep camera yaw in sync with character
@@ -747,10 +844,10 @@ public class U3DPlayerController : NetworkBehaviour
                     NetworkRotation = transform.rotation;
                 }
 
-                if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
+                if (Mathf.Abs(finalLookInput.y) > 0.01f)
                 {
                     // Camera pitch follows mouse
-                    cameraPitchAdvanced -= smoothedLookInput.y * cameraOrbitSensitivity;
+                    cameraPitchAdvanced -= finalLookInput.y;
                     cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                     NetworkCameraPitch = cameraPitchAdvanced;
                 }
@@ -764,15 +861,15 @@ public class U3DPlayerController : NetworkBehaviour
             else
             {
                 // Legacy camera system: Always-on free look
-                if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
+                if (Mathf.Abs(finalLookInput.x) > 0.01f)
                 {
-                    transform.Rotate(Vector3.up, smoothedLookInput.x);
+                    transform.Rotate(Vector3.up, finalLookInput.x);
                     NetworkRotation = transform.rotation;
                 }
 
-                if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
+                if (Mathf.Abs(finalLookInput.y) > 0.01f)
                 {
-                    cameraPitch -= smoothedLookInput.y;
+                    cameraPitch -= finalLookInput.y;
                     cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
                     NetworkCameraPitch = cameraPitch;
                 }
@@ -782,15 +879,15 @@ public class U3DPlayerController : NetworkBehaviour
         else if (!enableAlwaysFreeLook && !isLeftMouseDragging && !isRightMouseDragging && !enableAdvancedCamera)
         {
             // Original legacy camera system for compatibility
-            if (Mathf.Abs(smoothedLookInput.x) > 0.01f)
+            if (Mathf.Abs(finalLookInput.x) > 0.01f)
             {
-                transform.Rotate(Vector3.up, smoothedLookInput.x);
+                transform.Rotate(Vector3.up, finalLookInput.x);
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(smoothedLookInput.y) > 0.01f)
+            if (Mathf.Abs(finalLookInput.y) > 0.01f)
             {
-                cameraPitch -= smoothedLookInput.y;
+                cameraPitch -= finalLookInput.y;
                 cameraPitch = Mathf.Clamp(cameraPitch, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitch;
             }
@@ -806,17 +903,17 @@ public class U3DPlayerController : NetworkBehaviour
         isRightMouseDragging = input.RightMouseHeld;
         isBothMouseForward = input.BothMouseHeld;
 
-        // Use smoothed mouse input instead of raw lookInput
-        Vector2 smoothedInput = _smoothedMouseInput;
+        // Use processed mouse input (already has sensitivity and smoothing applied)
+        Vector2 processedInput = _smoothedMouseInput;
 
         // BOTH mouse buttons: Move forward with mouse steering (NEW - AAA style)
         if (isBothMouseForward)
         {
             // Allow mouse steering while moving forward with both buttons
-            if (Mathf.Abs(smoothedInput.x) > 0.01f)
+            if (Mathf.Abs(processedInput.x) > 0.01f)
             {
                 // Rotate character around Y-axis for steering
-                float yawDelta = smoothedInput.x * cameraOrbitSensitivity;
+                float yawDelta = processedInput.x;
                 transform.Rotate(Vector3.up, yawDelta);
 
                 // Keep camera yaw in sync with character
@@ -825,10 +922,10 @@ public class U3DPlayerController : NetworkBehaviour
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(smoothedInput.y) > 0.01f)
+            if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 // Camera pitch follows mouse for look up/down while moving
-                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= processedInput.y;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitchAdvanced;
             }
@@ -836,10 +933,10 @@ public class U3DPlayerController : NetworkBehaviour
         // Right-click drag: Rotate character AND camera together (Advanced AAA style)
         else if (isRightMouseDragging && !isLeftMouseDragging)
         {
-            if (Mathf.Abs(smoothedInput.x) > 0.01f)
+            if (Mathf.Abs(processedInput.x) > 0.01f)
             {
                 // Rotate character around Y-axis
-                float yawDelta = smoothedInput.x * cameraOrbitSensitivity;
+                float yawDelta = processedInput.x;
                 transform.Rotate(Vector3.up, yawDelta);
 
                 // Keep camera yaw in sync with character
@@ -848,10 +945,10 @@ public class U3DPlayerController : NetworkBehaviour
                 NetworkRotation = transform.rotation;
             }
 
-            if (Mathf.Abs(smoothedInput.y) > 0.01f)
+            if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 // Camera pitch follows mouse
-                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= processedInput.y;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
                 NetworkCameraPitch = cameraPitchAdvanced;
             }
@@ -859,16 +956,16 @@ public class U3DPlayerController : NetworkBehaviour
         // Left-click drag: Orbit camera around character WITHOUT turning character
         else if (isLeftMouseDragging && !isRightMouseDragging)
         {
-            if (Mathf.Abs(smoothedInput.x) > 0.01f)
+            if (Mathf.Abs(processedInput.x) > 0.01f)
             {
                 // Orbit camera horizontally around character
-                cameraYaw += smoothedInput.x * cameraOrbitSensitivity;
+                cameraYaw += processedInput.x;
             }
 
-            if (Mathf.Abs(smoothedInput.y) > 0.01f)
+            if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 // Orbit camera vertically around character
-                cameraPitchAdvanced -= smoothedInput.y * cameraOrbitSensitivity;
+                cameraPitchAdvanced -= processedInput.y;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
             }
 
@@ -1242,6 +1339,78 @@ public class U3DPlayerController : NetworkBehaviour
     {
         // Load look inversion preference (player-specific, not creator setting)
         lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
+
+        // ENHANCED: Load additional sensitivity preferences
+        LoadSensitivitySettings();
+    }
+
+    // ENHANCED: Public methods for settings UI integration
+    public void SetMouseSmoothing(bool enabled)
+    {
+        enableMouseSmoothing = enabled;
+        PlayerPrefs.SetInt("U3D_MouseSmoothing", enabled ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public bool GetMouseSmoothing()
+    {
+        return enableMouseSmoothing;
+    }
+
+    public void SetMouseSmoothingAmount(float amount)
+    {
+        mouseSmoothingAmount = Mathf.Clamp01(amount);
+        PlayerPrefs.SetFloat("U3D_MouseSmoothingAmount", mouseSmoothingAmount);
+        PlayerPrefs.Save();
+    }
+
+    public float GetMouseSmoothingAmount()
+    {
+        return mouseSmoothingAmount;
+    }
+
+    // ENHANCED: Platform detection utilities for settings UI
+    public bool IsWebGLPlatform()
+    {
+        return Application.platform == RuntimePlatform.WebGLPlayer;
+    }
+
+    public float GetPlatformSensitivityMultiplier()
+    {
+        switch (Application.platform)
+        {
+            case RuntimePlatform.WebGLPlayer:
+                return webglSensitivityMultiplier;
+            case RuntimePlatform.IPhonePlayer:
+            case RuntimePlatform.Android:
+                return mobileSensitivityMultiplier;
+            default:
+                return 1.0f;
+        }
+    }
+
+    public string GetPlatformName()
+    {
+        switch (Application.platform)
+        {
+            case RuntimePlatform.WebGLPlayer:
+                return "WebGL";
+            case RuntimePlatform.IPhonePlayer:
+                return "iOS";
+            case RuntimePlatform.Android:
+                return "Android";
+            case RuntimePlatform.WindowsPlayer:
+            case RuntimePlatform.WindowsEditor:
+                return "Windows";
+            case RuntimePlatform.OSXPlayer:
+            case RuntimePlatform.OSXEditor:
+                return "macOS";
+            case RuntimePlatform.LinuxPlayer:
+            case RuntimePlatform.LinuxEditor:
+                return "Linux";
+            default:
+                return "Desktop";
+        }
     }
 
     // Unity Input System callbacks - DISABLED for networked players but kept for compatibility
