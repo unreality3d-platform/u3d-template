@@ -766,6 +766,127 @@ public static class U3DAuthenticator
         }
     }
 
+    // ADD THESE METHODS TO YOUR U3DAuthenticator.cs CLASS
+    // Insert after the ValidateStoredToken() method (around line 500)
+
+    /// <summary>
+    /// DEPLOYMENT FIX: Ensures authentication is valid before starting deployment operations
+    /// This prevents the deployment failures you've been experiencing
+    /// </summary>
+    public static async Task<bool> PrepareForDeployment()
+    {
+        try
+        {
+            Debug.Log("🔐 U3D: Preparing authentication for deployment...");
+
+            // First check if we're even logged in
+            if (string.IsNullOrEmpty(_idToken))
+            {
+                Debug.LogError("❌ No authentication token available. Please log in first.");
+                return false;
+            }
+
+            // Validate current token
+            bool isValid = await ValidateStoredToken();
+
+            if (isValid)
+            {
+                Debug.Log("✅ U3D: Authentication token is valid for deployment");
+                return true;
+            }
+
+            // Token is invalid, try to refresh
+            Debug.LogWarning("⚠️ U3D: Authentication token expired, attempting refresh...");
+            bool refreshed = await RefreshIdTokenIfNeeded();
+
+            if (refreshed)
+            {
+                // Validate the refreshed token
+                isValid = await ValidateStoredToken();
+
+                if (isValid)
+                {
+                    Debug.Log("✅ U3D: Authentication token refreshed successfully for deployment");
+                    return true;
+                }
+            }
+
+            // Both validation and refresh failed
+            Debug.LogError("❌ U3D: Authentication failed. Please log out and log back in before deploying.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ U3D: Deployment authentication preparation failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// DEPLOYMENT FIX: Wraps deployment operations with automatic authentication retry
+    /// Use this for critical Firebase function calls during deployment
+    /// </summary>
+    public static async Task<Dictionary<string, object>> CallFirebaseFunctionWithAuthRetry(string functionName, object data)
+    {
+        const int maxRetries = 2;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                // Ensure we have valid authentication before each attempt
+                if (attempt > 1)
+                {
+                    Debug.Log($"🔄 U3D: Retrying {functionName} (attempt {attempt}/{maxRetries})");
+
+                    bool authReady = await PrepareForDeployment();
+                    if (!authReady)
+                    {
+                        throw new Exception("Authentication preparation failed on retry");
+                    }
+                }
+
+                // Call the existing private method using reflection
+                var method = typeof(U3DAuthenticator).GetMethod("CallFirebaseFunction",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+                if (method == null)
+                {
+                    throw new Exception("CallFirebaseFunction method not found");
+                }
+
+                var task = method.Invoke(null, new object[] { functionName, data }) as Task<Dictionary<string, object>>;
+                var result = await task;
+
+                Debug.Log($"✅ U3D: {functionName} completed successfully");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                var message = ex.Message?.ToLower() ?? "";
+                bool isAuthError = message.Contains("unauthenticated") ||
+                                  message.Contains("unauthorized") ||
+                                  message.Contains("invalid token") ||
+                                  message.Contains("token expired");
+
+                if (isAuthError && attempt < maxRetries)
+                {
+                    Debug.LogWarning($"⚠️ U3D: Authentication error on {functionName}, retrying... ({ex.Message})");
+
+                    // Try to refresh token for next attempt
+                    await RefreshIdTokenIfNeeded();
+                    continue;
+                }
+
+                // Non-auth error or final attempt - rethrow
+                Debug.LogError($"❌ U3D: {functionName} failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        throw new Exception($"Failed to call {functionName} after {maxRetries} attempts");
+    }
+
     private static async Task LoadUserProfile()
     {
         try

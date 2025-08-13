@@ -131,7 +131,7 @@ public class FirebaseStorageUploader
         }
     }
 
-    // Method 1: TriggerGitHubDeploymentWithIntent (around line 151)
+    // Method 1: TriggerGitHubDeploymentWithIntent 
     private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files)
     {
         try
@@ -152,10 +152,11 @@ public class FirebaseStorageUploader
             { "fileList", fileList },
             { "githubToken", GitHubTokenManager.Token },
             { "deploymentIntent", deploymentIntent },
-            { "creatorPayPalEmail", paypalEmail ?? "" }  // ← ADD THIS LINE
+            { "creatorPayPalEmail", paypalEmail ?? "" }
         };
 
-            var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
+            // 🆕 USE NEW AUTH RETRY METHOD INSTEAD OF REFLECTION
+            var result = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry("deployFromStorage", deploymentRequest);
 
             Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
 
@@ -303,6 +304,7 @@ public class FirebaseStorageUploader
         }
     }
 
+    // Method 2: TriggerGitHubDeployment 
     private async Task<bool> TriggerGitHubDeployment(string creatorUsername, string projectName, List<BuildFileInfo> files)
     {
         try
@@ -322,11 +324,11 @@ public class FirebaseStorageUploader
             { "githubOwner", GitHubTokenManager.GitHubUsername },
             { "fileList", fileList },
             { "githubToken", GitHubTokenManager.Token },
-            { "creatorPayPalEmail", paypalEmail ?? "" }  // ← ADD THIS LINE
+            { "creatorPayPalEmail", paypalEmail ?? "" }
         };
 
-            // Use reflection to access the private CallFirebaseFunction method (same pattern as PublishTab)
-            var result = await CallFirebaseFunction("deployFromStorage", deploymentRequest);
+            // 🆕 USE NEW AUTH RETRY METHOD INSTEAD OF REFLECTION
+            var result = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry("deployFromStorage", deploymentRequest);
 
             Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
 
@@ -347,21 +349,6 @@ public class FirebaseStorageUploader
             Debug.LogError($"❌ GitHub deployment trigger failed: {ex.Message}");
             return false;
         }
-    }
-
-    private static async Task<Dictionary<string, object>> CallFirebaseFunction(string functionName, Dictionary<string, object> data)
-    {
-        // Use reflection to access the private method (same pattern as your PublishTab)
-        var method = typeof(U3DAuthenticator).GetMethod("CallFirebaseFunction",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        if (method == null)
-        {
-            throw new Exception("CallFirebaseFunction method not found in U3DAuthenticator");
-        }
-
-        var task = method.Invoke(null, new object[] { functionName, data }) as Task<Dictionary<string, object>>;
-        return await task;
     }
 
     private string GetContentType(string extension)

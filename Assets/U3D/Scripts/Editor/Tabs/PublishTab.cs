@@ -819,6 +819,17 @@ namespace U3D.Editor
 
             try
             {
+                // 🆕 DEPLOYMENT FIX: Validate authentication BEFORE starting any deployment operations
+                currentStatus = "Preparing authentication for deployment...";
+                bool authReady = await U3DAuthenticator.PrepareForDeployment();
+
+                if (!authReady)
+                {
+                    throw new System.Exception("Authentication preparation failed. Please log out and log back in, then try again.");
+                }
+
+                currentStatus = "Authentication validated - proceeding with deployment";
+
                 // Step 1: Build Unity WebGL locally
                 currentStep = PublishStep.BuildingLocally;
                 currentStatus = "Building Unity WebGL locally...";
@@ -831,6 +842,16 @@ namespace U3D.Editor
 
                 projectBuilt = true;
                 currentStatus = "Unity build completed successfully";
+
+                // 🆕 DEPLOYMENT FIX: Re-validate authentication before the deployment step
+                // (Build process can take 30+ minutes, token might expire)
+                currentStatus = "Re-validating authentication for deployment...";
+                authReady = await U3DAuthenticator.PrepareForDeployment();
+
+                if (!authReady)
+                {
+                    throw new System.Exception("Authentication expired during build. Please log out and log back in, then try deploying again.");
+                }
 
                 // Step 2: Deploy via Firebase Cloud Functions
                 currentStep = PublishStep.DeployingToGitHub;
@@ -855,7 +876,23 @@ namespace U3D.Editor
             catch (System.Exception ex)
             {
                 Debug.LogError($"Publishing failed: {ex.Message}");
-                EditorUtility.DisplayDialog("Publishing Failed", $"There was an error: {ex.Message}", "OK");
+
+                // 🆕 ENHANCED ERROR HANDLING: Provide specific guidance for authentication errors
+                string userMessage = ex.Message;
+                if (ex.Message.Contains("Authentication") || ex.Message.Contains("unauthenticated") || ex.Message.Contains("unauthorized"))
+                {
+                    userMessage = "Authentication error occurred during deployment.\n\n" +
+                                 "This happens when your login session expires during the build process.\n\n" +
+                                 "To fix this:\n" +
+                                 "1. Log out from the Unreality3D Creator Dashboard\n" +
+                                 "2. Clear the Unity Console\n" +
+                                 "3. Close and reopen this Unity project\n" +
+                                 "4. Log back in\n" +
+                                 "5. Try publishing again\n\n" +
+                                 "Technical details: " + ex.Message;
+                }
+
+                EditorUtility.DisplayDialog("Publishing Failed", userMessage, "OK");
 
                 currentStep = PublishStep.Ready;
                 currentStatus = $"Publishing failed: {ex.Message}";
