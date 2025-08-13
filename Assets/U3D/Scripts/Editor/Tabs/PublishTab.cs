@@ -215,13 +215,6 @@ namespace U3D.Editor
         // FIX #1: Make CanPublish() optimistic - assume we can publish unless compilation is happening
         private bool CanPublish()
         {
-            // CRITICAL: Return false if we're in compilation/build state (same pattern as existing classes)
-            if (ShouldSkipDuringBuild())
-            {
-                return false;
-            }
-
-            // OPTIMISTIC: Assume we can publish - authentication will be validated when actually needed
             return true;
         }
 
@@ -230,16 +223,6 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("Checking prerequisites...", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
-
-            // CRITICAL: Show compilation message if we're in that state (same pattern as existing classes)
-            if (ShouldSkipDuringBuild())
-            {
-                EditorGUILayout.HelpBox("⏳ Waiting for script compilation to complete...", MessageType.Info);
-                return;
-            }
-
-            // OPTIMISTIC: Show publish interface but validate on actual publish attempt
-            EditorGUILayout.HelpBox("📋 Authentication will be verified when you publish.", MessageType.Info);
 
             if (GUILayout.Button("Check Setup Status", GUILayout.Height(30)))
             {
