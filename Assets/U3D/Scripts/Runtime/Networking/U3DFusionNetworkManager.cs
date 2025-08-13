@@ -2,6 +2,7 @@
 using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using U3D.Input;
 using UnityEngine;
@@ -34,6 +35,13 @@ namespace U3D.Networking
 
         [Header("Input System Integration")]
         [SerializeField] private InputActionAsset inputActionAsset;
+
+        [Header("UI Interaction Management")]
+        [SerializeField] private bool pauseInputDuringUIFocus = true;
+
+        private bool _isUIFocused = false;
+        private List<IUIInputHandler> _uiInputHandlers = new List<IUIInputHandler>();
+        private HashSet<string> _activeUIComponents = new HashSet<string>();
 
         // Network State
         private NetworkRunner _runner;
@@ -89,7 +97,6 @@ namespace U3D.Networking
         private InputAction _turnLeftAction;
         private InputAction _turnRightAction;
         private InputAction _autoRunToggleAction;
-
         private U3DSimpleTouchZones touchZones;
 
         // Events for UI integration
@@ -106,6 +113,9 @@ namespace U3D.Networking
         public bool IsHost => _runner != null && _runner.IsServer;
         public int PlayerCount => _spawnedPlayers.Count;
         public NetworkRunner Runner => _runner;
+        public bool IsUIFocused => _isUIFocused;
+        public int ActiveUICount => _uiInputHandlers.Count(h => h != null && h.IsUIFocused());
+
 
         void Awake()
         {
@@ -224,7 +234,15 @@ namespace U3D.Networking
             var cursorManager = FindAnyObjectByType<U3DWebGLCursorManager>();
             bool shouldProcessInput = cursorManager == null || cursorManager.ShouldProcessGameInput();
 
-            if (!shouldProcessInput) return;
+            // NEW: Check for UI focus to prevent input conflicts
+            bool isUIInteracting = CheckUIInteraction();
+
+            if (!shouldProcessInput || isUIInteracting)
+            {
+                // Clear input when UI is active to prevent conflicts
+                ClearInputCache();
+                return;
+            }
 
             if (Application.isMobilePlatform && touchZones != null)
             {
@@ -246,7 +264,7 @@ namespace U3D.Networking
             }
             else
             {
-                // On desktop, use traditional input (existing code)
+                // On desktop, use traditional input
                 _cachedMovementInput = _moveAction.ReadValue<Vector2>();
 
                 if (_lookAction != null)
@@ -268,8 +286,8 @@ namespace U3D.Networking
                 if (_interactAction != null && _interactAction.WasPressedThisFrame())
                     _interactPressed = true;
 
-                // NEW: Handle zoom from pinch gesture
-                if (Mathf.Abs(touchZones.ZoomInput) > 0.01f)
+                // Handle zoom from pinch gesture
+                if (touchZones != null && Mathf.Abs(touchZones.ZoomInput) > 0.01f)
                 {
                     // Use zoom input for FOV adjustment
                     _zoomPressed = touchZones.ZoomInput > 0; // Pinch out = zoom in
@@ -278,8 +296,8 @@ namespace U3D.Networking
                     _perspectiveScrollValue = touchZones.ZoomInput * 5f; // Scale as needed
                 }
 
-                // NEW: Handle perspective switch from large pinch
-                if (touchZones.PerspectiveSwitchRequested)
+                // Handle perspective switch from large pinch
+                if (touchZones != null && touchZones.PerspectiveSwitchRequested)
                 {
                     // Toggle perspective mode
                     _perspectiveScrollValue = 10f; // Large value to trigger switch
@@ -329,6 +347,82 @@ namespace U3D.Networking
                     _autoRunTogglePressed = true;
             }
         }
+
+        private bool CheckUIInteraction()
+        {
+            _isUIFocused = false;
+            _activeUIComponents.Clear();
+
+            // Check all registered UI handlers (PayPal, Quizzes, Forms, etc.)
+            foreach (var handler in _uiInputHandlers)
+            {
+                if (handler != null && handler.IsUIFocused())
+                {
+                    _isUIFocused = true;
+                    _activeUIComponents.Add(handler.GetHandlerName());
+                }
+            }
+
+            // Additional platform-specific UI detection
+            if (!_isUIFocused)
+            {
+                _isUIFocused = DetectPlatformSpecificUI();
+            }
+
+            return _isUIFocused;
+        }
+
+        private bool DetectPlatformSpecificUI()
+        {
+            switch (Application.platform)
+            {
+                case RuntimePlatform.WebGLPlayer:
+                    return UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject() == true;
+
+                case RuntimePlatform.Android:
+                case RuntimePlatform.IPhonePlayer:
+                    for (int i = 0; i < UnityEngine.Input.touchCount; i++)
+                    {
+                        if (UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId) == true)
+                        {
+                            return true;
+                        }
+                    }
+                    return false; // THIS LINE WAS MISSING
+
+                default:
+                    return UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject() == true;
+            }
+        }
+
+        private void ClearInputCache()
+        {
+            _cachedMovementInput = Vector2.zero;
+            _cachedLookInput = Vector2.zero;
+            _jumpPressed = false;
+            _sprintPressed = false;
+            _crouchPressed = false;
+            _flyPressed = false;
+            _interactPressed = false;
+            _zoomPressed = false;
+            _perspectiveScrollValue = 0f;
+        }
+
+        public void RegisterUIInputHandler(IUIInputHandler handler)
+        {
+            if (!_uiInputHandlers.Contains(handler))
+            {
+                _uiInputHandlers.Add(handler);
+                Debug.Log($"🎮 UI input handler registered: {handler.GetHandlerName()}");
+            }
+        }
+
+        public void UnregisterUIInputHandler(IUIInputHandler handler)
+        {
+            _uiInputHandlers.Remove(handler);
+            Debug.Log($"🎮 UI input handler unregistered: {handler.GetHandlerName()}");
+        }
+
 
         /// <summary>
         /// Trigger teleportation directly on double-click (bypasses network button delay)
@@ -569,7 +663,13 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
         }
 
-        // FIXED: Correct Fusion 2 callback signatures
+        public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
+        {
+            Debug.Log($"Connection failed: {reason}");
+            UpdateStatus($"Connection failed: {reason}");
+            OnNetworkStatusChanged?.Invoke(false);
+        }
+
         public void OnConnectedToServer(NetworkRunner runner)
         {
             Debug.Log("Connected to Photon server");
@@ -580,13 +680,6 @@ namespace U3D.Networking
         {
             Debug.Log($"Disconnected from server: {reason}");
             UpdateStatus($"Disconnected: {reason}");
-            OnNetworkStatusChanged?.Invoke(false);
-        }
-
-        public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-        {
-            Debug.Log($"Connection failed: {reason}");
-            UpdateStatus($"Connection failed: {reason}");
             OnNetworkStatusChanged?.Invoke(false);
         }
 

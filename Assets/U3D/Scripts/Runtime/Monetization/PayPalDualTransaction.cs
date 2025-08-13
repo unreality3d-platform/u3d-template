@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Linq;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -36,8 +37,11 @@ namespace U3D
         public UnityEngine.Events.UnityEvent OnPaymentFailed = new UnityEngine.Events.UnityEvent();
         public UnityEngine.Events.UnityEvent<string> OnStatusChanged = new UnityEngine.Events.UnityEvent<string>();
 
-        [Header("Tip Jar Customization")]
-        [SerializeField] private string creatorMessage = "Thank you for supporting my work!";
+        [Header("Network Input Coordination")]
+        [SerializeField] private bool useNetworkInputCoordination = true;
+
+        private U3D.Networking.U3DFusionNetworkManager _networkManager;
+        private bool _registeredWithNetwork = false;
 
         // DIRECT PayPal API JavaScript bridge imports - NO Firebase Functions
         [DllImport("__Internal")]
@@ -61,6 +65,32 @@ namespace U3D
         {
             InitializeComponent();
             ValidateSetup();
+
+            // Register with network manager for input coordination
+            if (useNetworkInputCoordination)
+            {
+                RegisterWithNetworkManager();
+            }
+        }
+
+        private void RegisterWithNetworkManager()
+        {
+            _networkManager = U3D.Networking.U3DFusionNetworkManager.Instance;
+            if (_networkManager != null && !_registeredWithNetwork)
+            {
+                // Add a U3DUIInputManager component if one doesn't exist
+                var uiManager = GetComponent<U3DUIInputManager>();
+                if (uiManager == null)
+                {
+                    uiManager = gameObject.AddComponent<U3DUIInputManager>();
+                    uiManager.componentName = "PayPal Transaction UI";
+                    uiManager.inputPriority = 10; // High priority for payments
+                    uiManager.blockAllInput = true; // Block all input during payment
+                }
+
+                _registeredWithNetwork = true;
+                Debug.Log("💰 PayPal component registered with network input system");
+            }
         }
 
         private void InitializeComponent()
@@ -618,26 +648,11 @@ namespace U3D
             ValidateSetup();
         }
 
-        public void SetCreatorMessage(string message)
-        {
-            creatorMessage = message;
-
-            if (!string.IsNullOrEmpty(message))
-            {
-                itemDescription = message;
-            }
-        }
-
-        public string GetCreatorMessage()
-        {
-            return creatorMessage;
-        }
 
         public void SetupAsTipJar(float minAmount = 1.00f, float maxAmount = 100.00f, string message = "Thank you for supporting my work!")
         {
             SetItemDetails("Creator Tip", message, 5.00f);
             SetVariableAmount(true, minAmount, maxAmount);
-            SetCreatorMessage(message);
         }
 
         public bool ValidateUIComponents()
@@ -694,6 +709,19 @@ namespace U3D
         public bool HasValidUIReferences()
         {
             return paymentButton != null && statusText != null;
+        }
+
+        private void OnDestroy()
+        {
+            if (_networkManager != null && _registeredWithNetwork)
+            {
+                var uiManager = GetComponent<U3DUIInputManager>();
+                if (uiManager != null)
+                {
+                    _networkManager.UnregisterUIInputHandler(uiManager);
+                }
+                _registeredWithNetwork = false;
+            }
         }
 
         // Helper class for transaction data
