@@ -120,9 +120,24 @@ public class U3DUIInputManager : MonoBehaviour, IUIInputHandler
         if (!onlyWhenVisible) return true;
 
         // Check if the root object is active and visible
-        return gameObject.activeInHierarchy &&
-               (GetComponent<Canvas>()?.enabled != false) &&
-               (GetComponent<CanvasGroup>()?.alpha > 0);
+        if (!gameObject.activeInHierarchy) return false;
+
+        // Safely check Canvas component (might not exist)
+        var canvas = GetComponent<Canvas>();
+        if (canvas != null && !canvas.enabled) return false;
+
+        // Safely check CanvasGroup component (might not exist)  
+        var canvasGroup = GetComponent<CanvasGroup>();
+        if (canvasGroup != null && canvasGroup.alpha <= 0) return false;
+
+        // Also check parent Canvas components up the hierarchy
+        var parentCanvas = GetComponentInParent<Canvas>();
+        if (parentCanvas != null && !parentCanvas.enabled) return false;
+
+        var parentCanvasGroup = GetComponentInParent<CanvasGroup>();
+        if (parentCanvasGroup != null && parentCanvasGroup.alpha <= 0) return false;
+
+        return true;
     }
 
     // IUIInputHandler implementation
