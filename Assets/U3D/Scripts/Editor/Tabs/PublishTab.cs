@@ -157,21 +157,6 @@ namespace U3D.Editor
             Debug.Log("Publish state reset - ready to publish again");
         }
 
-        public void OnFocus()
-        {
-            // Check for external Product Name changes when tab gains focus
-            var currentProductName = Application.productName;
-            if (currentProductName != cachedProductName)
-            {
-                Debug.Log($"Product Name changed externally: '{cachedProductName}' → '{currentProductName}'");
-                cachedProductName = currentProductName;
-
-                // Reset options so they reload with new name
-                optionsLoaded = false;
-                loadingOptions = false;
-            }
-        }
-
         public void DrawTab()
         {
             EditorGUILayout.Space(10);
@@ -212,21 +197,101 @@ namespace U3D.Editor
             EditorGUILayout.EndScrollView();
         }
 
-        // FIX #1: Make CanPublish() optimistic - assume we can publish unless compilation is happening
         private bool CanPublish()
         {
-            return true;
+            // CRITICAL: Return false if we're in compilation/build state
+            if (ShouldSkipDuringBuild())
+            {
+                return false;
+            }
+
+            // 🆕 AUTHENTICATION CHECK: Must be logged in to publish
+            if (!U3DAuthenticator.IsLoggedIn)
+            {
+                return false;
+            }
+
+            // 🆕 SETUP COMPLETION CHECK: Must have completed basic setup
+            bool hasUsername = !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername);
+            bool hasGitHubToken = GitHubTokenManager.HasValidToken;
+
+            // Allow publishing if user has username and GitHub token
+            // PayPal is optional for publishing
+            return hasUsername && hasGitHubToken;
         }
 
-        // FIX #2: Make DrawPrerequisites() less aggressive about redirecting
         private void DrawPrerequisites()
         {
-            EditorGUILayout.LabelField("Checking prerequisites...", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Setup Required", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            if (GUILayout.Button("Check Setup Status", GUILayout.Height(30)))
+            // CRITICAL: Show compilation message if we're in that state
+            if (ShouldSkipDuringBuild())
             {
-                OnRequestTabSwitch?.Invoke(0);
+                EditorGUILayout.HelpBox("⏳ Waiting for script compilation to complete...", MessageType.Info);
+                return;
+            }
+
+            // 🆕 SPECIFIC GUIDANCE: Tell user exactly what's missing
+            if (!U3DAuthenticator.IsLoggedIn)
+            {
+                EditorGUILayout.HelpBox("🔐 Please log in to your Unreality3D account first.", MessageType.Warning);
+            }
+            else if (string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
+            {
+                EditorGUILayout.HelpBox("🎯 Please reserve your creator username first.", MessageType.Warning);
+            }
+            else if (!GitHubTokenManager.HasValidToken)
+            {
+                EditorGUILayout.HelpBox("🔗 Please connect to GitHub first to enable publishing.", MessageType.Warning);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("📋 Setup verification in progress...", MessageType.Info);
+            }
+
+            EditorGUILayout.Space(10);
+
+            if (GUILayout.Button("Complete Setup", GUILayout.Height(30)))
+            {
+                OnRequestTabSwitch?.Invoke(0); // Switch to Setup tab
+            }
+        }
+
+        public void OnFocus()
+        {
+            // Check for external Product Name changes when tab gains focus
+            var currentProductName = Application.productName;
+            if (currentProductName != cachedProductName)
+            {
+                Debug.Log($"Product Name changed externally: '{cachedProductName}' → '{currentProductName}'");
+                cachedProductName = currentProductName;
+
+                // Reset options so they reload with new name
+                optionsLoaded = false;
+                loadingOptions = false;
+            }
+
+            // 🆕 CHECK AUTHENTICATION STATE: Reset if user logged out
+            if (!U3DAuthenticator.IsLoggedIn && optionsLoaded)
+            {
+                Debug.Log("User logged out - resetting Publish tab state");
+
+                // Clear loaded options and reset to prerequisites
+                availableOptions.Clear();
+                optionsLoaded = false;
+                loadingOptions = false;
+                selectedOptionIndex = -1;
+
+                // Reset publish state
+                currentStep = PublishStep.Ready;
+                isPublishing = false;
+                projectBuilt = false;
+                deploymentComplete = false;
+                githubConnected = false;
+                publishUrl = "";
+                currentStatus = "";
+                IsComplete = false;
             }
         }
 
