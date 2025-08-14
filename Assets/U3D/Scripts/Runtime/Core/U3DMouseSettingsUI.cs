@@ -93,8 +93,16 @@ namespace U3D.UI
         void OnInvertYChanged(bool inverted)
         {
             if (!_isInitialized) return;
+
+            // Save to PlayerPrefs
             PlayerPrefs.SetInt("U3D_LookInverted", inverted ? 1 : 0);
             PlayerPrefs.Save();
+
+            // FIXED: Update the PlayerController's lookInverted field immediately
+            if (_playerController != null)
+            {
+                _playerController.SetLookInverted(inverted);
+            }
         }
     }
 }

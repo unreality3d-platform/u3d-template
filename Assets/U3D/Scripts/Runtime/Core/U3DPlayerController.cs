@@ -1369,6 +1369,12 @@ public class U3DPlayerController : NetworkBehaviour
         return mouseSmoothingAmount;
     }
 
+    public void SetLookInverted(bool inverted)
+    {
+        lookInverted = inverted;
+        Debug.Log($"🔄 Look inversion set to: {inverted}");
+    }
+
     // ENHANCED: Platform detection utilities for settings UI
     public bool IsWebGLPlatform()
     {
