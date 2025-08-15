@@ -15,7 +15,7 @@ namespace U3D.Networking
         [Header("Nametag Configuration")]
         [SerializeField] private float maxDisplayDistance = 30f;
         [SerializeField] private float fadeStartDistance = 20f;
-        [SerializeField] private Vector3 worldOffset = new Vector3(0, 2.5f, 0);
+        [SerializeField] private Vector3 worldOffset = new Vector3(0, 2.25f, 0);
         [SerializeField] private bool requireLineOfSight = true;
 
         [Header("Performance Settings")]
@@ -142,45 +142,92 @@ namespace U3D.Networking
 
             playerNameText = nameTextObject.GetComponent<TextMeshProUGUI>();
             playerNameText.text = "Player";
-            playerNameText.fontSize = 16; // Largest size from reference standards
+            playerNameText.fontSize = 24; // Largest size from reference standards
             playerNameText.color = Color.white; // High contrast for readability
             playerNameText.alignment = TextAlignmentOptions.Center;
             playerNameText.raycastTarget = false;
 
             // Enable auto-sizing for better text fit
             playerNameText.enableAutoSizing = true;
-            playerNameText.fontSizeMin = 12;
-            playerNameText.fontSizeMax = 16;
+            playerNameText.fontSizeMin = 20;
+            playerNameText.fontSizeMax = 24;
         }
 
         void FindLocalPlayerCamera()
         {
-            // Find the local player's camera by checking for local player controller
-            var allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
-            foreach (var player in allPlayers)
+            // Start a coroutine to continuously search for the local player camera
+            StartCoroutine(SearchForLocalPlayerCamera());
+        }
+
+        private System.Collections.IEnumerator SearchForLocalPlayerCamera()
+        {
+            float maxSearchTime = 10f; // Stop searching after 10 seconds
+            float searchStartTime = Time.time;
+
+            while (_localPlayerCamera == null && (Time.time - searchStartTime) < maxSearchTime)
             {
-                if (player.IsLocalPlayer)
+                // Search for local player camera
+                var allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
+                foreach (var player in allPlayers)
                 {
-                    _localPlayerCamera = player.GetComponentInChildren<Camera>();
-                    break;
+                    if (player.IsLocalPlayer)
+                    {
+                        var camera = player.GetComponentInChildren<Camera>();
+                        if (camera != null && camera.enabled)
+                        {
+                            _localPlayerCamera = camera;
+                            Debug.Log($"✅ Found local player camera: {camera.name}");
+                            break;
+                        }
+                    }
                 }
+
+                // If still not found, try alternative methods
+                if (_localPlayerCamera == null)
+                {
+                    // Look for active camera with MainCamera tag
+                    var mainCamera = Camera.main;
+                    if (mainCamera != null && mainCamera.enabled)
+                    {
+                        _localPlayerCamera = mainCamera;
+                        Debug.Log($"✅ Using main camera as fallback: {mainCamera.name}");
+                    }
+                    else
+                    {
+                        // Look for any active camera
+                        var activeCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+                        foreach (var cam in activeCameras)
+                        {
+                            if (cam.enabled && cam.gameObject.activeInHierarchy)
+                            {
+                                _localPlayerCamera = cam;
+                                Debug.Log($"✅ Using first active camera: {cam.name}");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Exit loop if found
+                if (_localPlayerCamera != null)
+                    break;
+
+                // Wait a bit before searching again
+                yield return new WaitForSeconds(0.2f);
             }
 
-            // Fallback to main camera
-            if (_localPlayerCamera == null)
+            // Set canvas camera once found
+            if (_localPlayerCamera != null)
             {
-                _localPlayerCamera = Camera.main;
+                if (nametagCanvas != null)
+                {
+                    nametagCanvas.worldCamera = _localPlayerCamera;
+                }
+                Debug.Log($"🎯 Nametag camera set successfully: {_localPlayerCamera.name}");
             }
-
-            // Set canvas camera
-            if (nametagCanvas != null && _localPlayerCamera != null)
+            else
             {
-                nametagCanvas.worldCamera = _localPlayerCamera;
-            }
-
-            if (_localPlayerCamera == null)
-            {
-                Debug.LogWarning("⚠️ No local player camera found for nametag");
+                Debug.LogWarning("⚠️ Failed to find local player camera after 10 seconds - nametag may not billboard correctly");
             }
         }
 
@@ -204,8 +251,36 @@ namespace U3D.Networking
 
         void Update()
         {
-            if (!_isInitialized || _playerController == null || _localPlayerCamera == null)
+            if (!_isInitialized || _playerController == null)
                 return;
+
+            // If we don't have a camera yet, keep trying to find one
+            if (_localPlayerCamera == null)
+            {
+                // Try to find camera again (networking timing issue)
+                var allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
+                foreach (var player in allPlayers)
+                {
+                    if (player.IsLocalPlayer)
+                    {
+                        var camera = player.GetComponentInChildren<Camera>();
+                        if (camera != null && camera.enabled)
+                        {
+                            _localPlayerCamera = camera;
+                            if (nametagCanvas != null)
+                            {
+                                nametagCanvas.worldCamera = _localPlayerCamera;
+                            }
+                            Debug.Log($"🎯 Late-found local player camera: {camera.name}");
+                            break;
+                        }
+                    }
+                }
+
+                // If still no camera, skip this frame
+                if (_localPlayerCamera == null)
+                    return;
+            }
 
             // Performance optimization: Update at specified frequency only
             if (Time.time - _lastUpdateTime < updateFrequency)
