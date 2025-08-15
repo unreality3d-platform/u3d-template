@@ -448,6 +448,8 @@ namespace U3D.Networking
         /// </summary>
         public async Task<bool> StartNetworking(string sessionName, string photonAppId = "")
         {
+            U3D.Networking.U3DPlayerNametag.ResetPlayerNumbering();
+
             if (_runner != null)
             {
                 Debug.LogWarning("Network already running, shutting down first");
@@ -649,6 +651,8 @@ namespace U3D.Networking
         {
             Debug.Log($"Player left: {player}");
 
+            U3D.Networking.U3DPlayerNametag.RemovePlayer(player);
+
             if (_spawnedPlayers.TryGetValue(player, out NetworkObject playerObject))
             {
                 if (playerObject != null)
@@ -689,6 +693,9 @@ namespace U3D.Networking
             UpdateStatus($"Network shutdown: {shutdownReason}");
 
             _spawnedPlayers.Clear();
+
+            U3D.Networking.U3DPlayerNametag.ResetPlayerNumbering();
+
             OnNetworkStatusChanged?.Invoke(false);
             OnPlayerCountChanged?.Invoke(0);
         }

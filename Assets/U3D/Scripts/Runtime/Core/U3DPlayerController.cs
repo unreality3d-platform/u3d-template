@@ -465,14 +465,39 @@ public class U3DPlayerController : NetworkBehaviour
 
     void CreateNametag()
     {
+        StartCoroutine(DelayedNametagCreation());
+    }
+
+    private System.Collections.IEnumerator DelayedNametagCreation()
+    {
+        // Wait until _isLocalPlayer is properly set by Spawned()
+        while (!GetComponent<NetworkObject>() || !GetComponent<NetworkObject>().IsValid)
+        {
+            yield return null;
+        }
+
+        // Additional small delay to ensure networking is fully initialized
+        yield return new WaitForSeconds(0.1f);
+
+        // Only create nametags for remote players (not local player)
+        if (_isLocalPlayer)
+        {
+            Debug.Log("🏷️ Skipping nametag creation for local player");
+            yield break;
+        }
+
+        Debug.Log("🏷️ Creating nametag for remote player");
+
         // Create nametag anchor above player head
         var nametagAnchor = new GameObject("NametagAnchor");
         nametagAnchor.transform.SetParent(transform);
-        nametagAnchor.transform.localPosition = Vector3.up * 2.5f;
+        nametagAnchor.transform.localPosition = Vector3.up * 2.2f;
 
         // Add and initialize nametag component
         var nametag = nametagAnchor.AddComponent<U3D.Networking.U3DPlayerNametag>();
         nametag.Initialize(this);
+
+        Debug.Log($"✅ Nametag created and initialized for remote player: {name}");
     }
 
     bool IsCursorLocked()

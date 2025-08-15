@@ -1,44 +1,91 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Fusion;
+using System.Collections.Generic;
 
 namespace U3D.Networking
 {
     /// <summary>
-    /// Player nametag component that displays above networked players
-    /// Shows username, user type badge, and PayPal verification status
+    /// Enhanced player nametag component that displays above networked players
+    /// Features: Player numbering, line-of-sight visibility, proper billboarding, performance optimized
     /// </summary>
     public class U3DPlayerNametag : MonoBehaviour
     {
         [Header("Nametag Configuration")]
-        [SerializeField] private float displayDistance = 20f;
-        [SerializeField] private float fadeDistance = 15f;
-        [SerializeField] private bool alwaysVisible = false;
+        [SerializeField] private float maxDisplayDistance = 30f;
+        [SerializeField] private float fadeStartDistance = 20f;
         [SerializeField] private Vector3 worldOffset = new Vector3(0, 2.5f, 0);
+        [SerializeField] private bool requireLineOfSight = true;
+
+        [Header("Performance Settings")]
+        [SerializeField] private float updateFrequency = 0.1f; // Update every 100ms for performance
+        [SerializeField] private LayerMask lineOfSightLayers = -1; // What blocks line of sight
 
         [Header("UI References")]
         [SerializeField] private Canvas nametagCanvas;
         [SerializeField] private TextMeshProUGUI playerNameText;
-        [SerializeField] private TextMeshProUGUI userTypeText;
-        [SerializeField] private Image userTypeBadge;
-        [SerializeField] private Image paypalBadge;
         [SerializeField] private CanvasGroup canvasGroup;
+
+        // Static player numbering system
+        private static Dictionary<PlayerRef, int> playerNumbers = new Dictionary<PlayerRef, int>();
+        private static int nextPlayerNumber = 1;
 
         // Runtime references  
         private U3DPlayerController _playerController;
         private Camera _localPlayerCamera;
-        private RectTransform _nametagRect;
+        private PlayerRef _playerRef;
+        private NetworkObject _networkObject;
 
-        // State tracking
-        private bool _isInitialized = false;
+        // Performance optimization
+        private float _lastUpdateTime;
         private float _currentAlpha = 1f;
+        private bool _isInitialized = false;
+        private bool _hasLineOfSight = true;
+
+        public static void ResetPlayerNumbering()
+        {
+            playerNumbers.Clear();
+            nextPlayerNumber = 1;
+            Debug.Log("🔢 Player numbering system reset");
+        }
+
+        public static int GetPlayerNumber(PlayerRef playerRef)
+        {
+            if (!playerNumbers.ContainsKey(playerRef))
+            {
+                playerNumbers[playerRef] = nextPlayerNumber++;
+                Debug.Log($"🆔 Assigned Player {playerNumbers[playerRef]} to {playerRef}");
+            }
+            return playerNumbers[playerRef];
+        }
+
+        public static void RemovePlayer(PlayerRef playerRef)
+        {
+            if (playerNumbers.ContainsKey(playerRef))
+            {
+                int removedNumber = playerNumbers[playerRef];
+                playerNumbers.Remove(playerRef);
+                Debug.Log($"🗑️ Removed Player {removedNumber} ({playerRef}) from numbering system");
+            }
+        }
 
         public void Initialize(U3DPlayerController playerController)
         {
             _playerController = playerController;
+            _networkObject = playerController.GetComponent<NetworkObject>();
+
+            if (_networkObject != null)
+            {
+                _playerRef = _networkObject.InputAuthority;
+            }
+
             CreateNametagUI();
             FindLocalPlayerCamera();
+            UpdatePlayerName();
             _isInitialized = true;
+
+            Debug.Log($"✅ Nametag initialized for {GetDisplayName()}");
         }
 
         void CreateNametagUI()
@@ -56,112 +103,67 @@ namespace U3D.Networking
 
                 // Set canvas size and scale properly for world space
                 var canvasRect = nametagCanvas.GetComponent<RectTransform>();
-                canvasRect.sizeDelta = new Vector2(200, 60);
+                canvasRect.sizeDelta = new Vector2(300, 80); // Larger for better text readability
                 canvasRect.localScale = new Vector3(0.002f, 0.002f, 0.002f);
 
                 canvasGroup = canvasObject.AddComponent<CanvasGroup>();
             }
 
-            // Use Unity's built-in method to create panel
+            // UPDATED: Use TMP_DefaultControls following Complete UI Creation Methods Reference
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            // Create background panel using DefaultControls
             var uiResources = new DefaultControls.Resources();
             var panelObject = DefaultControls.CreatePanel(uiResources);
             panelObject.name = "NametagPanel";
             panelObject.transform.SetParent(nametagCanvas.transform, false);
 
-            _nametagRect = panelObject.GetComponent<RectTransform>();
-            _nametagRect.anchorMin = Vector2.zero;
-            _nametagRect.anchorMax = Vector2.one;
-            _nametagRect.offsetMin = Vector2.zero;
-            _nametagRect.offsetMax = Vector2.zero;
+            var nametagRect = panelObject.GetComponent<RectTransform>();
+            nametagRect.anchorMin = Vector2.zero;
+            nametagRect.anchorMax = Vector2.one;
+            nametagRect.offsetMin = Vector2.zero;
+            nametagRect.offsetMax = Vector2.zero;
 
-            // Set panel background
+            // Set panel background with subtle styling
             var panelImage = panelObject.GetComponent<Image>();
-            panelImage.color = new Color(0, 0, 0, 0.7f);
+            panelImage.color = new Color(0, 0, 0, 0.6f); // Semi-transparent black
             panelImage.raycastTarget = false;
 
-            // Use Unity's built-in method to create player name text
-            var nameTextObject = DefaultControls.CreateText(uiResources);
+            // UPDATED: Create player name text using TMP_DefaultControls
+            var nameTextObject = TMP_DefaultControls.CreateText(tmpResources);
             nameTextObject.name = "PlayerName";
             nameTextObject.transform.SetParent(panelObject.transform, false);
 
             var nameRect = nameTextObject.GetComponent<RectTransform>();
-            nameRect.anchorMin = new Vector2(0, 0.5f);
-            nameRect.anchorMax = new Vector2(1, 1);
-            nameRect.offsetMin = new Vector2(5, 0);
-            nameRect.offsetMax = new Vector2(-5, -2);
+            nameRect.anchorMin = Vector2.zero;
+            nameRect.anchorMax = Vector2.one;
+            nameRect.offsetMin = new Vector2(10, 10);
+            nameRect.offsetMax = new Vector2(-10, -10);
 
-            // Replace Text with TextMeshPro
-            DestroyImmediate(nameTextObject.GetComponent<Text>());
-            playerNameText = nameTextObject.AddComponent<TextMeshProUGUI>();
+            playerNameText = nameTextObject.GetComponent<TextMeshProUGUI>();
             playerNameText.text = "Player";
-            playerNameText.fontSize = 14;
-            playerNameText.color = Color.white;
+            playerNameText.fontSize = 16; // Largest size from reference standards
+            playerNameText.color = Color.white; // High contrast for readability
             playerNameText.alignment = TextAlignmentOptions.Center;
             playerNameText.raycastTarget = false;
 
-            // Use Unity's built-in method to create user type text
-            var typeTextObject = DefaultControls.CreateText(uiResources);
-            typeTextObject.name = "UserType";
-            typeTextObject.transform.SetParent(panelObject.transform, false);
-
-            var typeRect = typeTextObject.GetComponent<RectTransform>();
-            typeRect.anchorMin = new Vector2(0, 0);
-            typeRect.anchorMax = new Vector2(0.8f, 0.5f);
-            typeRect.offsetMin = new Vector2(5, 2);
-            typeRect.offsetMax = new Vector2(-5, 0);
-
-            // Replace Text with TextMeshPro
-            DestroyImmediate(typeTextObject.GetComponent<Text>());
-            userTypeText = typeTextObject.AddComponent<TextMeshProUGUI>();
-            userTypeText.text = "Visitor";
-            userTypeText.fontSize = 10;
-            userTypeText.color = Color.gray;
-            userTypeText.alignment = TextAlignmentOptions.Left;
-            userTypeText.raycastTarget = false;
-
-            // Use Unity's built-in method to create PayPal badge image
-            var paypalBadgeObject = DefaultControls.CreateImage(uiResources);
-            paypalBadgeObject.name = "PayPalBadge";
-            paypalBadgeObject.transform.SetParent(panelObject.transform, false);
-
-            var paypalRect = paypalBadgeObject.GetComponent<RectTransform>();
-            paypalRect.anchorMin = new Vector2(0.8f, 0);
-            paypalRect.anchorMax = new Vector2(1, 0.5f);
-            paypalRect.offsetMin = new Vector2(-20, 2);
-            paypalRect.offsetMax = new Vector2(-2, 0);
-
-            paypalBadge = paypalBadgeObject.GetComponent<Image>();
-            paypalBadge.color = new Color(0, 0.5f, 1f, 0.8f);
-            paypalBadge.raycastTarget = false;
-
-            // Use Unity's built-in method to create PP text
-            var ppTextObject = DefaultControls.CreateText(uiResources);
-            ppTextObject.name = "PPText";
-            ppTextObject.transform.SetParent(paypalBadgeObject.transform, false);
-
-            var ppTextRect = ppTextObject.GetComponent<RectTransform>();
-            ppTextRect.anchorMin = Vector2.zero;
-            ppTextRect.anchorMax = Vector2.one;
-            ppTextRect.offsetMin = Vector2.zero;
-            ppTextRect.offsetMax = Vector2.zero;
-
-            // Replace Text with TextMeshPro
-            DestroyImmediate(ppTextObject.GetComponent<Text>());
-            var ppText = ppTextObject.AddComponent<TextMeshProUGUI>();
-            ppText.text = "PP";
-            ppText.fontSize = 8;
-            ppText.color = Color.white;
-            ppText.alignment = TextAlignmentOptions.Center;
-            ppText.raycastTarget = false;
+            // Enable auto-sizing for better text fit
+            playerNameText.enableAutoSizing = true;
+            playerNameText.fontSizeMin = 12;
+            playerNameText.fontSizeMax = 16;
         }
 
         void FindLocalPlayerCamera()
         {
-            // Find the local player's camera
-            var localPlayer = FindAnyObjectByType<U3DPlayerController>();
-            if (localPlayer != null)
+            // Find the local player's camera by checking for local player controller
+            var allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
+            foreach (var player in allPlayers)
             {
-                _localPlayerCamera = localPlayer.GetComponentInChildren<Camera>();
+                if (player.IsLocalPlayer)
+                {
+                    _localPlayerCamera = player.GetComponentInChildren<Camera>();
+                    break;
+                }
             }
 
             // Fallback to main camera
@@ -175,6 +177,29 @@ namespace U3D.Networking
             {
                 nametagCanvas.worldCamera = _localPlayerCamera;
             }
+
+            if (_localPlayerCamera == null)
+            {
+                Debug.LogWarning("⚠️ No local player camera found for nametag");
+            }
+        }
+
+        void UpdatePlayerName()
+        {
+            if (_networkObject == null || playerNameText == null) return;
+
+            int playerNumber = GetPlayerNumber(_playerRef);
+            string displayName = $"Player {playerNumber}";
+
+            playerNameText.text = displayName;
+            Debug.Log($"📛 Updated nametag to: {displayName}");
+        }
+
+        string GetDisplayName()
+        {
+            if (_networkObject == null) return "Unknown Player";
+            int playerNumber = GetPlayerNumber(_playerRef);
+            return $"Player {playerNumber}";
         }
 
         void Update()
@@ -182,10 +207,16 @@ namespace U3D.Networking
             if (!_isInitialized || _playerController == null || _localPlayerCamera == null)
                 return;
 
-            // Update nametag position and rotation
+            // Performance optimization: Update at specified frequency only
+            if (Time.time - _lastUpdateTime < updateFrequency)
+                return;
+
+            _lastUpdateTime = Time.time;
+
+            // Update nametag position, visibility, and rotation
             UpdatePosition();
-            UpdateVisibility();
-            UpdateRotation();
+            UpdateVisibilityAndLineOfSight();
+            UpdateBillboarding();
         }
 
         void UpdatePosition()
@@ -194,45 +225,77 @@ namespace U3D.Networking
             transform.position = _playerController.transform.position + worldOffset;
         }
 
-        void UpdateVisibility()
+        void UpdateVisibilityAndLineOfSight()
         {
-            if (alwaysVisible)
-            {
-                SetAlpha(1f);
-                return;
-            }
-
             // Calculate distance to local player camera
             float distance = Vector3.Distance(transform.position, _localPlayerCamera.transform.position);
 
-            if (distance > displayDistance)
+            // Check if beyond max display distance
+            if (distance > maxDisplayDistance)
             {
                 SetAlpha(0f);
-            }
-            else if (distance > fadeDistance)
-            {
-                // Fade out as distance increases
-                float fadeAmount = 1f - ((distance - fadeDistance) / (displayDistance - fadeDistance));
-                SetAlpha(fadeAmount);
-            }
-            else
-            {
-                SetAlpha(1f);
+                return;
             }
 
-            // Hide if behind camera or too close
+            // Check line of sight if required
+            if (requireLineOfSight)
+            {
+                _hasLineOfSight = CheckLineOfSight();
+                if (!_hasLineOfSight)
+                {
+                    SetAlpha(0f);
+                    return;
+                }
+            }
+
+            // Check if behind camera
             Vector3 directionToNametag = (transform.position - _localPlayerCamera.transform.position).normalized;
             float dotProduct = Vector3.Dot(_localPlayerCamera.transform.forward, directionToNametag);
 
-            if (dotProduct < 0.1f || distance < 1f) // Behind camera or too close
+            if (dotProduct < 0.1f) // Behind camera
             {
                 SetAlpha(0f);
+                return;
             }
+
+            // Calculate fade based on distance
+            float alpha = 1f;
+            if (distance > fadeStartDistance)
+            {
+                // Fade out as distance increases beyond fade start
+                float fadeRange = maxDisplayDistance - fadeStartDistance;
+                float fadeProgress = (distance - fadeStartDistance) / fadeRange;
+                alpha = 1f - Mathf.Clamp01(fadeProgress);
+            }
+
+            SetAlpha(alpha);
         }
 
-        void UpdateRotation()
+        bool CheckLineOfSight()
         {
-            // Always face the local player camera
+            Vector3 rayOrigin = _localPlayerCamera.transform.position;
+            Vector3 rayDirection = (transform.position - rayOrigin).normalized;
+            float rayDistance = Vector3.Distance(rayOrigin, transform.position);
+
+            // Perform raycast to check for obstructions
+            if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, rayDistance, lineOfSightLayers))
+            {
+                // Check if the hit object is the player or a child of the player
+                if (hit.collider.transform == _playerController.transform ||
+                    hit.collider.transform.IsChildOf(_playerController.transform))
+                {
+                    return true; // Hit the player, so line of sight is clear
+                }
+
+                return false; // Hit something else, line of sight is blocked
+            }
+
+            return true; // No hit, line of sight is clear
+        }
+
+        void UpdateBillboarding()
+        {
+            // Always face the local player camera (standard billboard behavior)
             if (_localPlayerCamera != null)
             {
                 Vector3 directionToCamera = _localPlayerCamera.transform.position - transform.position;
@@ -255,38 +318,29 @@ namespace U3D.Networking
             }
         }
 
-        /// <summary>
-        /// Update nametag display based on networked player data
-        /// Called when network properties change
-        /// </summary>
-        public void UpdateDisplay()
+        void OnDestroy()
         {
-            if (_playerController == null) return;
-
-            // Update player name - placeholder until networking info is available
-            if (playerNameText != null)
+            // Cleanup player number when nametag is destroyed
+            if (_networkObject != null)
             {
-                playerNameText.text = "Player"; // Will be updated when networking is integrated
-            }
-
-            // Update user type - placeholder
-            if (userTypeText != null)
-            {
-                userTypeText.text = "Visitor";
-                userTypeText.color = Color.white;
-            }
-
-            // Update PayPal badge visibility - placeholder
-            if (paypalBadge != null)
-            {
-                paypalBadge.gameObject.SetActive(false);
+                RemovePlayer(_playerRef);
             }
         }
 
-        void OnDestroy()
+        // Debug method to show line of sight ray in Scene view
+        void OnDrawGizmosSelected()
         {
-            // Cleanup any coroutines
-            StopAllCoroutines();
+            if (_localPlayerCamera != null && Application.isPlaying)
+            {
+                Vector3 rayOrigin = _localPlayerCamera.transform.position;
+                Vector3 rayEnd = transform.position;
+
+                Gizmos.color = _hasLineOfSight ? Color.green : Color.red;
+                Gizmos.DrawLine(rayOrigin, rayEnd);
+
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireSphere(transform.position, 0.5f);
+            }
         }
     }
 }
