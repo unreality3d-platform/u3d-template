@@ -731,7 +731,7 @@ namespace U3D.Editor
             }
         }
 
-        private static HttpClient CreateAuthenticatedClient()
+        public static HttpClient CreateAuthenticatedClient()
         {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("Authorization", $"token {GitHubTokenManager.Token}");

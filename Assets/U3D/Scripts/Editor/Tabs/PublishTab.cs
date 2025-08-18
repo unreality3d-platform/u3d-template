@@ -1,14 +1,15 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
-using System.Collections.Generic;
-using Newtonsoft.Json;
-using System.Text;
-using System.Reflection;
 
 namespace U3D.Editor
 {
@@ -34,6 +35,10 @@ namespace U3D.Editor
         private bool loadingOptions = false;
         private int selectedOptionIndex = -1;
         private int previousSelectedOptionIndex = -1; // Track previous selection for sync logic
+
+        //Thumbnail checking cache - only check when repository is selected
+        private Dictionary<string, bool> thumbnailCheckCache = new Dictionary<string, bool>();
+        private string lastSelectedRepositoryForThumbnailCheck = "";
 
         private enum PublishStep
         {
@@ -470,6 +475,47 @@ namespace U3D.Editor
             return string.Join(" ", words);
         }
 
+        //Simple method to check if thumbnail.jpg exists in Assets/_MyAssets folder of a repository
+        private async Task<bool> CheckRepositoryHasThumbnail(string repositoryName)
+        {
+            try
+            {
+                // Use your existing GitHubAPI pattern
+                if (!GitHubTokenManager.HasValidToken)
+                {
+                    return false;
+                }
+
+                using (var client = GitHubAPI.CreateAuthenticatedClient()) // Use existing method
+                {
+                    var url = $"https://api.github.com/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/Assets/_MyAssets/thumbnail.jpg";
+                    var response = await client.GetAsync(url);
+
+                    return response.IsSuccessStatusCode;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error checking thumbnail in {repositoryName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        //Cache thumbnail check results to avoid repeated API calls
+        private async Task CheckAndCacheThumbnail(string repositoryName)
+        {
+            try
+            {
+                bool hasThumbnail = await CheckRepositoryHasThumbnail(repositoryName);
+                thumbnailCheckCache[repositoryName] = hasThumbnail;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error caching thumbnail check for {repositoryName}: {ex.Message}");
+                thumbnailCheckCache[repositoryName] = false;
+            }
+        }
+
         private void DrawRepositoryOptions()
         {
             if (availableOptions.Count == 0)
@@ -585,6 +631,48 @@ namespace U3D.Editor
                         Application.OpenURL(option.GitHubPagesUrl);
                     }
                     EditorGUILayout.EndHorizontal();
+
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("Thumbnail:", EditorStyles.miniLabel, GUILayout.Width(90));
+
+                    // Only check thumbnail when this repository is selected
+                    if (isSelected)
+                    {
+                        // Check if we need to update the cache for this repository
+                        if (lastSelectedRepositoryForThumbnailCheck != option.RepositoryName)
+                        {
+                            lastSelectedRepositoryForThumbnailCheck = option.RepositoryName;
+                            // Start async check and cache result
+                            _ = CheckAndCacheThumbnail(option.RepositoryName);
+                        }
+
+                        // Display cached result or loading state
+                        if (thumbnailCheckCache.TryGetValue(option.RepositoryName, out bool hasThumbnail))
+                        {
+                            if (hasThumbnail)
+                            {
+                                EditorGUILayout.LabelField("✅ Found", EditorStyles.miniLabel);
+                                if (GUILayout.Button("View", EditorStyles.miniButton, GUILayout.Width(50)))
+                                {
+                                    var thumbnailUrl = $"{option.GitHubPagesUrl.TrimEnd('/')}/Assets/_MyAssets/thumbnail.jpg";
+                                    Application.OpenURL(thumbnailUrl);
+                                }
+                            }
+                            else
+                            {
+                                EditorGUILayout.LabelField("📷 None", EditorStyles.miniLabel);
+                            }
+                        }
+                        else
+                        {
+                            EditorGUILayout.LabelField("Checking...", EditorStyles.miniLabel);
+                        }
+                    }
+                    else
+                    {
+                        EditorGUILayout.LabelField("Select to check", EditorStyles.miniLabel);
+                    }
+                    EditorGUILayout.EndHorizontal();
                 }
 
                 // Special handling for "Create New Repository" option
@@ -664,6 +752,57 @@ namespace U3D.Editor
                             EditorGUILayout.LabelField($"Will create repository: {wouldCreateRepo}", EditorStyles.miniLabel);
                         }
                     }
+                    EditorGUILayout.Space(5);
+                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+                    var headerStyle = new GUIStyle(EditorStyles.boldLabel);
+                    headerStyle.normal.textColor = new Color(0.3f, 0.7f, 1f);
+                    EditorGUILayout.LabelField("📷 Optional: Add a Thumbnail", headerStyle);
+
+                    EditorGUILayout.LabelField("If you want to include a thumbnail for unreality3d.com to display:", EditorStyles.wordWrappedLabel);
+                    EditorGUILayout.Space(3);
+
+                    EditorGUILayout.LabelField("• Save your image as 'thumbnail.jpg' in Assets/_MyAssets folder", EditorStyles.miniLabel);
+                    EditorGUILayout.LabelField("• Recommended: 480×270 pixels (16:9 ratio), under 50KB", EditorStyles.miniLabel);
+                    EditorGUILayout.LabelField("• This will be included automatically when you publish", EditorStyles.miniLabel);
+
+                    EditorGUILayout.Space(5);
+
+                    // Check if thumbnail.jpg already exists in Assets/_MyAssets
+                    var projectThumbnailPath = Path.Combine(Application.dataPath, "_MyAssets", "thumbnail.jpg");
+                    if (File.Exists(projectThumbnailPath))
+                    {
+                        var successStyle = new GUIStyle(EditorStyles.miniLabel);
+                        successStyle.normal.textColor = Color.green;
+                        EditorGUILayout.LabelField("✅ Found: thumbnail.jpg in Assets/_MyAssets", successStyle);
+
+                        if (GUILayout.Button("View Current Thumbnail", GUILayout.Height(25)))
+                        {
+                            EditorUtility.RevealInFinder(projectThumbnailPath);
+                        }
+                    }
+                    else
+                    {
+                        var infoStyle = new GUIStyle(EditorStyles.miniLabel);
+                        infoStyle.normal.textColor = Color.gray;
+                        EditorGUILayout.LabelField("💡 No thumbnail.jpg found in Assets/_MyAssets", infoStyle);
+
+                        if (GUILayout.Button("Open _MyAssets Folder", GUILayout.Height(25)))
+                        {
+                            var myAssetsPath = Path.Combine(Application.dataPath, "_MyAssets");
+                            if (!Directory.Exists(myAssetsPath))
+                            {
+                                Directory.CreateDirectory(myAssetsPath);
+                            }
+                            EditorUtility.RevealInFinder(myAssetsPath);
+                        }
+                    }
+
+                    EditorGUILayout.Space(3);
+                    EditorGUILayout.LabelField("You can always add or update thumbnails later through your unreality3d.com/creator-dashboard.html page",
+                        EditorStyles.wordWrappedMiniLabel);
+
+                    EditorGUILayout.EndVertical();
                 }
 
                 EditorGUILayout.EndVertical();
