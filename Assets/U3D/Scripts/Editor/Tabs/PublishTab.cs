@@ -475,7 +475,7 @@ namespace U3D.Editor
             return string.Join(" ", words);
         }
 
-        //Simple method to check if thumbnail.jpg exists in Assets/_MyAssets folder of a repository
+        //Simple method to check if thumbnail.jpg exists in repository root
         private async Task<bool> CheckRepositoryHasThumbnail(string repositoryName)
         {
             try
@@ -488,7 +488,7 @@ namespace U3D.Editor
 
                 using (var client = GitHubAPI.CreateAuthenticatedClient()) // Use existing method
                 {
-                    var url = $"https://api.github.com/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/Assets/_MyAssets/thumbnail.jpg";
+                    var url = $"https://api.github.com/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/thumbnail.jpg";
                     var response = await client.GetAsync(url);
 
                     return response.IsSuccessStatusCode;
@@ -654,7 +654,7 @@ namespace U3D.Editor
                                 EditorGUILayout.LabelField("✅ Found", EditorStyles.miniLabel);
                                 if (GUILayout.Button("View", EditorStyles.miniButton, GUILayout.Width(50)))
                                 {
-                                    var thumbnailUrl = $"{option.GitHubPagesUrl.TrimEnd('/')}/Assets/_MyAssets/thumbnail.jpg";
+                                    var thumbnailUrl = $"{option.GitHubPagesUrl.TrimEnd('/')}/thumbnail.jpg";
                                     Application.OpenURL(thumbnailUrl);
                                 }
                             }
@@ -1114,6 +1114,12 @@ namespace U3D.Editor
                     currentStatus = status;
                 });
 
+                //Copy thumbnail from Assets/_MyAssets to build output if it exists
+                if (buildResult.Success)
+                {
+                    CopyThumbnailToBuildOutput(buildPath);
+                }
+
                 return buildResult;
             }
             catch (System.Exception ex)
@@ -1123,6 +1129,30 @@ namespace U3D.Editor
                     Success = false,
                     ErrorMessage = $"Local build failed: {ex.Message}"
                 };
+            }
+        }
+
+        //Copy thumbnail from Unity project to build output
+        private void CopyThumbnailToBuildOutput(string buildPath)
+        {
+            try
+            {
+                var sourceThumbnailPath = Path.Combine(Application.dataPath, "_MyAssets", "thumbnail.jpg");
+                var destThumbnailPath = Path.Combine(buildPath, "thumbnail.jpg");
+
+                if (File.Exists(sourceThumbnailPath))
+                {
+                    File.Copy(sourceThumbnailPath, destThumbnailPath, true);
+                    Debug.Log($"✅ Thumbnail copied from Assets/_MyAssets to build output: {destThumbnailPath}");
+                }
+                else
+                {
+                    Debug.Log("💡 No thumbnail found in Assets/_MyAssets - skipping thumbnail copy");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"⚠️ Could not copy thumbnail to build output: {ex.Message}");
             }
         }
 
