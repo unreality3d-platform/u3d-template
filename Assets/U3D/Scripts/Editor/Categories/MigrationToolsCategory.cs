@@ -15,15 +15,15 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 // Missing Script Tools
-                new CreatorTool("🔧 Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
-                new CreatorTool("🧼 Remove Script Placeholders", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
-                new CreatorTool("🗑️ Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
-                new CreatorTool("🧹 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder),
+                new CreatorTool("🟢 Replace Missing Scripts", "Replace missing script references with placeholder components to prevent errors while retaining visual reminders", AssetCleanupTools.ReplaceMissingScriptsWithPlaceholders),
+                new CreatorTool("🟢 Remove Script Placeholders", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
+                new CreatorTool("🟢 Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
+                new CreatorTool("🟢 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder),
                 
                 // Missing Reference Tools
-                new CreatorTool("🔍 Replace Missing References", "Detect missing object references in components and add placeholder tracking components", AssetCleanupTools.ReplaceMissingReferencesWithPlaceholders),
-                new CreatorTool("🎯 Find Reference Placeholders", "Locate and select all GameObjects with missing reference placeholders for easy rewiring", AssetCleanupTools.FindMissingReferencePlaceholders),
-                new CreatorTool("🧼 Remove Reference Placeholders", "Remove all missing reference placeholder components from the scene", AssetCleanupTools.RemoveMissingReferencePlaceholders)
+                new CreatorTool("🟢 Replace Missing References", "Detect missing object references in components and add placeholder tracking components", AssetCleanupTools.ReplaceMissingReferencesWithPlaceholders),
+                new CreatorTool("🟢 Find Reference Placeholders", "Locate and select all GameObjects with missing reference placeholders for easy rewiring", AssetCleanupTools.FindMissingReferencePlaceholders),
+                new CreatorTool("🟢 Remove Reference Placeholders", "Remove all missing reference placeholder components from the scene", AssetCleanupTools.RemoveMissingReferencePlaceholders)
             };
         }
 

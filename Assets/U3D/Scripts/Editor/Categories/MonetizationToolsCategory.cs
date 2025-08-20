@@ -23,12 +23,12 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Add Purchase Button", "Single item PayPal purchase with dual transaction (95% to creator)", CreatePurchaseButton, false),
-                new CreatorTool("Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false),
-                new CreatorTool("Add Scene Gate", "Scene entry payment gate with PayPal dual transaction", CreateSceneGate, false),
-                new CreatorTool("Add Shop Object", "3D world PayPal shop with multiple items and dual transactions", CreateShopObject, false),
-                new CreatorTool("Add Event Gate", "Timed event access with PayPal dual transaction", CreateEventGate, false),
-                new CreatorTool("Add Screen Shop", "Screen overlay PayPal shop interface with dual transactions", CreateScreenShop, false)
+                new CreatorTool("🟢 Add Purchase Button", "Single item PayPal purchase with dual transaction (95% to creator)", CreatePurchaseButton, false),
+                new CreatorTool("🟢 Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false),
+                new CreatorTool("🟢 Add Scene Gate", "Scene entry payment gate with PayPal dual transaction", CreateSceneGate, false),
+                new CreatorTool("🟢 Add Shop Object", "3D world PayPal shop with multiple items and dual transactions", CreateShopObject, false),
+                new CreatorTool("🟢 Add Event Gate", "Timed event access with PayPal dual transaction", CreateEventGate, false),
+                new CreatorTool("🟢 Add Screen Shop", "Screen overlay PayPal shop interface with dual transactions", CreateScreenShop, false)
             };
         }
 

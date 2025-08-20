@@ -14,7 +14,7 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Add Audio List", "Play random audio clips from a list through one AudioSource", ApplyAudioList, true),
+                new CreatorTool("🟢 Add Audio List", "Play random audio clips from a list through one AudioSource", ApplyAudioList, true),
                 new CreatorTool("🚧 Add Video Player Object", "Stream videos from URLs in your world", () => Debug.Log("Applied Video Player Object"), true),
                 new CreatorTool("🚧 Add Audio Trigger", "Sounds that play on player interaction", () => Debug.Log("Applied Audio Trigger"), true),
                 new CreatorTool("🚧 Add Screenshare Object", "Share desktop screens within your experience", () => Debug.Log("Applied Screenshare Object"), true),

@@ -14,9 +14,9 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("Make Grabbable Near", "Objects can be picked up when close", ApplyGrabbableNear, true),
-                new CreatorTool("Make Grabbable Far", "Objects can be picked up from distance", ApplyGrabbableFar, true),
-                new CreatorTool("Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+                new CreatorTool("🟢 Make Grabbable Near", "Objects can be picked up when close", ApplyGrabbableNear, true),
+                new CreatorTool("🟢 Make Grabbable Far", "Objects can be picked up from distance", ApplyGrabbableFar, true),
+                new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
                 new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),

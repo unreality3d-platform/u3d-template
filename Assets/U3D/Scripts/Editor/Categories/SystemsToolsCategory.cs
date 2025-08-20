@@ -15,7 +15,7 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 // High Impact Core Systems (Ordered by Implementation Priority)
-                new CreatorTool("🟢 Add Quest System", "Create missions and objectives for players", () => U3DQuestSystemTools.CreateQuestSystem()),
+                new CreatorTool("🟢 Add Single Player Quest System", "Create missions and objectives for single player experiences", () => U3DQuestSystemTools.CreateQuestSystem()),
                 new CreatorTool("🚧 Add Inventory System", "Essential for collecting, managing, and using items in exploration games", () => Debug.Log("Applied Inventory System")),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => Debug.Log("Applied Dialogue System")),
                 new CreatorTool("🚧 Add Timer System", "Countdown timers, time limits, scheduled events", () => Debug.Log("Applied Timer System")),

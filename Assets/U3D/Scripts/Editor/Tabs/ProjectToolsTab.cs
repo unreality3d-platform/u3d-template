@@ -76,10 +76,10 @@ namespace U3D.Editor
             categories = new List<IToolCategory>
             {
                 new InteractionToolsCategory(),
+                new MonetizationToolsCategory(),
                 new SystemsToolsCategory(),
                 new MediaToolsCategory(),
-                new MigrationToolsCategory(),
-                new MonetizationToolsCategory()
+                //new MigrationToolsCategory()
             };
 
             // Pass navigation callback to all categories

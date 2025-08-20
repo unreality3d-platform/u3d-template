@@ -43,11 +43,11 @@ namespace U3D.Editor
         {
             optimizationTools = new List<CreatorTool>
             {
-                new CreatorTool("Optimize All Textures", "Batch optimize textures by type with compression settings", OptimizeAllTextures),
-                new CreatorTool("Optimize All Audio", "Compress audio files for faster loading", OptimizeAllAudio),
-                new CreatorTool("Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
-                new CreatorTool("Analyze Build Size", "Show largest assets and estimated build size", AnalyzeBuildSize),
-                new CreatorTool("Find Resources Usage", "Identify Resources folder usage (WebGL performance issue)", FindResourcesFolderUsage)
+                new CreatorTool("🚧 Optimize All Textures", "Batch optimize textures by type with compression settings", OptimizeAllTextures),
+                new CreatorTool("🚧 Optimize All Audio", "Compress audio files for faster loading", OptimizeAllAudio),
+                new CreatorTool("🚧 Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
+                new CreatorTool("🚧 Analyze Build Size", "Show largest assets and estimated build size", AnalyzeBuildSize),
+                new CreatorTool("🚧 Find Resources Usage", "Identify Resources folder usage (WebGL performance issue)", FindResourcesFolderUsage)
             };
         }
 
