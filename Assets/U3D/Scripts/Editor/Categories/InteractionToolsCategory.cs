@@ -14,8 +14,7 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Make Grabbable Near", "Objects can be picked up when close", ApplyGrabbableNear, true),
-                new CreatorTool("🟢 Make Grabbable Far", "Objects can be picked up from distance", ApplyGrabbableFar, true),
+                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
                 new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
@@ -57,8 +56,7 @@ namespace U3D.Editor
                 GameObject selected = Selection.activeGameObject;
                 if (selected != null)
                 {
-                    bool hasGrabbable = selected.GetComponent<U3DGrabbableNear>() != null ||
-                                       selected.GetComponent<U3DGrabbableFar>() != null;
+                    bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
 
                     if (!hasGrabbable)
                     {
@@ -79,7 +77,7 @@ namespace U3D.Editor
             }
         }
 
-        private static void ApplyGrabbableNear()
+        private static void ApplyGrabbable()
         {
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
@@ -111,62 +109,15 @@ namespace U3D.Editor
             }
 
             // Add grabbable component
-            U3DGrabbableNear grabbable = selected.GetComponent<U3DGrabbableNear>();
+            U3DGrabbable grabbable = selected.GetComponent<U3DGrabbable>();
             if (grabbable == null)
             {
-                grabbable = selected.AddComponent<U3DGrabbableNear>();
-                Debug.Log($"✅ Made '{selected.name}' grabbable when near");
+                grabbable = selected.AddComponent<U3DGrabbable>();
+                Debug.Log($"✅ Made '{selected.name}' grabbable");
             }
             else
             {
-                Debug.Log($"'{selected.name}' is already grabbable near");
-            }
-
-            // Mark as dirty for saving
-            EditorUtility.SetDirty(selected);
-        }
-
-        private static void ApplyGrabbableFar()
-        {
-            GameObject selected = Selection.activeGameObject;
-            if (selected == null)
-            {
-                Debug.LogWarning("Please select an object first");
-                return;
-            }
-
-            // Ensure required components
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.useGravity = true;
-                rb.mass = 1f;
-            }
-
-            if (!selected.GetComponent<Collider>())
-            {
-                // Add appropriate collider based on object type
-                MeshRenderer meshRenderer = selected.GetComponent<MeshRenderer>();
-                if (meshRenderer != null)
-                {
-                    selected.AddComponent<BoxCollider>();
-                }
-                else
-                {
-                    selected.AddComponent<BoxCollider>();
-                }
-            }
-
-            // Add grabbable component
-            U3DGrabbableFar grabbable = selected.GetComponent<U3DGrabbableFar>();
-            if (grabbable == null)
-            {
-                grabbable = selected.AddComponent<U3DGrabbableFar>();
-                Debug.Log($"✅ Made '{selected.name}' grabbable from distance");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' is already grabbable from distance");
+                Debug.Log($"'{selected.name}' is already grabbable");
             }
 
             // Mark as dirty for saving
@@ -183,12 +134,11 @@ namespace U3D.Editor
             }
 
             // Check for grabbable components
-            bool hasGrabbable = selected.GetComponent<U3DGrabbableNear>() != null ||
-                               selected.GetComponent<U3DGrabbableFar>() != null;
+            bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
 
             if (!hasGrabbable)
             {
-                Debug.LogWarning("Object must have U3DGrabbableNear or U3DGrabbableFar component first!");
+                Debug.LogWarning("Object must have U3DGrabbable component first!");
                 return;
             }
 
