@@ -307,8 +307,7 @@ namespace U3D.Editor
             GameObject selected = Selection.activeGameObject;
             if (selected == null) return false;
 
-            return selected.GetComponent<U3DGrabbableNear>() != null ||
-                   selected.GetComponent<U3DGrabbableFar>() != null;
+            return selected.GetComponent<U3DGrabbable>() != null;
         }
     }
 }

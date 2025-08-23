@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.Events;
+using Fusion;
 
 namespace U3D
 {
@@ -7,10 +8,10 @@ namespace U3D
     /// Makes grabbed objects throwable using camera direction and physics
     /// Must be paired with U3DGrabbable component
     /// Throws objects in the direction the player camera is facing
+    /// Supports both networked and non-networked modes automatically
     /// </summary>
-
     [RequireComponent(typeof(Rigidbody))]
-    public class U3DThrowable : MonoBehaviour
+    public class U3DThrowable : NetworkBehaviour
     {
         [Header("Throw Configuration")]
         [Tooltip("Base throw force multiplier")]
@@ -37,14 +38,20 @@ namespace U3D
         private U3DGrabbable grabbable;
         private Camera playerCamera;
         private Transform playerTransform;
+        private NetworkObject networkObject;
 
         // State tracking
         private bool hasBeenThrown = false;
+        private bool isNetworked = false;
 
         private void Awake()
         {
             rb = GetComponent<Rigidbody>();
             grabbable = GetComponent<U3DGrabbable>();
+
+            // Check if this object has networking support
+            networkObject = GetComponent<NetworkObject>();
+            isNetworked = networkObject != null;
 
             // Ensure we have a grabbable component
             if (grabbable == null)
@@ -57,6 +64,11 @@ namespace U3D
             // Subscribe to release event
             grabbable.OnReleased.AddListener(OnObjectReleased);
             grabbable.OnGrabbed.AddListener(OnObjectGrabbed);
+
+            if (!isNetworked)
+            {
+                Debug.Log($"U3DThrowable on '{name}' running in non-networked mode");
+            }
         }
 
         private void Start()
@@ -67,7 +79,7 @@ namespace U3D
 
         private void FindPlayerComponents()
         {
-            U3DPlayerController playerController = Object.FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -191,6 +203,7 @@ namespace U3D
         // Public properties for inspection
         public bool HasBeenThrown => hasBeenThrown;
         public bool IsCurrentlyGrabbed => grabbable != null && grabbable.IsGrabbed;
+        public bool IsNetworked => isNetworked;
 
         private void OnDestroy()
         {
@@ -214,6 +227,13 @@ namespace U3D
             {
                 Debug.LogWarning("U3DThrowable: Max throw velocity is less than throw force - throws will be clamped");
             }
+        }
+
+        // Override NetworkBehaviour methods for non-networked compatibility
+        public override void Spawned()
+        {
+            if (!isNetworked) return;
+            // Networked initialization if needed
         }
     }
 }

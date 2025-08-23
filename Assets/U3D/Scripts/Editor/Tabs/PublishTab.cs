@@ -307,13 +307,13 @@ namespace U3D.Editor
             // Load repository options if not loaded
             if (!optionsLoaded && !loadingOptions)
             {
-                EditorGUILayout.LabelField("Analyzing your GitHub repositories...", EditorStyles.centeredGreyMiniLabel);
+                EditorGUILayout.LabelField("Analyzing your public GitHub repositories for Unreality3D content...", EditorStyles.centeredGreyMiniLabel);
                 loadingOptions = true;
                 _ = LoadRepositoryOptionsAsync();
             }
             else if (loadingOptions)
             {
-                EditorGUILayout.LabelField("🔍 Checking your GitHub repositories...", EditorStyles.centeredGreyMiniLabel);
+                EditorGUILayout.LabelField("🔍 Finding your public Unreality3D GitHub repositories...", EditorStyles.centeredGreyMiniLabel);
             }
             else if (optionsLoaded)
             {

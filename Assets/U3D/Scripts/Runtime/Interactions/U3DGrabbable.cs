@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using Fusion;
 
 namespace U3D
 {
@@ -7,11 +8,11 @@ namespace U3D
     /// Universal grabbable component for both near and far interactions
     /// Objects snap to the player's hand position when grabbed
     /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
+    /// Supports both networked and non-networked modes automatically
     /// </summary>
-
     [RequireComponent(typeof(Rigidbody))]
     [RequireComponent(typeof(Collider))]
-    public class U3DGrabbable : MonoBehaviour, IU3DInteractable
+    public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
     {
         [Header("Grab Distance Configuration")]
         [Tooltip("Minimum distance to grab from (0 = touch only)")]
@@ -49,6 +50,10 @@ namespace U3D
         [Tooltip("Called when player stops aiming at this object (distance grab only)")]
         public UnityEvent OnAimExit;
 
+        // Network state (only used if NetworkObject is present)
+        [Networked] public bool NetworkIsGrabbed { get; set; }
+        [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
+
         // Components
         private Rigidbody rb;
         private Collider col;
@@ -56,6 +61,7 @@ namespace U3D
         private Transform handTransform;
         private Transform playerTransform;
         private Camera playerCamera;
+        private NetworkObject networkObject;
 
         // State
         private bool isGrabbed = false;
@@ -64,6 +70,7 @@ namespace U3D
         private bool wasKinematic;
         private bool usedGravity;
         private float lastAimCheckTime;
+        private bool isNetworked = false;
 
         // Static tracking for single grab mode
         private static U3DGrabbable currentlyGrabbed;
@@ -73,10 +80,22 @@ namespace U3D
             rb = GetComponent<Rigidbody>();
             col = GetComponent<Collider>();
             originalParent = transform.parent;
+
+            // Check if this object has networking support
+            networkObject = GetComponent<NetworkObject>();
+            isNetworked = networkObject != null;
+
+            if (!isNetworked)
+            {
+                Debug.Log($"U3DGrabbable on '{name}' running in non-networked mode");
+            }
         }
 
         private void Update()
         {
+            // Only run Update logic on networked objects if they have authority, or always on non-networked objects
+            if (isNetworked && !Object.HasStateAuthority) return;
+
             // Update range and aim status
             UpdatePlayerProximity();
 
@@ -152,7 +171,7 @@ namespace U3D
 
         private void FindPlayer()
         {
-            U3DPlayerController playerController = Object.FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -234,6 +253,16 @@ namespace U3D
             isGrabbed = true;
             currentlyGrabbed = this;
 
+            // Update network state if networked
+            if (isNetworked)
+            {
+                NetworkIsGrabbed = true;
+                if (Runner != null && Runner.LocalPlayer != null)
+                {
+                    NetworkGrabbedBy = Runner.LocalPlayer;
+                }
+            }
+
             // Store original physics settings
             wasKinematic = rb.isKinematic;
             usedGravity = rb.useGravity;
@@ -258,6 +287,13 @@ namespace U3D
             if (currentlyGrabbed == this)
             {
                 currentlyGrabbed = null;
+            }
+
+            // Update network state if networked
+            if (isNetworked)
+            {
+                NetworkIsGrabbed = false;
+                NetworkGrabbedBy = default(PlayerRef);
             }
 
             // Restore physics settings
@@ -357,6 +393,7 @@ namespace U3D
         public bool IsGrabbed => isGrabbed;
         public bool IsInRange => isInRange;
         public bool IsAimedAt => isAimedAt;
+        public bool IsNetworked => isNetworked;
 
         private void OnDestroy()
         {
@@ -364,6 +401,13 @@ namespace U3D
             {
                 Release();
             }
+        }
+
+        // Override NetworkBehaviour methods for non-networked compatibility
+        public override void Spawned()
+        {
+            if (!isNetworked) return;
+            // Networked initialization if needed
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using Fusion;
 
 namespace U3D.Editor
 {
@@ -9,6 +10,10 @@ namespace U3D.Editor
         public string CategoryName => "Interactions";
         public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
+
+        // Networking preferences
+        private static bool addNetworkObjectToGrabbable = true;
+        private static bool addNetworkObjectToThrowable = true;
 
         public InteractionToolsCategory()
         {
@@ -44,13 +49,35 @@ namespace U3D.Editor
 
             foreach (var tool in tools)
             {
-                ProjectToolsTab.DrawCategoryTool(tool);
+                DrawToolWithNetworkingOption(tool);
+            }
+        }
+
+        private void DrawToolWithNetworkingOption(CreatorTool tool)
+        {
+            // Draw the main tool UI
+            ProjectToolsTab.DrawCategoryTool(tool);
+
+            // Add networking checkbox for grabbable and throwable tools
+            if (tool.title == "🟢 Make Grabbable")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToGrabbable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToGrabbable);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
+            else if (tool.title == "🟢 Make Throwable")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToThrowable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToThrowable);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
             }
         }
 
         private void UpdateThrowableDescription()
         {
-            var throwableTool = tools.Find(t => t.title == "Make Throwable");
+            var throwableTool = tools.Find(t => t.title == "🟢 Make Throwable");
             if (throwableTool != null)
             {
                 GameObject selected = Selection.activeGameObject;
@@ -108,6 +135,13 @@ namespace U3D.Editor
                 }
             }
 
+            // Add NetworkObject if requested and not already present
+            if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
+            {
+                NetworkObject networkObj = selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
             // Add grabbable component
             U3DGrabbable grabbable = selected.GetComponent<U3DGrabbable>();
             if (grabbable == null)
@@ -148,6 +182,13 @@ namespace U3D.Editor
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
                 rb.useGravity = true;
                 rb.mass = 1f;
+            }
+
+            // Add NetworkObject if requested and not already present
+            if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
+            {
+                NetworkObject networkObj = selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
             // Add throwable component

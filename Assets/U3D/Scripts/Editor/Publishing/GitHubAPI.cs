@@ -674,7 +674,7 @@ namespace U3D.Editor
                             }
 
                             // 🔍 DEBUG: Log why detection failed for troubleshooting
-                            Debug.Log($"❌ Repository '{repositoryName}' not detected as Unreality3D:");
+                            //Debug.Log($"❌ Repository '{repositoryName}' not detected as Unreality3D:");
                             Debug.Log($"   - hasUnreality3DReference: {hasUnreality3DReference}");
                             Debug.Log($"   - hasUnityWebGLIndicator: {hasUnityWebGLIndicator}");
                             Debug.Log($"   - hasCreatorUsername: {hasCreatorUsername}");

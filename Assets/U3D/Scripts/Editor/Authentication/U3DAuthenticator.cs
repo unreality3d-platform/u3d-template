@@ -643,65 +643,6 @@ public static class U3DAuthenticator
         }
     }
 
-    private static async Task<bool> RefreshIdTokenIfNeeded()
-    {
-        if (string.IsNullOrEmpty(_refreshToken))
-        {
-            return false;
-        }
-
-        try
-        {
-            var refreshData = new
-            {
-                grant_type = "refresh_token",
-                refresh_token = _refreshToken
-            };
-
-            var json = JsonConvert.SerializeObject(refreshData);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var response = await _sharedHttpClient.PostAsync(
-                $"https://securetoken.googleapis.com/v1/token?key={FirebaseConfigManager.CurrentConfig.apiKey}",
-                content);
-
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            if (response.IsSuccessStatusCode)
-            {
-                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-
-                if (result.ContainsKey("id_token"))
-                {
-                    _idToken = result["id_token"].ToString();
-
-                    if (result.ContainsKey("refresh_token"))
-                    {
-                        _refreshToken = result["refresh_token"].ToString();
-                    }
-
-                    SaveCredentials();
-                    return true;
-                }
-            }
-            else
-            {
-                if (response.StatusCode == HttpStatusCode.BadRequest)
-                {
-                    ClearCredentials();
-                }
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"Token refresh error: {ex.Message}");
-            return false;
-        }
-
-        return false;
-    }
-
     private static async Task<bool> ValidateStoredToken()
     {
         try
@@ -766,12 +707,150 @@ public static class U3DAuthenticator
         }
     }
 
-    // ADD THESE METHODS TO YOUR U3DAuthenticator.cs CLASS
-    // Insert after the ValidateStoredToken() method (around line 500)
+    /// <summary>
+    /// ENHANCED: Improved token refresh with better error handling and logging
+    /// Replace the existing RefreshIdTokenIfNeeded method
+    /// </summary>
+    private static async Task<bool> RefreshIdTokenIfNeeded()
+    {
+        if (string.IsNullOrEmpty(_refreshToken))
+        {
+            Debug.LogWarning("No refresh token available");
+            return false;
+        }
+
+        try
+        {
+            var refreshData = new
+            {
+                grant_type = "refresh_token",
+                refresh_token = _refreshToken
+            };
+
+            var json = JsonConvert.SerializeObject(refreshData);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _sharedHttpClient.PostAsync(
+                $"https://securetoken.googleapis.com/v1/token?key={FirebaseConfigManager.CurrentConfig.apiKey}",
+                content);
+
+            var responseText = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                if (result.ContainsKey("id_token"))
+                {
+                    var oldToken = _idToken?.Substring(0, Math.Min(20, _idToken.Length));
+                    _idToken = result["id_token"].ToString();
+
+                    if (result.ContainsKey("refresh_token"))
+                    {
+                        _refreshToken = result["refresh_token"].ToString();
+                    }
+
+                    SaveCredentials();
+
+                    var newToken = _idToken?.Substring(0, Math.Min(20, _idToken.Length));
+                    Debug.Log($"🔄 Token refreshed: {oldToken}... -> {newToken}...");
+
+                    return true;
+                }
+            }
+            else
+            {
+                Debug.LogError($"Token refresh failed: {response.StatusCode} - {responseText}");
+
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    Debug.LogError("❌ Refresh token is invalid or expired - user must log in again");
+                    ClearCredentials();
+                }
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Token refresh error: {ex.Message}");
+            return false;
+        }
+
+        return false;
+    }
 
     /// <summary>
-    /// DEPLOYMENT FIX: Ensures authentication is valid before starting deployment operations
-    /// This prevents the deployment failures you've been experiencing
+    /// NEW ADDITION: Smart token freshness checking
+    /// Add this new private method to U3DAuthenticator
+    /// </summary>
+    private static async Task EnsureTokenFreshness()
+    {
+        if (string.IsNullOrEmpty(_idToken))
+        {
+            Debug.LogWarning("No ID token available for freshness check");
+            return;
+        }
+
+        try
+        {
+            // Parse the JWT token to check expiry (without external dependencies)
+            var tokenParts = _idToken.Split('.');
+            if (tokenParts.Length != 3)
+            {
+                Debug.LogWarning("Invalid JWT token format");
+                return;
+            }
+
+            // Decode the payload (simple base64 decode)
+            var payload = tokenParts[1];
+            // Add padding if needed for base64 decoding
+            while (payload.Length % 4 != 0)
+            {
+                payload += "=";
+            }
+
+            var payloadBytes = Convert.FromBase64String(payload);
+            var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
+            var payloadData = JsonConvert.DeserializeObject<Dictionary<string, object>>(payloadJson);
+
+            if (payloadData.ContainsKey("exp"))
+            {
+                var expTime = long.Parse(payloadData["exp"].ToString());
+                var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var timeRemaining = expTime - currentTime;
+
+                // Refresh if less than 10 minutes remaining (600 seconds)
+                if (timeRemaining < 600)
+                {
+                    Debug.Log($"🔄 U3D: Token expires in {timeRemaining} seconds, refreshing proactively...");
+                    bool refreshed = await RefreshIdTokenIfNeeded();
+
+                    if (refreshed)
+                    {
+                        Debug.Log("✅ U3D: Token refreshed proactively");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("⚠️ U3D: Proactive token refresh failed");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"🕐 U3D: Token valid for {timeRemaining / 60} more minutes");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Token freshness check failed: {ex.Message}");
+            // Continue without refresh - not critical if this fails
+        }
+    }
+
+
+    /// <summary>
+    /// ENHANCED: Ensures authentication is valid before starting deployment operations
+    /// Now includes proactive token refresh and better error handling
     /// </summary>
     public static async Task<bool> PrepareForDeployment()
     {
@@ -786,33 +865,32 @@ public static class U3DAuthenticator
                 return false;
             }
 
-            // Validate current token
+            // ENHANCEMENT: Always refresh token before long operations
+            // This ensures we start with maximum time (1 hour) available
+            Debug.Log("🔄 U3D: Proactively refreshing token before deployment...");
+            bool refreshed = await RefreshIdTokenIfNeeded();
+
+            if (!refreshed && !string.IsNullOrEmpty(_refreshToken))
+            {
+                Debug.LogWarning("⚠️ U3D: Token refresh failed, but will continue with existing token");
+                // Continue anyway - might still be valid
+            }
+            else if (refreshed)
+            {
+                Debug.Log("✅ U3D: Token refreshed successfully - maximum time available");
+            }
+
+            // Validate the token (refreshed or existing)
             bool isValid = await ValidateStoredToken();
 
             if (isValid)
             {
-                Debug.Log("✅ U3D: Authentication token is valid for deployment");
+                Debug.Log("✅ U3D: Authentication ready for deployment");
                 return true;
             }
 
-            // Token is invalid, try to refresh
-            Debug.LogWarning("⚠️ U3D: Authentication token expired, attempting refresh...");
-            bool refreshed = await RefreshIdTokenIfNeeded();
-
-            if (refreshed)
-            {
-                // Validate the refreshed token
-                isValid = await ValidateStoredToken();
-
-                if (isValid)
-                {
-                    Debug.Log("✅ U3D: Authentication token refreshed successfully for deployment");
-                    return true;
-                }
-            }
-
-            // Both validation and refresh failed
-            Debug.LogError("❌ U3D: Authentication failed. Please log out and log back in before deploying.");
+            // If validation fails, we have a more serious auth issue
+            Debug.LogError("❌ U3D: Authentication validation failed after refresh attempt");
             return false;
         }
         catch (Exception ex)
@@ -823,28 +901,19 @@ public static class U3DAuthenticator
     }
 
     /// <summary>
-    /// DEPLOYMENT FIX: Wraps deployment operations with automatic authentication retry
-    /// Use this for critical Firebase function calls during deployment
+    /// ENHANCED: Deployment operations with automatic authentication retry and proactive refresh
+    /// Replaces CallFirebaseFunctionWithAuthRetry with better token management
     /// </summary>
     public static async Task<Dictionary<string, object>> CallFirebaseFunctionWithAuthRetry(string functionName, object data)
     {
-        const int maxRetries = 2;
+        const int maxRetries = 3;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                // Ensure we have valid authentication before each attempt
-                if (attempt > 1)
-                {
-                    Debug.Log($"🔄 U3D: Retrying {functionName} (attempt {attempt}/{maxRetries})");
-
-                    bool authReady = await PrepareForDeployment();
-                    if (!authReady)
-                    {
-                        throw new Exception("Authentication preparation failed on retry");
-                    }
-                }
+                // ENHANCEMENT: Check if token might be close to expiry before each call
+                await EnsureTokenFreshness();
 
                 // Call the existing private method using reflection
                 var method = typeof(U3DAuthenticator).GetMethod("CallFirebaseFunction",
@@ -858,7 +927,11 @@ public static class U3DAuthenticator
                 var task = method.Invoke(null, new object[] { functionName, data }) as Task<Dictionary<string, object>>;
                 var result = await task;
 
-                Debug.Log($"✅ U3D: {functionName} completed successfully");
+                if (attempt > 1)
+                {
+                    Debug.Log($"✅ U3D: {functionName} succeeded after {attempt} attempts");
+                }
+
                 return result;
             }
             catch (Exception ex)
@@ -871,15 +944,24 @@ public static class U3DAuthenticator
 
                 if (isAuthError && attempt < maxRetries)
                 {
-                    Debug.LogWarning($"⚠️ U3D: Authentication error on {functionName}, retrying... ({ex.Message})");
+                    Debug.LogWarning($"⚠️ U3D: Authentication error on {functionName} (attempt {attempt}), refreshing and retrying...");
 
-                    // Try to refresh token for next attempt
-                    await RefreshIdTokenIfNeeded();
+                    // Force refresh token for next attempt
+                    bool refreshed = await RefreshIdTokenIfNeeded();
+                    if (!refreshed)
+                    {
+                        Debug.LogError("❌ U3D: Token refresh failed during retry");
+                        throw new Exception("Authentication refresh failed during operation");
+                    }
+
                     continue;
                 }
 
                 // Non-auth error or final attempt - rethrow
-                Debug.LogError($"❌ U3D: {functionName} failed: {ex.Message}");
+                if (attempt == maxRetries)
+                {
+                    Debug.LogError($"❌ U3D: {functionName} failed after {maxRetries} attempts: {ex.Message}");
+                }
                 throw;
             }
         }
