@@ -113,32 +113,16 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure required components
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.useGravity = true;
-                rb.mass = 1f;
-            }
-
+            // Only add collider - no Rigidbody for grabbables
             if (!selected.GetComponent<Collider>())
             {
-                // Add appropriate collider based on object type
-                MeshRenderer meshRenderer = selected.GetComponent<MeshRenderer>();
-                if (meshRenderer != null)
-                {
-                    selected.AddComponent<BoxCollider>();
-                }
-                else
-                {
-                    selected.AddComponent<BoxCollider>();
-                }
+                selected.AddComponent<BoxCollider>();
             }
 
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
             {
-                NetworkObject networkObj = selected.AddComponent<NetworkObject>();
+                selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
@@ -154,7 +138,6 @@ namespace U3D.Editor
                 Debug.Log($"'{selected.name}' is already grabbable");
             }
 
-            // Mark as dirty for saving
             EditorUtility.SetDirty(selected);
         }
 
@@ -176,19 +159,37 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure Rigidbody exists
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.useGravity = true;
-                rb.mass = 1f;
-            }
-
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
             {
-                NetworkObject networkObj = selected.AddComponent<NetworkObject>();
+                selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
+            // Add Rigidbody (required for throwable physics) - set to sleep initially
+            if (!selected.GetComponent<Rigidbody>())
+            {
+                Rigidbody rb = selected.AddComponent<Rigidbody>();
+                rb.isKinematic = true; // Start kinematic/sleeping
+                rb.useGravity = false; // Don't fall until thrown
+                rb.mass = 1f;
+                Debug.Log($"✅ Added sleeping Rigidbody to '{selected.name}'");
+            }
+
+            // Add NetworkRigidbody for proper Fusion networking if NetworkObject exists
+            if (selected.GetComponent<NetworkObject>())
+            {
+                // Use reflection to add NetworkRigidbody since Editor can't directly reference runtime Fusion types
+                var networkRigidbodyType = System.Type.GetType("Fusion.NetworkRigidbody, Fusion.Runtime");
+                if (networkRigidbodyType != null && selected.GetComponent(networkRigidbodyType) == null)
+                {
+                    selected.AddComponent(networkRigidbodyType);
+                    Debug.Log($"✅ Added NetworkRigidbody to '{selected.name}' for physics networking");
+                }
+                else if (networkRigidbodyType == null)
+                {
+                    Debug.LogWarning("NetworkRigidbody type not found - ensure Fusion is properly installed");
+                }
             }
 
             // Add throwable component
@@ -203,7 +204,6 @@ namespace U3D.Editor
                 Debug.Log($"'{selected.name}' is already throwable");
             }
 
-            // Mark as dirty for saving
             EditorUtility.SetDirty(selected);
         }
     }

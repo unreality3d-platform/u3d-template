@@ -10,7 +10,6 @@ namespace U3D
     /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
     /// Supports both networked and non-networked modes automatically
     /// </summary>
-    [RequireComponent(typeof(Rigidbody))]
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
     {
@@ -55,7 +54,7 @@ namespace U3D
         [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
 
         // Components
-        private Rigidbody rb;
+        private Rigidbody rb; // Optional - only for throwable objects
         private Collider col;
         private Transform originalParent;
         private Transform handTransform;
@@ -71,13 +70,17 @@ namespace U3D
         private bool usedGravity;
         private float lastAimCheckTime;
         private bool isNetworked = false;
+        private bool hasRigidbody = false;
 
         // Static tracking for single grab mode
         private static U3DGrabbable currentlyGrabbed;
 
         private void Awake()
         {
+            // Rigidbody is optional for grabbables
             rb = GetComponent<Rigidbody>();
+            hasRigidbody = rb != null;
+
             col = GetComponent<Collider>();
             originalParent = transform.parent;
 
@@ -145,13 +148,15 @@ namespace U3D
             bool wasAimedAt = isAimedAt;
             isAimedAt = false;
 
-            if (Physics.Raycast(ray, out hit, maxGrabDistance))
+            // Use avatar distance for raycast limit (not camera distance)
+            float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
+
+            if (avatarDistance <= maxGrabDistance && Physics.Raycast(ray, out hit))
             {
                 if (hit.collider == col)
                 {
-                    // Use avatar position for distance check (not camera)
-                    float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-                    if (distanceToPlayer >= minGrabDistance && distanceToPlayer <= maxGrabDistance)
+                    // Now both checks use avatar position consistently
+                    if (avatarDistance >= minGrabDistance && avatarDistance <= maxGrabDistance)
                     {
                         isAimedAt = true;
                     }
@@ -236,6 +241,9 @@ namespace U3D
         {
             if (isGrabbed || !CanGrabFromCurrentPosition()) return;
 
+            // Authority check for networked objects
+            if (isNetworked && !Object.HasStateAuthority) return;
+
             // Check single grab mode
             if (!allowMultiGrab && currentlyGrabbed != null && currentlyGrabbed != this)
             {
@@ -263,13 +271,16 @@ namespace U3D
                 }
             }
 
-            // Store original physics settings
-            wasKinematic = rb.isKinematic;
-            usedGravity = rb.useGravity;
+            // Store and modify physics settings if rigidbody exists
+            if (hasRigidbody)
+            {
+                wasKinematic = rb.isKinematic;
+                usedGravity = rb.useGravity;
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
 
-            // Configure for grabbing
-            rb.isKinematic = true;
-            rb.useGravity = false;
+            // Set collider to trigger for smooth hand attachment
             col.isTrigger = true;
 
             // Parent to hand
@@ -282,6 +293,9 @@ namespace U3D
         public void Release()
         {
             if (!isGrabbed) return;
+
+            // Authority check for networked objects
+            if (isNetworked && !Object.HasStateAuthority) return;
 
             isGrabbed = false;
             if (currentlyGrabbed == this)
@@ -296,9 +310,14 @@ namespace U3D
                 NetworkGrabbedBy = default(PlayerRef);
             }
 
-            // Restore physics settings
-            rb.isKinematic = wasKinematic;
-            rb.useGravity = usedGravity;
+            // Restore physics settings if rigidbody exists
+            if (hasRigidbody)
+            {
+                rb.isKinematic = wasKinematic;
+                rb.useGravity = usedGravity;
+            }
+
+            // Restore collider
             col.isTrigger = false;
 
             // Unparent
@@ -394,6 +413,7 @@ namespace U3D
         public bool IsInRange => isInRange;
         public bool IsAimedAt => isAimedAt;
         public bool IsNetworked => isNetworked;
+        public bool HasRigidbody => hasRigidbody;
 
         private void OnDestroy()
         {
