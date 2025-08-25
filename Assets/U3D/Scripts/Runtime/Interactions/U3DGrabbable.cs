@@ -9,6 +9,7 @@ namespace U3D
     /// Objects snap to the player's hand position when grabbed
     /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
     /// Supports both networked and non-networked modes automatically
+    /// FIXED: Properly manages original physics state for throwable objects
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -55,6 +56,7 @@ namespace U3D
 
         // Components
         private Rigidbody rb; // Optional - only for throwable objects
+        private U3DThrowable throwable; // Reference to throwable component if present
         private Collider col;
         private Transform originalParent;
         private Transform handTransform;
@@ -66,11 +68,14 @@ namespace U3D
         private bool isGrabbed = false;
         private bool isInRange = false;
         private bool isAimedAt = false;
-        private bool wasKinematic;
-        private bool usedGravity;
         private float lastAimCheckTime;
         private bool isNetworked = false;
         private bool hasRigidbody = false;
+
+        // FIXED: Store original physics state once at initialization for throwable objects
+        private bool originalWasKinematic;
+        private bool originalUsedGravity;
+        private bool hasStoredOriginalPhysicsState = false;
 
         // Static tracking for single grab mode
         private static U3DGrabbable currentlyGrabbed;
@@ -80,6 +85,9 @@ namespace U3D
             // Rigidbody is optional for grabbables
             rb = GetComponent<Rigidbody>();
             hasRigidbody = rb != null;
+
+            // Check for throwable component
+            throwable = GetComponent<U3DThrowable>();
 
             col = GetComponent<Collider>();
             originalParent = transform.parent;
@@ -91,6 +99,38 @@ namespace U3D
             if (!isNetworked)
             {
                 Debug.Log($"U3DGrabbable on '{name}' running in non-networked mode");
+            }
+        }
+
+        private void Start()
+        {
+            // FIXED: Store original physics state after all components are initialized
+            // This ensures we capture the intended "throwable" physics settings
+            StoreOriginalPhysicsState();
+        }
+
+        private void StoreOriginalPhysicsState()
+        {
+            if (hasRigidbody && !hasStoredOriginalPhysicsState)
+            {
+                // If this object has a throwable component, we want to restore to "throwable ready" state
+                // which means: isKinematic = false, useGravity = true (ready for physics)
+                if (throwable != null)
+                {
+                    // For throwable objects, the original/desired state is physics-ready
+                    originalWasKinematic = false; // Ready for physics when thrown
+                    originalUsedGravity = true;   // Affected by gravity when thrown
+                    Debug.Log($"U3DGrabbable: Stored throwable-ready physics state for '{name}'");
+                }
+                else
+                {
+                    // For non-throwable objects, store whatever the designer set
+                    originalWasKinematic = rb.isKinematic;
+                    originalUsedGravity = rb.useGravity;
+                    Debug.Log($"U3DGrabbable: Stored original physics state for '{name}': kinematic={originalWasKinematic}, gravity={originalUsedGravity}");
+                }
+
+                hasStoredOriginalPhysicsState = true;
             }
         }
 
@@ -136,29 +176,36 @@ namespace U3D
 
         private void CheckIfAimedAt()
         {
-            if (playerCamera == null || maxGrabDistance <= 0f)
+            if (playerCamera == null || maxGrabDistance <= 0f || playerTransform == null)
             {
                 isAimedAt = false;
                 return;
             }
 
-            Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
-            RaycastHit hit;
-
             bool wasAimedAt = isAimedAt;
             isAimedAt = false;
 
-            // Use avatar distance for raycast limit (not camera distance)
+            // Use avatar distance for all calculations - consistent with grab distance
             float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
 
-            if (avatarDistance <= maxGrabDistance && Physics.Raycast(ray, out hit))
+            // Only check aim if within grab distance range
+            if (avatarDistance >= minGrabDistance && avatarDistance <= maxGrabDistance)
             {
-                if (hit.collider == col)
+                // FIXED: Use avatar position as raycast origin, camera direction for aim
+                // This ensures consistent behavior between first and third person
+                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f; // Eye level offset
+                Vector3 rayDirection = playerCamera.transform.forward;
+
+                Ray ray = new Ray(avatarEyeLevel, rayDirection);
+                RaycastHit hit;
+
+                // Raycast from avatar eye level toward camera direction
+                if (Physics.Raycast(ray, out hit, maxGrabDistance))
                 {
-                    // Now both checks use avatar position consistently
-                    if (avatarDistance >= minGrabDistance && avatarDistance <= maxGrabDistance)
+                    if (hit.collider == col)
                     {
                         isAimedAt = true;
+                        Debug.Log($"Grabbable '{name}' aimed at from avatar position - distance: {avatarDistance:F2}m");
                     }
                 }
             }
@@ -189,23 +236,40 @@ namespace U3D
         {
             if (playerTransform == null) return;
 
+            handTransform = null; // Reset first
+
             if (!string.IsNullOrEmpty(handBoneName))
             {
                 Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
                 foreach (Transform t in allTransforms)
                 {
-                    if (t.name == handBoneName)
+                    // FIXED: Avoid camera-related transforms to prevent camera interference
+                    if (t.name == handBoneName &&
+                        !t.name.Contains("Camera") &&
+                        !t.name.Contains("Pivot") &&
+                        t != playerCamera?.transform)
                     {
                         handTransform = t;
+                        Debug.Log($"Found hand bone: {handBoneName} on transform: {t.name}");
                         break;
                     }
                 }
             }
 
-            // Fallback to player transform if hand not found
+            // FIXED: Safe fallback - use player root, NOT camera or camera pivot
             if (handTransform == null)
             {
-                handTransform = playerTransform;
+                // Create a dedicated hand anchor that won't interfere with camera
+                GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
+                if (handAnchor == null)
+                {
+                    handAnchor = new GameObject($"{playerTransform.name}_HandAnchor");
+                    handAnchor.transform.SetParent(playerTransform);
+                    handAnchor.transform.localPosition = Vector3.forward * 0.5f + Vector3.up * 1.2f; // In front of chest
+                    handAnchor.transform.localRotation = Quaternion.identity;
+                }
+                handTransform = handAnchor.transform;
+                Debug.Log($"Created safe hand anchor for grabbable objects at: {handTransform.localPosition}");
             }
         }
 
@@ -271,23 +335,38 @@ namespace U3D
                 }
             }
 
-            // Store and modify physics settings if rigidbody exists
-            if (hasRigidbody)
+            // FIXED: Let U3DThrowable handle its own physics during grab
+            // We don't modify rigidbody settings directly anymore
+            if (throwable != null)
             {
-                wasKinematic = rb.isKinematic;
-                usedGravity = rb.useGravity;
+                // Throwable component will handle physics state via its OnObjectGrabbed callback
+                Debug.Log($"U3DGrabbable: Grabbed throwable object '{name}' - throwable component handles physics");
+            }
+            else if (hasRigidbody)
+            {
+                // For non-throwable objects with rigidbody, make kinematic while grabbed
                 rb.isKinematic = true;
                 rb.useGravity = false;
+                Debug.Log($"U3DGrabbable: Made non-throwable rigidbody kinematic for '{name}'");
             }
 
-            // Set collider to trigger for smooth hand attachment
+            // FIXED: Set collider to trigger AND exclude from camera collision to prevent camera snapping
             col.isTrigger = true;
+
+            // Move to a layer that camera collision ignores, or disable collision detection temporarily
+            int originalLayer = gameObject.layer;
+            SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
+
+            // Store original layer for restoration on release
+            PlayerPrefs.SetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", originalLayer);
 
             // Parent to hand
             transform.SetParent(handTransform);
             transform.localPosition = grabOffset;
 
             OnGrabbed?.Invoke();
+
+            Debug.Log($"U3DGrabbable: Object '{name}' grabbed and excluded from camera collision detection");
         }
 
         public void Release()
@@ -310,15 +389,28 @@ namespace U3D
                 NetworkGrabbedBy = default(PlayerRef);
             }
 
-            // Restore physics settings if rigidbody exists
-            if (hasRigidbody)
+            // FIXED: Restore to original "throwable-ready" physics state
+            if (throwable != null)
             {
-                rb.isKinematic = wasKinematic;
-                rb.useGravity = usedGravity;
+                // Let throwable component handle its own physics restoration via OnObjectReleased callback
+                // It will activate physics for throwing, then manage sleep cycles properly
+                Debug.Log($"U3DGrabbable: Released throwable object '{name}' - throwable component handles physics");
+            }
+            else if (hasRigidbody && hasStoredOriginalPhysicsState)
+            {
+                // For non-throwable objects, restore their original state
+                rb.isKinematic = originalWasKinematic;
+                rb.useGravity = originalUsedGravity;
+                Debug.Log($"U3DGrabbable: Restored original physics state for non-throwable '{name}': kinematic={originalWasKinematic}, gravity={originalUsedGravity}");
             }
 
-            // Restore collider
+            // FIXED: Restore collider and layer settings
             col.isTrigger = false;
+
+            // Restore original layer
+            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
+            SetLayerRecursively(gameObject, originalLayer);
+            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
 
             // Unparent
             transform.SetParent(originalParent);
@@ -332,6 +424,17 @@ namespace U3D
             }
 
             OnReleased?.Invoke();
+
+            Debug.Log($"U3DGrabbable: Object '{name}' released and restored to original collision layer");
+        }
+
+        private void SetLayerRecursively(GameObject obj, int layer)
+        {
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+            {
+                SetLayerRecursively(child.gameObject, layer);
+            }
         }
 
         private bool CanGrabFromCurrentPosition()
@@ -342,7 +445,7 @@ namespace U3D
                 if (playerTransform == null) return false;
             }
 
-            // Use avatar position for distance check (not camera)
+            // Use avatar position for distance check (consistent with aim detection)
             float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
 
             // Check if within grab range
@@ -354,7 +457,11 @@ namespace U3D
             // For distance grabbing (max > min), also check if looking at object
             if (maxGrabDistance > minGrabDistance && playerCamera != null)
             {
-                Ray ray = new Ray(playerCamera.transform.position, playerCamera.transform.forward);
+                // FIXED: Use same avatar-based raycast logic as CheckIfAimedAt()
+                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f; // Eye level offset
+                Vector3 rayDirection = playerCamera.transform.forward;
+
+                Ray ray = new Ray(avatarEyeLevel, rayDirection);
                 RaycastHit hit;
 
                 if (Physics.Raycast(ray, out hit, maxGrabDistance))
@@ -414,6 +521,7 @@ namespace U3D
         public bool IsAimedAt => isAimedAt;
         public bool IsNetworked => isNetworked;
         public bool HasRigidbody => hasRigidbody;
+        public bool HasThrowable => throwable != null;
 
         private void OnDestroy()
         {
@@ -428,6 +536,31 @@ namespace U3D
         {
             if (!isNetworked) return;
             // Networked initialization if needed
+        }
+
+        // Debug information for development
+        [System.Serializable]
+        public struct PhysicsDebugInfo
+        {
+            public bool hasStoredState;
+            public bool originalKinematic;
+            public bool originalGravity;
+            public bool currentKinematic;
+            public bool currentGravity;
+            public bool hasThrowableComponent;
+        }
+
+        public PhysicsDebugInfo GetPhysicsDebugInfo()
+        {
+            return new PhysicsDebugInfo
+            {
+                hasStoredState = hasStoredOriginalPhysicsState,
+                originalKinematic = originalWasKinematic,
+                originalGravity = originalUsedGravity,
+                currentKinematic = hasRigidbody ? rb.isKinematic : false,
+                currentGravity = hasRigidbody ? rb.useGravity : false,
+                hasThrowableComponent = throwable != null
+            };
         }
     }
 }

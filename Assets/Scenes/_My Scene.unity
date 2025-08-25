@@ -2891,6 +2891,9 @@ MonoBehaviour:
   sleepCheckDelay: 2
   sleepVelocityThreshold: 0.5
   maxActiveTime: 10
+  worldBoundsFloor: -50
+  worldBoundsRadius: 1000
+  boundsCheckInterval: 1
   OnThrown:
     m_PersistentCalls:
       m_Calls: []
@@ -2898,6 +2901,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   OnSleep:
+    m_PersistentCalls:
+      m_Calls: []
+  OnWorldBoundsReset:
     m_PersistentCalls:
       m_Calls: []
 --- !u!54 &934474724
@@ -2942,7 +2948,7 @@ MonoBehaviour:
   minGrabDistance: 0
   maxGrabDistance: 20
   handBoneName: RightHand
-  grabOffset: {x: 0, y: 0, z: 0}
+  grabOffset: {x: 0, y: 0.5, z: 0}
   allowMultiGrab: 0
   OnGrabbed:
     m_PersistentCalls:
