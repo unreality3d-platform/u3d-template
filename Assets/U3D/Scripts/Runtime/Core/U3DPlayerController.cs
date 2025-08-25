@@ -1300,17 +1300,51 @@ public class U3DPlayerController : NetworkBehaviour
 
     Vector3 GetCollisionSafeCameraPosition(Vector3 desiredPosition)
     {
-        Vector3 playerHead = transform.position + firstPersonPosition;
-        Vector3 cameraWorldTarget = transform.TransformPoint(desiredPosition);
-        Vector3 direction = (cameraWorldTarget - playerHead).normalized;
+        // FIXED: Use camera pivot world position as origin point instead of player head
+        Vector3 pivotWorldPosition = cameraPivot != null ? cameraPivot.position : (transform.position + firstPersonPosition);
 
-        float maxDistance = Vector3.Distance(playerHead, cameraWorldTarget);
+        // FIXED: Calculate world target using camera pivot's coordinate system for stability
+        Vector3 cameraWorldTarget;
+        if (cameraPivot != null)
+        {
+            // Use camera pivot's transform for stable coordinate conversion
+            cameraWorldTarget = pivotWorldPosition + cameraPivot.rotation * desiredPosition;
+        }
+        else
+        {
+            // Fallback for legacy mode (shouldn't happen in advanced camera mode)
+            cameraWorldTarget = transform.TransformPoint(desiredPosition);
+        }
 
-        if (Physics.SphereCast(playerHead, cameraCollisionRadius, direction, out RaycastHit hit, maxDistance))
+        Vector3 direction = (cameraWorldTarget - pivotWorldPosition).normalized;
+        float maxDistance = Vector3.Distance(pivotWorldPosition, cameraWorldTarget);
+
+        // Perform collision check with minimum distance to prevent zero-distance issues
+        if (maxDistance < 0.1f)
+        {
+            return desiredPosition; // Too close for meaningful collision detection
+        }
+
+        // ENHANCED: Layer mask to ignore grabbed objects and specific collision layers
+        int layerMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("Player"));
+
+        if (Physics.SphereCast(pivotWorldPosition, cameraCollisionRadius, direction, out RaycastHit hit, maxDistance, layerMask))
         {
             float safeDistance = Mathf.Max(0.1f, hit.distance - cameraCollisionBuffer);
-            Vector3 safeWorldPosition = playerHead + direction * safeDistance;
-            return transform.InverseTransformPoint(safeWorldPosition);
+            Vector3 safeWorldPosition = pivotWorldPosition + direction * safeDistance;
+
+            // FIXED: Convert back to local space using camera pivot instead of player transform
+            if (cameraPivot != null)
+            {
+                // Use camera pivot's inverse transform for stable coordinate conversion
+                Vector3 localOffset = Quaternion.Inverse(cameraPivot.rotation) * (safeWorldPosition - pivotWorldPosition);
+                return localOffset;
+            }
+            else
+            {
+                // Fallback for legacy mode
+                return transform.InverseTransformPoint(safeWorldPosition);
+            }
         }
 
         return desiredPosition;
