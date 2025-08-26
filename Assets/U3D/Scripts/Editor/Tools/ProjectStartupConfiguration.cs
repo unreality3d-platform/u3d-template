@@ -4,7 +4,7 @@ using UnityEditor.SceneManagement;
 
 public class ProjectStartupConfiguration
 {
-    private const string STARTUP_SCENE_PATH = "Assets/Scenes/_My Scene.unity";
+    private const string STARTUP_SCENE_PATH = "Assets/Scenes/_MyScene.unity";
     private const string BUILD_TARGET_KEY = "HasSetWebGLTarget";
     private const string TEMPLATE_WEBGL_CHECK_KEY = "U3D_TemplateWebGLCheck";
 
