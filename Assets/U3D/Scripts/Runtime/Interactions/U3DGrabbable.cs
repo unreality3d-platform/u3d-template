@@ -14,6 +14,13 @@ namespace U3D
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
     {
+        [Header("Grab Detection Radius")]
+        [Tooltip("Detection radius around the object (independent of collider size)")]
+        [SerializeField] private float grabDetectionRadius = 1.0f;
+
+        [Tooltip("Use radius-based detection instead of precise raycast")]
+        [SerializeField] private bool useRadiusDetection = true;
+
         [Header("Grab Distance Configuration")]
         [Tooltip("Minimum distance to grab from (0 = touch only)")]
         [SerializeField] private float minGrabDistance = 0f;
@@ -185,32 +192,56 @@ namespace U3D
             bool wasAimedAt = isAimedAt;
             isAimedAt = false;
 
-            // Use avatar distance for all calculations - consistent with grab distance
             float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
 
-            // Only check aim if within grab distance range
             if (avatarDistance >= minGrabDistance && avatarDistance <= maxGrabDistance)
             {
-                // FIXED: Use avatar position as raycast origin, camera direction for aim
-                // This ensures consistent behavior between first and third person
-                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f; // Eye level offset
-                Vector3 rayDirection = playerCamera.transform.forward;
-
-                Ray ray = new Ray(avatarEyeLevel, rayDirection);
-                RaycastHit hit;
-
-                // Raycast from avatar eye level toward camera direction
-                if (Physics.Raycast(ray, out hit, maxGrabDistance))
+                if (useRadiusDetection)
                 {
-                    if (hit.collider == col)
+                    // NEW: Check if camera is looking toward object within detection radius
+                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
+                    float distanceToObject = cameraToObject.magnitude;
+
+                    // Check if within max grab distance
+                    if (distanceToObject <= maxGrabDistance)
                     {
-                        isAimedAt = true;
-                        Debug.Log($"Grabbable '{name}' aimed at from avatar position - distance: {avatarDistance:F2}m");
+                        // Check if generally looking in the object's direction
+                        Vector3 cameraForward = playerCamera.transform.forward;
+                        Vector3 directionToObject = cameraToObject.normalized;
+
+                        // Calculate angle between camera direction and object direction
+                        float angle = Vector3.Angle(cameraForward, directionToObject);
+
+                        // Calculate maximum allowed angle based on distance and detection radius
+                        // Closer objects allow wider angles, farther objects require more precision
+                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
+
+                        if (angle <= maxAllowedAngle)
+                        {
+                            isAimedAt = true;
+                            Debug.Log($"Grabbable '{name}' detected via radius - angle: {angle:F1}°, max: {maxAllowedAngle:F1}°, distance: {distanceToObject:F2}m");
+                        }
+                    }
+                }
+                else
+                {
+                    // Original precise raycast check
+                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
+                    Vector3 rayDirection = playerCamera.transform.forward;
+                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
+                    RaycastHit hit;
+
+                    if (Physics.Raycast(ray, out hit, maxGrabDistance))
+                    {
+                        if (hit.collider == col)
+                        {
+                            isAimedAt = true;
+                            Debug.Log($"Grabbable '{name}' aimed at from avatar position - distance: {avatarDistance:F2}m");
+                        }
                     }
                 }
             }
 
-            // Fire aim events
             if (isAimedAt && !wasAimedAt)
             {
                 OnAimEnter?.Invoke();
@@ -445,34 +476,64 @@ namespace U3D
                 if (playerTransform == null) return false;
             }
 
-            // Use avatar position for distance check (consistent with aim detection)
             float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
 
-            // Check if within grab range
             if (distanceToPlayer < minGrabDistance || distanceToPlayer > maxGrabDistance)
             {
                 return false;
             }
 
-            // For distance grabbing (max > min), also check if looking at object
+            // For distance grabbing, check if looking at object
             if (maxGrabDistance > minGrabDistance && playerCamera != null)
             {
-                // FIXED: Use same avatar-based raycast logic as CheckIfAimedAt()
-                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f; // Eye level offset
-                Vector3 rayDirection = playerCamera.transform.forward;
-
-                Ray ray = new Ray(avatarEyeLevel, rayDirection);
-                RaycastHit hit;
-
-                if (Physics.Raycast(ray, out hit, maxGrabDistance))
+                if (useRadiusDetection)
                 {
-                    return hit.collider == col;
+                    // NEW: Use radius-based detection
+                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
+                    float distanceToObject = cameraToObject.magnitude;
+
+                    if (distanceToObject <= maxGrabDistance)
+                    {
+                        Vector3 cameraForward = playerCamera.transform.forward;
+                        Vector3 directionToObject = cameraToObject.normalized;
+                        float angle = Vector3.Angle(cameraForward, directionToObject);
+                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
+
+                        return angle <= maxAllowedAngle;
+                    }
+                    return false;
                 }
-                return false;
+                else
+                {
+                    // Original precise raycast
+                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
+                    Vector3 rayDirection = playerCamera.transform.forward;
+                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
+                    RaycastHit hit;
+
+                    if (Physics.Raycast(ray, out hit, maxGrabDistance))
+                    {
+                        return hit.collider == col;
+                    }
+                    return false;
+                }
             }
 
-            // For touch-only grabbing, just check range
             return true;
+        }
+
+        private void OnDrawGizmosSelected()
+        {
+            if (useRadiusDetection)
+            {
+                Gizmos.color = Color.yellow;
+                Gizmos.color = new Color(1, 1, 0, 0.3f);
+                Gizmos.DrawSphere(transform.position, grabDetectionRadius);
+
+                // Draw wire sphere for radius outline
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireSphere(transform.position, grabDetectionRadius);
+            }
         }
 
         // IU3DInteractable implementation
