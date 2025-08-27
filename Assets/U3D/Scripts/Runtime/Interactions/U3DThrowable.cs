@@ -11,6 +11,7 @@ namespace U3D
     /// Throws objects in the direction the player camera is facing
     /// Manages Rigidbody physics activation and auto-sleep
     /// ENHANCED: Includes world bounds safety and proper grab-throw cycling
+    /// SIMPLIFIED INSPECTOR: Complex physics and bounds settings hidden from creators
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class U3DThrowable : NetworkBehaviour
@@ -28,26 +29,6 @@ namespace U3D
         [Tooltip("Minimum velocity required to trigger throw events")]
         [SerializeField] private float minThrowVelocity = 1f;
 
-        [Header("Physics Management")]
-        [Tooltip("Time to wait before checking if object should sleep after throwing")]
-        [SerializeField] private float sleepCheckDelay = 2f;
-
-        [Tooltip("Velocity threshold below which object will be put to sleep")]
-        [SerializeField] private float sleepVelocityThreshold = 0.5f;
-
-        [Tooltip("Maximum time to wait before forcing sleep")]
-        [SerializeField] private float maxActiveTime = 10f;
-
-        [Header("World Bounds Safety")]
-        [Tooltip("Y position below which object is considered fallen through world")]
-        [SerializeField] private float worldBoundsFloor = -50f;
-
-        [Tooltip("Distance from origin beyond which object resets")]
-        [SerializeField] private float worldBoundsRadius = 1000f;
-
-        [Tooltip("How often to check world bounds (in seconds)")]
-        [SerializeField] private float boundsCheckInterval = 1f;
-
         [Header("Events")]
         [Tooltip("Called when object is thrown")]
         public UnityEvent OnThrown;
@@ -60,6 +41,32 @@ namespace U3D
 
         [Tooltip("Called when object is reset due to world bounds violation")]
         public UnityEvent OnWorldBoundsReset;
+
+        // HIDDEN PHYSICS MANAGEMENT - Optimal defaults that creators don't need to adjust
+        [HideInInspector]
+        [Tooltip("Time to wait before checking if object should sleep after throwing")]
+        [SerializeField] private float sleepCheckDelay = 2f;
+
+        [HideInInspector]
+        [Tooltip("Velocity threshold below which object will be put to sleep")]
+        [SerializeField] private float sleepVelocityThreshold = 0.5f;
+
+        [HideInInspector]
+        [Tooltip("Maximum time to wait before forcing sleep")]
+        [SerializeField] private float maxActiveTime = 10f;
+
+        // HIDDEN WORLD BOUNDS SAFETY - Protective defaults that creators don't need to change
+        [HideInInspector]
+        [Tooltip("Y position below which object is considered fallen through world")]
+        [SerializeField] private float worldBoundsFloor = -50f;
+
+        [HideInInspector]
+        [Tooltip("Distance from origin beyond which object resets")]
+        [SerializeField] private float worldBoundsRadius = 1000f;
+
+        [HideInInspector]
+        [Tooltip("How often to check world bounds (in seconds)")]
+        [SerializeField] private float boundsCheckInterval = 1f;
 
         // Components
         private Rigidbody rb;
