@@ -227,6 +227,24 @@ namespace U3D.Editor
                 }
             }
 
+            // Add Reset Startup Setup button
+            GUILayout.Space(10);
+            if (GUILayout.Button("Reset Startup Setup", GUILayout.Width(140)))
+            {
+                bool confirmed = EditorUtility.DisplayDialog(
+                    "Reset Startup Setup",
+                    "This will reset the template startup configuration, allowing the startup scene to load again when this project is next opened.\n\n" +
+                    "This is useful for testing the first-time template experience.",
+                    "Reset",
+                    "Cancel"
+                );
+
+                if (confirmed)
+                {
+                    ProjectStartupConfiguration.ResetTemplateConfiguration();
+                }
+            }
+
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
         }

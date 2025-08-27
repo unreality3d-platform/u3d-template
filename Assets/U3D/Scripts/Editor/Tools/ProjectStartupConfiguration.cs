@@ -10,7 +10,6 @@ public class ProjectStartupConfiguration
 
     // Project-specific keys to avoid cross-template conflicts
     private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
-    private static string SCENE_LOADED_KEY => $"U3D_HasLoadedStartupScene_{Application.dataPath.GetHashCode()}";
     private static string TEMPLATE_CHECK_KEY => $"{TEMPLATE_WEBGL_CHECK_KEY}_{Application.dataPath.GetHashCode()}";
 
     /// <summary>
@@ -131,23 +130,34 @@ public class ProjectStartupConfiguration
                 EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
             }
 
-            // Load startup scene logic (existing)
-            bool hasLoadedStartupScene = false;
+            // FIXED: Project-specific first-time scene loading
+            // Use a project-specific key that tracks whether THIS project has ever loaded the startup scene
+            string PROJECT_STARTUP_LOADED_KEY = $"U3D_ProjectStartupLoaded_{Application.dataPath.GetHashCode()}";
+            bool hasLoadedStartupForThisProject = false;
+
             if (!ShouldSkipDuringBuild())
             {
-                hasLoadedStartupScene = EditorPrefs.GetBool(SCENE_LOADED_KEY, false);
+                hasLoadedStartupForThisProject = EditorPrefs.GetBool(PROJECT_STARTUP_LOADED_KEY, false);
             }
 
-            bool isFirstTimeEver = !hasLoadedStartupScene;
+            // Only load startup scene if:
+            // 1. This specific project has never loaded the startup scene before
+            // 2. The startup scene file exists
+            // 3. The current scene is "Untitled" (indicating fresh project open, not user-created blank scene)
+            var currentScene = EditorSceneManager.GetActiveScene();
+            bool isUntitledOnProjectOpen = currentScene.name == "Untitled" && string.IsNullOrEmpty(currentScene.path);
 
-            if (isFirstTimeEver && System.IO.File.Exists(STARTUP_SCENE_PATH))
+            if (!hasLoadedStartupForThisProject &&
+                isUntitledOnProjectOpen &&
+                System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
-                Debug.Log("🎯 U3D SDK: Loading startup scene for first-time template setup");
+                Debug.Log("🎯 U3D SDK: Loading startup scene for first-time project setup");
                 EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
 
+                // Mark this project as having loaded the startup scene
                 if (!ShouldSkipDuringBuild())
                 {
-                    EditorPrefs.SetBool(SCENE_LOADED_KEY, true);
+                    EditorPrefs.SetBool(PROJECT_STARTUP_LOADED_KEY, true);
                 }
             }
         }
@@ -158,14 +168,15 @@ public class ProjectStartupConfiguration
     }
 
     /// <summary>
-    /// Menu item to reset template configuration (for testing)
+    /// Reset template configuration (called from Creator Dashboard)
     /// </summary>
-    //[MenuItem("U3D/Reset Template Configuration")]
-    //private static void ResetTemplateConfiguration()
-    //{
-    //    EditorPrefs.DeleteKey(TEMPLATE_CHECK_KEY);
-    //    EditorPrefs.DeleteKey(BUILD_TARGET_SPECIFIC_KEY);
-    //    EditorPrefs.DeleteKey(SCENE_LOADED_KEY);
-    //    Debug.Log("🔄 U3D SDK: Template configuration reset. Restart Unity to test first-time setup.");
-    //}
+    public static void ResetTemplateConfiguration()
+    {
+        string PROJECT_STARTUP_LOADED_KEY = $"U3D_ProjectStartupLoaded_{Application.dataPath.GetHashCode()}";
+
+        EditorPrefs.DeleteKey(TEMPLATE_CHECK_KEY);
+        EditorPrefs.DeleteKey(BUILD_TARGET_SPECIFIC_KEY);
+        EditorPrefs.DeleteKey(PROJECT_STARTUP_LOADED_KEY);
+        Debug.Log("🔄 U3D SDK: Template configuration reset. Restart Unity to test first-time setup.");
+    }
 }
