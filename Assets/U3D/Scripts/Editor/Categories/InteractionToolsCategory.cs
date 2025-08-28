@@ -14,6 +14,9 @@ namespace U3D.Editor
         // Networking preferences
         private static bool addNetworkObjectToGrabbable = true;
         private static bool addNetworkObjectToThrowable = true;
+        private static bool addNetworkObjectToEnterTrigger = true;
+        private static bool addNetworkObjectToExitTrigger = true;
+        private static bool addNetworkObjectToParentTrigger = true;
 
         public InteractionToolsCategory()
         {
@@ -21,6 +24,9 @@ namespace U3D.Editor
             {
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+                new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
+                new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
+                new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
                 new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),
@@ -58,7 +64,7 @@ namespace U3D.Editor
             // Draw the main tool UI
             ProjectToolsTab.DrawCategoryTool(tool);
 
-            // Add networking checkbox for grabbable and throwable tools
+            // Add networking checkbox for tools that support networking
             if (tool.title == "🟢 Make Grabbable")
             {
                 EditorGUI.indentLevel++;
@@ -70,6 +76,27 @@ namespace U3D.Editor
             {
                 EditorGUI.indentLevel++;
                 addNetworkObjectToThrowable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToThrowable);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
+            else if (tool.title == "🟢 Make Enter Trigger")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToEnterTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToEnterTrigger);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
+            else if (tool.title == "🟢 Make Exit Trigger")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToExitTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToExitTrigger);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
+            else if (tool.title == "🟢 Make Parent Trigger")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToParentTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToParentTrigger);
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space(5);
             }
@@ -202,6 +229,123 @@ namespace U3D.Editor
             else
             {
                 Debug.Log($"'{selected.name}' is already throwable");
+            }
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyEnterTrigger()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Ensure object has a trigger collider
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+            {
+                collider = selected.AddComponent<BoxCollider>();
+            }
+            collider.isTrigger = true;
+
+            // Add NetworkObject if requested and not already present
+            if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
+            {
+                selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
+            // Add enter trigger component
+            U3DEnterTrigger enterTrigger = selected.GetComponent<U3DEnterTrigger>();
+            if (enterTrigger == null)
+            {
+                enterTrigger = selected.AddComponent<U3DEnterTrigger>();
+                Debug.Log($"✅ Made '{selected.name}' an enter trigger - configure actions in Inspector");
+            }
+            else
+            {
+                Debug.Log($"'{selected.name}' already has enter trigger");
+            }
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyExitTrigger()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Ensure object has a trigger collider
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+            {
+                collider = selected.AddComponent<BoxCollider>();
+            }
+            collider.isTrigger = true;
+
+            // Add NetworkObject if requested and not already present
+            if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
+            {
+                selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
+            // Add exit trigger component
+            U3DExitTrigger exitTrigger = selected.GetComponent<U3DExitTrigger>();
+            if (exitTrigger == null)
+            {
+                exitTrigger = selected.AddComponent<U3DExitTrigger>();
+                Debug.Log($"✅ Made '{selected.name}' an exit trigger - configure actions in Inspector");
+            }
+            else
+            {
+                Debug.Log($"'{selected.name}' already has exit trigger");
+            }
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyParentTrigger()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Ensure object has a trigger collider
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+            {
+                collider = selected.AddComponent<BoxCollider>();
+            }
+            collider.isTrigger = true;
+
+            // Add NetworkObject if requested and not already present
+            if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
+            {
+                selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
+            // Add parent trigger component
+            U3DParentTrigger parentTrigger = selected.GetComponent<U3DParentTrigger>();
+            if (parentTrigger == null)
+            {
+                parentTrigger = selected.AddComponent<U3DParentTrigger>();
+                Debug.Log($"✅ Made '{selected.name}' a parent trigger - players will follow this object when inside trigger");
+            }
+            else
+            {
+                Debug.Log($"'{selected.name}' already has parent trigger");
             }
 
             EditorUtility.SetDirty(selected);
