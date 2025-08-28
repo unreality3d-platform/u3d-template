@@ -2888,12 +2888,6 @@ MonoBehaviour:
   upwardThrowBoost: 2
   maxThrowVelocity: 50
   minThrowVelocity: 1
-  sleepCheckDelay: 2
-  sleepVelocityThreshold: 0.5
-  maxActiveTime: 10
-  worldBoundsFloor: -50
-  worldBoundsRadius: 1000
-  boundsCheckInterval: 1
   OnThrown:
     m_PersistentCalls:
       m_Calls: []
@@ -2906,6 +2900,12 @@ MonoBehaviour:
   OnWorldBoundsReset:
     m_PersistentCalls:
       m_Calls: []
+  sleepCheckDelay: 2
+  sleepVelocityThreshold: 0.5
+  maxActiveTime: 10
+  worldBoundsFloor: -50
+  worldBoundsRadius: 1000
+  boundsCheckInterval: 1
 --- !u!54 &934474724
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2945,11 +2945,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  grabDetectionRadius: 1
+  useRadiusDetection: 1
   minGrabDistance: 0
   maxGrabDistance: 20
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0.5, z: 0}
   allowMultiGrab: 0
+  enableSmartDrop: 1
+  maxDropDistance: 5
+  surfaceOffset: 0.1
+  dropSurfaceLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  enableSafetyRecovery: 1
+  safetyFloorY: -50
+  maxDistanceFromSpawn: 1000
   OnGrabbed:
     m_PersistentCalls:
       m_Calls: []
@@ -2966,6 +2977,12 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   OnAimExit:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSmartDrop:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSafetyRecovery:
     m_PersistentCalls:
       m_Calls: []
   _NetworkIsGrabbed: 0
@@ -4509,6 +4526,9 @@ GameObject:
   - component: {fileID: 1246158079}
   - component: {fileID: 1246158078}
   - component: {fileID: 1246158077}
+  - component: {fileID: 1246158082}
+  - component: {fileID: 1246158081}
+  - component: {fileID: 1246158080}
   m_Layer: 0
   m_Name: Red Cube
   m_TagString: Untagged
@@ -4584,6 +4604,99 @@ Transform:
   m_Children: []
   m_Father: {fileID: 703688350}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1246158080
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabDetectionRadius: 1
+  useRadiusDetection: 1
+  minGrabDistance: 0
+  maxGrabDistance: 2
+  handBoneName: RightHand
+  grabOffset: {x: 0, y: 0, z: 0}
+  allowMultiGrab: 0
+  enableSmartDrop: 1
+  maxDropDistance: 5
+  surfaceOffset: 0.1
+  dropSurfaceLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  enableSafetyRecovery: 1
+  safetyFloorY: -50
+  maxDistanceFromSpawn: 1000
+  OnGrabbed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnReleased:
+    m_PersistentCalls:
+      m_Calls: []
+  OnEnterGrabRange:
+    m_PersistentCalls:
+      m_Calls: []
+  OnExitGrabRange:
+    m_PersistentCalls:
+      m_Calls: []
+  OnAimEnter:
+    m_PersistentCalls:
+      m_Calls: []
+  OnAimExit:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSmartDrop:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSafetyRecovery:
+    m_PersistentCalls:
+      m_Calls: []
+  _NetworkIsGrabbed: 0
+--- !u!114 &1246158081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 2810127569
+  ObjectInterest: 1
+  Flags: 262145
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 1246158080}
+  ForceRemoteRenderTimeframe: 0
+--- !u!65 &1246158082
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1246222148
 GameObject:
   m_ObjectHideFlags: 0

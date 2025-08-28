@@ -9,6 +9,7 @@ namespace U3D
     /// Objects snap to the player's hand position when grabbed
     /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
     /// Supports both networked and non-networked modes automatically
+    /// ENHANCED: Smart drop behavior prevents midair floating while respecting user placement intent
     /// FIXED: Properly manages original physics state for throwable objects
     /// </summary>
     [RequireComponent(typeof(Collider))]
@@ -38,6 +39,8 @@ namespace U3D
         [Tooltip("Can this object be grabbed while another is held?")]
         [SerializeField] private bool allowMultiGrab = false;
 
+
+
         [Header("Events")]
         [Tooltip("Called when object is grabbed")]
         public UnityEvent OnGrabbed;
@@ -56,6 +59,12 @@ namespace U3D
 
         [Tooltip("Called when player stops aiming at this object (distance grab only)")]
         public UnityEvent OnAimExit;
+
+        [Tooltip("Called when object is smart-dropped to a surface")]
+        public UnityEvent OnSmartDrop;
+
+        [Tooltip("Called when object is recovered due to safety bounds")]
+        public UnityEvent OnSafetyRecovery;
 
         // Network state (only used if NetworkObject is present)
         [Networked] public bool NetworkIsGrabbed { get; set; }
@@ -78,6 +87,17 @@ namespace U3D
         private float lastAimCheckTime;
         private bool isNetworked = false;
         private bool hasRigidbody = false;
+
+        // Hidden smart drop and safety recovery - enabled by default with optimal settings
+        private const bool ENABLE_SMART_DROP = true;
+        private const bool ENABLE_SAFETY_RECOVERY = true;
+        private const float SAFETY_FLOOR_Y = -50f;
+        private const float MAX_DISTANCE_FROM_SPAWN = 1000f;
+
+        // Safety recovery state
+        private Vector3 spawnPosition;
+        private Quaternion spawnRotation;
+        private bool hasRecordedSpawn = false;
 
         // FIXED: Store original physics state once at initialization for throwable objects
         private bool originalWasKinematic;
@@ -111,9 +131,23 @@ namespace U3D
 
         private void Start()
         {
+            // Record spawn position for safety recovery
+            RecordSpawnPosition();
+
             // FIXED: Store original physics state after all components are initialized
             // This ensures we capture the intended "throwable" physics settings
             StoreOriginalPhysicsState();
+        }
+
+        private void RecordSpawnPosition()
+        {
+            if (!hasRecordedSpawn)
+            {
+                spawnPosition = transform.position;
+                spawnRotation = transform.rotation;
+                hasRecordedSpawn = true;
+                Debug.Log($"U3DGrabbable: Recorded spawn position for '{name}' at {spawnPosition}");
+            }
         }
 
         private void StoreOriginalPhysicsState()
@@ -155,6 +189,74 @@ namespace U3D
                 lastAimCheckTime = Time.time;
                 CheckIfAimedAt();
             }
+
+            // Safety recovery check (only if enabled and not grabbed)
+            if (ENABLE_SAFETY_RECOVERY && !isGrabbed && hasRecordedSpawn)
+            {
+                CheckSafetyBounds();
+            }
+        }
+
+        private void CheckSafetyBounds()
+        {
+            bool needsRecovery = false;
+            string reason = "";
+
+            // Check if fallen through world
+            if (transform.position.y < SAFETY_FLOOR_Y)
+            {
+                needsRecovery = true;
+                reason = $"fell below safety floor (Y: {transform.position.y:F1})";
+            }
+            // Check if too far from spawn
+            else if (Vector3.Distance(transform.position, spawnPosition) > MAX_DISTANCE_FROM_SPAWN)
+            {
+                needsRecovery = true;
+                reason = $"moved too far from spawn ({Vector3.Distance(transform.position, spawnPosition):F1}m)";
+            }
+
+            if (needsRecovery)
+            {
+                PerformSafetyRecovery(reason);
+            }
+        }
+
+        private void PerformSafetyRecovery(string reason)
+        {
+            // Authority check for networked objects
+            if (isNetworked && !Object.HasStateAuthority) return;
+
+            Debug.LogWarning($"U3DGrabbable: Object '{name}' {reason} - performing safety recovery");
+
+            // Reset to spawn position
+            transform.position = spawnPosition;
+            transform.rotation = spawnRotation;
+
+            // Reset physics state
+            if (hasRigidbody && hasStoredOriginalPhysicsState)
+            {
+                if (throwable != null)
+                {
+                    // Let throwable component handle its physics
+                    rb.isKinematic = false;
+                    rb.useGravity = true;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                else
+                {
+                    // Restore original state for non-throwables
+                    rb.isKinematic = originalWasKinematic;
+                    rb.useGravity = originalUsedGravity;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+            }
+
+            // Ensure proper collider state
+            col.isTrigger = false;
+
+            OnSafetyRecovery?.Invoke();
         }
 
         private void UpdatePlayerProximity()
@@ -420,6 +522,26 @@ namespace U3D
                 NetworkGrabbedBy = default(PlayerRef);
             }
 
+            // Store current position for smart drop calculation
+            Vector3 releasePosition = transform.position;
+
+            // Unparent first
+            transform.SetParent(originalParent);
+
+            // FIXED: Restore collider and layer settings
+            col.isTrigger = false;
+
+            // Restore original layer
+            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
+            SetLayerRecursively(gameObject, originalLayer);
+            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
+
+            // ENHANCED: Smart drop behavior for non-throwable objects
+            if (throwable == null && ENABLE_SMART_DROP)
+            {
+                PerformSmartDrop(releasePosition);
+            }
+
             // FIXED: Restore to original "throwable-ready" physics state
             if (throwable != null)
             {
@@ -435,17 +557,6 @@ namespace U3D
                 Debug.Log($"U3DGrabbable: Restored original physics state for non-throwable '{name}': kinematic={originalWasKinematic}, gravity={originalUsedGravity}");
             }
 
-            // FIXED: Restore collider and layer settings
-            col.isTrigger = false;
-
-            // Restore original layer
-            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
-            SetLayerRecursively(gameObject, originalLayer);
-            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
-
-            // Unparent
-            transform.SetParent(originalParent);
-
             // Clear references if not in range
             if (!isInRange)
             {
@@ -457,6 +568,34 @@ namespace U3D
             OnReleased?.Invoke();
 
             Debug.Log($"U3DGrabbable: Object '{name}' released and restored to original collision layer");
+        }
+
+        private void PerformSmartDrop(Vector3 releasePosition)
+        {
+            // Use the object's collider bounds to determine proper drop position
+            Bounds objectBounds = col.bounds;
+
+            // Cast from the bottom of the object's collider
+            Vector3 raycastStart = new Vector3(objectBounds.center.x, objectBounds.min.y, objectBounds.center.z);
+            float maxDropDistance = 50f; // Reasonable search distance
+
+            // Cast downward from bottom of collider to find surface
+            if (Physics.Raycast(raycastStart, Vector3.down, out RaycastHit hit, maxDropDistance))
+            {
+                // Position object so its bottom collider edge rests on the surface
+                float yOffset = objectBounds.center.y - objectBounds.min.y; // Distance from object center to bottom
+                Vector3 surfacePosition = new Vector3(objectBounds.center.x, hit.point.y + yOffset, objectBounds.center.z);
+                transform.position = surfacePosition;
+
+                Debug.Log($"U3DGrabbable: Smart drop placed '{name}' on surface '{hit.collider.name}' using collider bounds");
+                OnSmartDrop?.Invoke();
+            }
+            else
+            {
+                // No surface found within range - leave at release position
+                transform.position = releasePosition;
+                Debug.Log($"U3DGrabbable: No surface found for smart drop - left '{name}' at release position");
+            }
         }
 
         private void SetLayerRecursively(GameObject obj, int layer)
@@ -534,6 +673,18 @@ namespace U3D
                 Gizmos.color = Color.yellow;
                 Gizmos.DrawWireSphere(transform.position, grabDetectionRadius);
             }
+
+            // Draw safety bounds if recorded spawn position exists
+            if (hasRecordedSpawn)
+            {
+                // Draw spawn position
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawWireSphere(spawnPosition, 0.5f);
+
+                // Draw safety radius
+                Gizmos.color = new Color(1, 0, 0, 0.1f);
+                Gizmos.DrawSphere(spawnPosition, MAX_DISTANCE_FROM_SPAWN);
+            }
         }
 
         // IU3DInteractable implementation
@@ -583,6 +734,26 @@ namespace U3D
         public bool IsNetworked => isNetworked;
         public bool HasRigidbody => hasRigidbody;
         public bool HasThrowable => throwable != null;
+        public Vector3 SpawnPosition => spawnPosition;
+        public Quaternion SpawnRotation => spawnRotation;
+
+        // Public method to update spawn position (useful for dynamic placement)
+        public void UpdateSpawnPosition(Vector3 newPosition, Quaternion newRotation)
+        {
+            spawnPosition = newPosition;
+            spawnRotation = newRotation;
+            hasRecordedSpawn = true;
+            Debug.Log($"U3DGrabbable: Updated spawn position for '{name}' to {spawnPosition}");
+        }
+
+        // Public method to manually trigger safety recovery
+        public void TriggerSafetyRecovery()
+        {
+            if (ENABLE_SAFETY_RECOVERY && hasRecordedSpawn)
+            {
+                PerformSafetyRecovery("manual trigger");
+            }
+        }
 
         private void OnDestroy()
         {
@@ -609,6 +780,8 @@ namespace U3D
             public bool currentKinematic;
             public bool currentGravity;
             public bool hasThrowableComponent;
+            public Vector3 spawnPosition;
+            public float distanceFromSpawn;
         }
 
         public PhysicsDebugInfo GetPhysicsDebugInfo()
@@ -620,7 +793,9 @@ namespace U3D
                 originalGravity = originalUsedGravity,
                 currentKinematic = hasRigidbody ? rb.isKinematic : false,
                 currentGravity = hasRigidbody ? rb.useGravity : false,
-                hasThrowableComponent = throwable != null
+                hasThrowableComponent = throwable != null,
+                spawnPosition = spawnPosition,
+                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f
             };
         }
     }
