@@ -29,6 +29,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
                 new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
+                new CreatorTool("🚧 Make Kickable", "Objects can be moved with avatar feet", () => Debug.Log("Applied Kickable"), true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),
                 new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => Debug.Log("Applied Rideable"), true),
                 new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => Debug.Log("Applied Steerable"), true),
@@ -151,6 +152,22 @@ namespace U3D.Editor
             {
                 selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+            }
+
+            // Add NetworkRigidbody if object has Rigidbody and NetworkObject
+            if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
+            {
+                // Use reflection to add NetworkRigidbody since Editor can't directly reference runtime Fusion types
+                var networkRigidbodyType = System.Type.GetType("Fusion.NetworkRigidbody, Fusion.Runtime");
+                if (networkRigidbodyType != null && selected.GetComponent(networkRigidbodyType) == null)
+                {
+                    selected.AddComponent(networkRigidbodyType);
+                    Debug.Log($"✅ Added NetworkRigidbody to '{selected.name}' for physics networking");
+                }
+                else if (networkRigidbodyType == null)
+                {
+                    Debug.LogWarning("NetworkRigidbody type not found - ensure Fusion is properly installed");
+                }
             }
 
             // Add grabbable component
