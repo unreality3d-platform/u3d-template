@@ -2952,15 +2952,6 @@ MonoBehaviour:
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0.5, z: 0}
   allowMultiGrab: 0
-  enableSmartDrop: 1
-  maxDropDistance: 5
-  surfaceOffset: 0.1
-  dropSurfaceLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  enableSafetyRecovery: 1
-  safetyFloorY: -50
-  maxDistanceFromSpawn: 1000
   OnGrabbed:
     m_PersistentCalls:
       m_Calls: []
@@ -4623,15 +4614,6 @@ MonoBehaviour:
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
-  enableSmartDrop: 1
-  maxDropDistance: 5
-  surfaceOffset: 0.1
-  dropSurfaceLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  enableSafetyRecovery: 1
-  safetyFloorY: -50
-  maxDistanceFromSpawn: 1000
   OnGrabbed:
     m_PersistentCalls:
       m_Calls: []
