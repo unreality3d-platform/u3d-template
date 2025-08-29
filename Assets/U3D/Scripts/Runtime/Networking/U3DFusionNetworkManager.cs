@@ -467,6 +467,19 @@ namespace U3D.Networking
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;
 
+                // PHYSICS FIX: Add RunnerSimulatePhysics3D for proper Fusion 2 physics networking
+                var physicsSimulatorType = System.Type.GetType("Fusion.RunnerSimulatePhysics3D, Fusion.Addons.Physics");
+                if (physicsSimulatorType != null)
+                {
+                    var physicsComponent = runnerObject.AddComponent(physicsSimulatorType);
+                    Debug.Log("✅ Added RunnerSimulatePhysics3D to NetworkRunner for physics synchronization");
+                }
+                else
+                {
+                    Debug.LogWarning("⚠️ RunnerSimulatePhysics3D not found - ensure Fusion Physics Addon is installed");
+                    Debug.LogWarning("Physics objects may not sync properly in multiplayer without Physics Addon");
+                }
+
                 // Register this component as callback handler
                 _runner.AddCallbacks(this);
 

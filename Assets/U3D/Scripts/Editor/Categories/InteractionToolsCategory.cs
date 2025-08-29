@@ -154,22 +154,6 @@ namespace U3D.Editor
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
-            // Add NetworkRigidbody if object has Rigidbody and NetworkObject
-            if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
-            {
-                // Use reflection to add NetworkRigidbody since Editor can't directly reference runtime Fusion types
-                var networkRigidbodyType = System.Type.GetType("Fusion.NetworkRigidbody, Fusion.Runtime");
-                if (networkRigidbodyType != null && selected.GetComponent(networkRigidbodyType) == null)
-                {
-                    selected.AddComponent(networkRigidbodyType);
-                    Debug.Log($"✅ Added NetworkRigidbody to '{selected.name}' for physics networking");
-                }
-                else if (networkRigidbodyType == null)
-                {
-                    Debug.LogWarning("NetworkRigidbody type not found - ensure Fusion is properly installed");
-                }
-            }
-
             // Add grabbable component
             U3DGrabbable grabbable = selected.GetComponent<U3DGrabbable>();
             if (grabbable == null)
@@ -220,19 +204,24 @@ namespace U3D.Editor
                 Debug.Log($"✅ Added sleeping Rigidbody to '{selected.name}'");
             }
 
-            // Add NetworkRigidbody for proper Fusion networking if NetworkObject exists
-            if (selected.GetComponent<NetworkObject>())
+            // CORRECTED: Add NetworkRigidbody3D for proper Fusion 2 physics networking
+            if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
-                // Use reflection to add NetworkRigidbody since Editor can't directly reference runtime Fusion types
-                var networkRigidbodyType = System.Type.GetType("Fusion.NetworkRigidbody, Fusion.Runtime");
-                if (networkRigidbodyType != null && selected.GetComponent(networkRigidbodyType) == null)
+                // Try to find and add NetworkRigidbody3D from Physics Addon
+                var networkRigidbody3DType = System.Type.GetType("Fusion.NetworkRigidbody3D, Fusion.Addons.Physics");
+                if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
                 {
-                    selected.AddComponent(networkRigidbodyType);
-                    Debug.Log($"✅ Added NetworkRigidbody to '{selected.name}' for physics networking");
+                    selected.AddComponent(networkRigidbody3DType);
+                    Debug.Log($"✅ Added NetworkRigidbody3D to '{selected.name}' for physics networking");
                 }
-                else if (networkRigidbodyType == null)
+                else if (networkRigidbody3DType == null)
                 {
-                    Debug.LogWarning("NetworkRigidbody type not found - ensure Fusion is properly installed");
+                    Debug.LogWarning("NetworkRigidbody3D type not found - ensure Fusion Physics Addon is installed");
+                    Debug.LogWarning("Physics will sync via [Networked] properties in U3DThrowable instead");
+                }
+                else
+                {
+                    Debug.Log($"NetworkRigidbody3D already present on '{selected.name}'");
                 }
             }
 
