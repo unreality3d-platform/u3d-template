@@ -12,6 +12,7 @@ namespace U3D
     /// Manages Rigidbody physics activation and auto-sleep
     /// ENHANCED: Includes world bounds safety and proper grab-throw cycling
     /// SIMPLIFIED INSPECTOR: Complex physics and bounds settings hidden from creators
+    /// AUTHORITY FIX: Implements proper State Authority handling for multiplayer physics
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class U3DThrowable : NetworkBehaviour
@@ -67,6 +68,31 @@ namespace U3D
         [HideInInspector]
         [Tooltip("How often to check world bounds (in seconds)")]
         [SerializeField] private float boundsCheckInterval = 1f;
+
+        // AUTHORITY FIX: Add networked properties for proper physics sync
+        [Networked] public bool NetworkHasBeenThrown { get; set; }
+        [Networked] public bool NetworkIsPhysicsActive { get; set; }
+        [Networked] public Vector3 NetworkPosition { get; set; }
+        [Networked] public Quaternion NetworkRotation { get; set; }
+        [Networked] public Vector3 NetworkVelocity { get; set; }
+        [Networked] public Vector3 NetworkAngularVelocity { get; set; }
+
+        // AUTHORITY FIX: Add RPC for throw requests
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        public void RPC_RequestThrow(Vector3 direction, float force, PlayerRef requester, RpcInfo info = default)
+        {
+            Debug.Log($"🎯 Throw request from {requester}: direction={direction}, force={force}");
+
+            // Transfer authority if needed
+            if (Object.StateAuthority != requester)
+            {
+                Object.RequestStateAuthority();
+                Debug.Log($"✅ Transferring throw authority of '{name}' to {requester}");
+            }
+
+            // Execute throw with specified parameters
+            ThrowInDirection(direction, force);
+        }
 
         // Components
         private Rigidbody rb;
@@ -157,6 +183,13 @@ namespace U3D
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 isPhysicsActive = false;
+
+                // Update network state if networked
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkIsPhysicsActive = false;
+                }
+
                 Debug.Log($"Physics put to sleep on '{name}'");
             }
         }
@@ -168,6 +201,13 @@ namespace U3D
                 rb.isKinematic = false;
                 rb.useGravity = true;
                 isPhysicsActive = true;
+
+                // Update network state if networked
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkIsPhysicsActive = true;
+                }
+
                 Debug.Log($"Physics activated on '{name}'");
             }
         }
@@ -213,8 +253,25 @@ namespace U3D
 
         private void OnObjectReleased()
         {
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // AUTHORITY FIX: Handle authority and networking properly for release/throw
+            if (isNetworked)
+            {
+                // If not authority, request throw via RPC
+                if (!Object.HasStateAuthority)
+                {
+                    if (playerCamera != null && Runner != null && Runner.LocalPlayer != PlayerRef.None)
+                    {
+                        // Calculate throw direction and request via RPC
+                        Vector3 rpcThrowDirection = playerCamera.transform.forward;
+                        rpcThrowDirection.y += upwardThrowBoost / throwForce;
+                        rpcThrowDirection.Normalize();
+
+                        RPC_RequestThrow(rpcThrowDirection, throwForce, Runner.LocalPlayer);
+                        Debug.Log($"🎯 Requesting throw via RPC from player {Runner.LocalPlayer}");
+                        return; // Exit here - RPC will handle the actual throw
+                    }
+                }
+            }
 
             // Only throw if we have the necessary components
             if (playerCamera == null)
@@ -245,10 +302,26 @@ namespace U3D
             // Apply velocity to rigidbody
             rb.linearVelocity = throwVelocity;
 
+            // Update networked physics state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkPosition = transform.position;
+                NetworkRotation = transform.rotation;
+                NetworkVelocity = throwVelocity;
+                NetworkAngularVelocity = rb.angularVelocity;
+            }
+
             // Mark as thrown if velocity is significant
             if (throwVelocity.magnitude >= minThrowVelocity)
             {
                 hasBeenThrown = true;
+
+                // Update network state
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkHasBeenThrown = true;
+                }
+
                 OnThrown?.Invoke();
 
                 // Start sleep checking coroutine
@@ -310,6 +383,13 @@ namespace U3D
         {
             SetPhysicsSleeping();
             hasBeenThrown = false;
+
+            // Update network state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkHasBeenThrown = false;
+            }
+
             OnSleep?.Invoke();
 
             Debug.Log($"U3DThrowable: Object '{name}' returned to grabbable sleep state - ready for next grab/throw cycle");
@@ -350,7 +430,7 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
-            // Authority check for networked objects
+            // AUTHORITY FIX: Only reset if we have authority or not networked
             if (isNetworked && !Object.HasStateAuthority) return;
 
             // Stop any active physics monitoring
@@ -363,6 +443,15 @@ namespace U3D
             // Reset position and rotation to spawn point
             transform.position = originalPosition;
             transform.rotation = originalRotation;
+
+            // Update networked state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkPosition = originalPosition;
+                NetworkRotation = originalRotation;
+                NetworkVelocity = Vector3.zero;
+                NetworkAngularVelocity = Vector3.zero;
+            }
 
             // Return to grabbable sleep state
             ReturnToGrabbableSleepState();
@@ -381,11 +470,58 @@ namespace U3D
             }
         }
 
+        // AUTHORITY FIX: Override FixedUpdateNetwork for proper physics sync
+        public override void FixedUpdateNetwork()
+        {
+            if (!isNetworked) return;
+
+            // Only authority updates networked physics state
+            if (Object.HasStateAuthority && isPhysicsActive)
+            {
+                NetworkPosition = transform.position;
+                NetworkRotation = transform.rotation;
+                if (rb != null)
+                {
+                    NetworkVelocity = rb.linearVelocity;
+                    NetworkAngularVelocity = rb.angularVelocity;
+                }
+            }
+        }
+
+        // AUTHORITY FIX: Override Render for visual interpolation on non-authority clients
+        public override void Render()
+        {
+            if (!isNetworked) return;
+
+            // Non-authority clients interpolate visual position
+            if (!Object.HasStateAuthority && isPhysicsActive)
+            {
+                // Smooth interpolation for visual representation
+                transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 10f);
+                transform.rotation = Quaternion.Lerp(transform.rotation, NetworkRotation, Time.deltaTime * 10f);
+
+                // Apply networked velocity for prediction
+                if (rb != null && !rb.isKinematic)
+                {
+                    rb.linearVelocity = Vector3.Lerp(rb.linearVelocity, NetworkVelocity, Time.deltaTime * 5f);
+                    rb.angularVelocity = Vector3.Lerp(rb.angularVelocity, NetworkAngularVelocity, Time.deltaTime * 5f);
+                }
+            }
+        }
+
         // Public method to manually throw with specific direction and force
         public void ThrowInDirection(Vector3 direction, float force)
         {
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // AUTHORITY FIX: Handle networking properly
+            if (isNetworked && !Object.HasStateAuthority)
+            {
+                // Request throw via RPC
+                if (Runner != null && Runner.LocalPlayer != PlayerRef.None)
+                {
+                    RPC_RequestThrow(direction, force, Runner.LocalPlayer);
+                    return;
+                }
+            }
 
             // Release from grab if currently held
             if (grabbable != null && grabbable.IsGrabbed)
@@ -407,6 +543,16 @@ namespace U3D
 
             rb.linearVelocity = throwVelocity;
             hasBeenThrown = true;
+
+            // Update network state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkHasBeenThrown = true;
+                NetworkVelocity = throwVelocity;
+                NetworkPosition = transform.position;
+                NetworkRotation = transform.rotation;
+            }
+
             OnThrown?.Invoke();
 
             // Start sleep checking
@@ -455,8 +601,8 @@ namespace U3D
         // Public method to wake up object (for external triggers)
         public void WakeUp()
         {
-            // Only activate physics if not currently grabbed
-            if (grabbable == null || !grabbable.IsGrabbed)
+            // Only activate physics if not currently grabbed and have authority
+            if ((grabbable == null || !grabbable.IsGrabbed) && (!isNetworked || Object.HasStateAuthority))
             {
                 ActivatePhysics();
                 Debug.Log($"U3DThrowable: Manually woke up '{name}'");
@@ -539,8 +685,20 @@ namespace U3D
         public override void Spawned()
         {
             if (!isNetworked) return;
+
             // Ensure physics starts sleeping on spawn
             SetPhysicsSleeping();
+
+            // Initialize networked state
+            if (Object.HasStateAuthority)
+            {
+                NetworkPosition = transform.position;
+                NetworkRotation = transform.rotation;
+                NetworkVelocity = Vector3.zero;
+                NetworkAngularVelocity = Vector3.zero;
+                NetworkHasBeenThrown = false;
+                NetworkIsPhysicsActive = false;
+            }
         }
 
         // Debug information for development
@@ -556,6 +714,8 @@ namespace U3D
             public Vector3 spawnPosition;
             public float currentVelocity;
             public float distanceFromSpawn;
+            public bool hasStateAuthority;
+            public bool isNetworked;
         }
 
         public ThrowableDebugInfo GetDebugInfo()
@@ -570,7 +730,9 @@ namespace U3D
                 currentPosition = transform.position,
                 spawnPosition = originalPosition,
                 currentVelocity = rb != null ? rb.linearVelocity.magnitude : 0f,
-                distanceFromSpawn = Vector3.Distance(transform.position, originalPosition)
+                distanceFromSpawn = Vector3.Distance(transform.position, originalPosition),
+                hasStateAuthority = isNetworked ? Object.HasStateAuthority : true,
+                isNetworked = isNetworked
             };
         }
     }

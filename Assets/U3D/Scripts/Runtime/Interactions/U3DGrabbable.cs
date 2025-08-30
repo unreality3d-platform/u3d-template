@@ -5,12 +5,11 @@ using Fusion;
 namespace U3D
 {
     /// <summary>
-    /// Universal grabbable component for both near and far interactions
-    /// Objects snap to the player's hand position when grabbed
-    /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
-    /// Supports both networked and non-networked modes automatically
-    /// ENHANCED: Smart drop behavior prevents midair floating while respecting user placement intent
-    /// FIXED: Properly manages original physics state for throwable objects
+    /// Universal grabbable component supporting both per-player instances and shared objects
+    /// HYBRID MODE: Automatically detects whether to use instance mode or shared authority transfer
+    /// Instance Mode: Each player has their own copy (collaborative experience)
+    /// Shared Mode: Single object with authority transfer (traditional approach)
+    /// Maintains backward compatibility with existing implementations
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -38,8 +37,6 @@ namespace U3D
 
         [Tooltip("Can this object be grabbed while another is held?")]
         [SerializeField] private bool allowMultiGrab = false;
-
-
 
         [Header("Events")]
         [Tooltip("Called when object is grabbed")]
@@ -69,6 +66,56 @@ namespace U3D
         // Network state (only used if NetworkObject is present)
         [Networked] public bool NetworkIsGrabbed { get; set; }
         [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
+
+        // HYBRID MODE: Instance vs Shared behavior
+        private bool isInstanceMode = false;
+        private PlayerRef instanceOwner = PlayerRef.None;
+        private bool canLocalPlayerInteract = true;
+
+        // SHARED MODE: Authority transfer RPCs (only used in shared mode)
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        public void RPC_RequestGrab(PlayerRef requester, RpcInfo info = default)
+        {
+            if (isInstanceMode)
+            {
+                Debug.LogWarning($"Authority transfer RPC called on instance mode object '{name}' - this should not happen");
+                return;
+            }
+
+            Debug.Log($"Authority transfer request: {requester} wants to grab '{name}' (current authority: {Object.StateAuthority})");
+
+            // Transfer authority to the requesting player
+            if (Object.StateAuthority != requester)
+            {
+                Object.RequestStateAuthority();
+                Debug.Log($"Transferring authority of '{name}' from {Object.StateAuthority} to {requester}");
+            }
+
+            // Execute grab on authority holder
+            Grab();
+        }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority, HostMode = RpcHostMode.SourceIsHostPlayer)]
+        public void RPC_RequestRelease(PlayerRef requester, RpcInfo info = default)
+        {
+            if (isInstanceMode)
+            {
+                Debug.LogWarning($"Release RPC called on instance mode object '{name}' - this should not happen");
+                return;
+            }
+
+            Debug.Log($"Release request from {requester} for '{name}'");
+
+            // Only allow release from the player who grabbed it
+            if (NetworkGrabbedBy == requester)
+            {
+                Release();
+            }
+            else
+            {
+                Debug.LogWarning($"Player {requester} tried to release '{name}' but it's grabbed by {NetworkGrabbedBy}");
+            }
+        }
 
         // Components
         private Rigidbody rb; // Optional - only for throwable objects
@@ -104,7 +151,7 @@ namespace U3D
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
 
-        // Static tracking for single grab mode
+        // Static tracking for single grab mode (only used in shared mode)
         private static U3DGrabbable currentlyGrabbed;
 
         private void Awake()
@@ -137,6 +184,50 @@ namespace U3D
             // FIXED: Store original physics state after all components are initialized
             // This ensures we capture the intended "throwable" physics settings
             StoreOriginalPhysicsState();
+
+            // Determine mode based on object setup
+            DetectOperatingMode();
+        }
+
+        /// <summary>
+        /// HYBRID MODE: Detect whether this object should use instance mode or shared mode
+        /// </summary>
+        private void DetectOperatingMode()
+        {
+            if (!isNetworked)
+            {
+                isInstanceMode = false;
+                canLocalPlayerInteract = true;
+                Debug.Log($"U3DGrabbable '{name}': Non-networked mode");
+                return;
+            }
+
+            // Check if this object was spawned with a specific player as authority (instance mode)
+            if (Object.InputAuthority != PlayerRef.None)
+            {
+                isInstanceMode = true;
+                instanceOwner = Object.InputAuthority;
+                canLocalPlayerInteract = (Runner.LocalPlayer == instanceOwner);
+                Debug.Log($"U3DGrabbable '{name}': Instance mode - owned by player {instanceOwner}");
+            }
+            else
+            {
+                isInstanceMode = false;
+                canLocalPlayerInteract = true;
+                Debug.Log($"U3DGrabbable '{name}': Shared mode - authority transfer enabled");
+            }
+        }
+
+        /// <summary>
+        /// PUBLIC API: Set instance mode (called by U3DInstanceManager)
+        /// </summary>
+        public void SetInstanceMode(bool instanceMode, PlayerRef owner)
+        {
+            isInstanceMode = instanceMode;
+            instanceOwner = owner;
+            canLocalPlayerInteract = !instanceMode || (Runner != null && Runner.LocalPlayer == owner);
+
+            Debug.Log($"U3DGrabbable '{name}': Set to {(instanceMode ? "instance" : "shared")} mode, owner: {owner}, can interact: {canLocalPlayerInteract}");
         }
 
         private void RecordSpawnPosition()
@@ -177,10 +268,12 @@ namespace U3D
 
         private void Update()
         {
-            // Only run Update logic on networked objects if they have authority, or always on non-networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // HYBRID MODE: Only run Update logic if local player can interact with this object
+            if (!canLocalPlayerInteract) return;
 
-            // Update range and aim status
+            // Authority check for networked shared objects (instances run on all clients)
+            if (isNetworked && !isInstanceMode && !Object.HasStateAuthority) return;
+
             UpdatePlayerProximity();
 
             // Check aim only for distance grabbing (when max distance > 0)
@@ -190,10 +283,13 @@ namespace U3D
                 CheckIfAimedAt();
             }
 
-            // Safety recovery check (only if enabled and not grabbed)
+            // Safety recovery check (only if enabled and not grabbed and has authority)
             if (ENABLE_SAFETY_RECOVERY && !isGrabbed && hasRecordedSpawn)
             {
-                CheckSafetyBounds();
+                if (!isNetworked || isInstanceMode || Object.HasStateAuthority)
+                {
+                    CheckSafetyBounds();
+                }
             }
         }
 
@@ -223,8 +319,8 @@ namespace U3D
 
         private void PerformSafetyRecovery(string reason)
         {
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // Authority check for networked objects (instances can always recover)
+            if (isNetworked && !isInstanceMode && !Object.HasStateAuthority) return;
 
             Debug.LogWarning($"U3DGrabbable: Object '{name}' {reason} - performing safety recovery");
 
@@ -438,11 +534,36 @@ namespace U3D
         {
             if (isGrabbed || !CanGrabFromCurrentPosition()) return;
 
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // HYBRID MODE: Instance vs Shared authority handling
+            if (isNetworked)
+            {
+                if (isInstanceMode)
+                {
+                    // Instance mode: only owner can grab, no authority transfer needed
+                    if (!canLocalPlayerInteract)
+                    {
+                        Debug.Log($"Cannot grab instance '{name}' - not owned by local player");
+                        return;
+                    }
+                }
+                else
+                {
+                    // Shared mode: use RPC system for authority management
+                    if (!Object.HasStateAuthority)
+                    {
+                        // Request authority transfer via RPC
+                        if (Runner != null && Runner.LocalPlayer != PlayerRef.None)
+                        {
+                            RPC_RequestGrab(Runner.LocalPlayer);
+                            Debug.Log($"Requesting grab authority for '{name}' from player {Runner.LocalPlayer}");
+                            return; // Exit here - RPC will call Grab() on the authority holder
+                        }
+                    }
+                }
+            }
 
-            // Check single grab mode
-            if (!allowMultiGrab && currentlyGrabbed != null && currentlyGrabbed != this)
+            // Check single grab mode (only for shared objects)
+            if (!isInstanceMode && !allowMultiGrab && currentlyGrabbed != null && currentlyGrabbed != this)
             {
                 currentlyGrabbed.Release();
             }
@@ -456,13 +577,16 @@ namespace U3D
             if (handTransform == null) return;
 
             isGrabbed = true;
-            currentlyGrabbed = this;
+            if (!isInstanceMode) // Only set static tracking for shared objects
+            {
+                currentlyGrabbed = this;
+            }
 
             // Update network state if networked
             if (isNetworked)
             {
                 NetworkIsGrabbed = true;
-                if (Runner != null && Runner.LocalPlayer != null)
+                if (Runner != null && Runner.LocalPlayer != PlayerRef.None)
                 {
                     NetworkGrabbedBy = Runner.LocalPlayer;
                 }
@@ -506,11 +630,36 @@ namespace U3D
         {
             if (!isGrabbed) return;
 
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // HYBRID MODE: Instance vs Shared authority handling
+            if (isNetworked)
+            {
+                if (isInstanceMode)
+                {
+                    // Instance mode: only owner can release, no authority transfer needed
+                    if (!canLocalPlayerInteract)
+                    {
+                        Debug.Log($"Cannot release instance '{name}' - not owned by local player");
+                        return;
+                    }
+                }
+                else
+                {
+                    // Shared mode: use RPC system for authority management
+                    if (!Object.HasStateAuthority)
+                    {
+                        // Request release via RPC
+                        if (Runner != null && Runner.LocalPlayer != PlayerRef.None)
+                        {
+                            RPC_RequestRelease(Runner.LocalPlayer);
+                            Debug.Log($"Requesting release authority for '{name}' from player {Runner.LocalPlayer}");
+                            return; // Exit here - RPC will call Release() on the authority holder
+                        }
+                    }
+                }
+            }
 
             isGrabbed = false;
-            if (currentlyGrabbed == this)
+            if (!isInstanceMode && currentlyGrabbed == this) // Only clear static tracking for shared objects
             {
                 currentlyGrabbed = null;
             }
@@ -609,6 +758,12 @@ namespace U3D
 
         private bool CanGrabFromCurrentPosition()
         {
+            // HYBRID MODE: Instance mode interaction check
+            if (isInstanceMode && !canLocalPlayerInteract)
+            {
+                return false; // Can't interact with other players' instances
+            }
+
             if (playerTransform == null)
             {
                 FindPlayer();
@@ -685,6 +840,23 @@ namespace U3D
                 Gizmos.color = new Color(1, 0, 0, 0.1f);
                 Gizmos.DrawSphere(spawnPosition, MAX_DISTANCE_FROM_SPAWN);
             }
+
+            // HYBRID MODE: Visual indication of mode
+            if (Application.isPlaying && isNetworked)
+            {
+                if (isInstanceMode)
+                {
+                    // Draw instance mode indicator
+                    Gizmos.color = canLocalPlayerInteract ? Color.green : Color.red;
+                    Gizmos.DrawWireCube(transform.position + Vector3.up * 2f, Vector3.one * 0.3f);
+                }
+                else
+                {
+                    // Draw shared mode indicator
+                    Gizmos.color = Color.blue;
+                    Gizmos.DrawWireSphere(transform.position + Vector3.up * 2f, 0.2f);
+                }
+            }
         }
 
         // IU3DInteractable implementation
@@ -736,6 +908,9 @@ namespace U3D
         public bool HasThrowable => throwable != null;
         public Vector3 SpawnPosition => spawnPosition;
         public Quaternion SpawnRotation => spawnRotation;
+        public bool IsInstanceMode => isInstanceMode;
+        public PlayerRef InstanceOwner => instanceOwner;
+        public bool CanLocalPlayerInteract => canLocalPlayerInteract;
 
         // Public method to update spawn position (useful for dynamic placement)
         public void UpdateSpawnPosition(Vector3 newPosition, Quaternion newRotation)
@@ -767,7 +942,7 @@ namespace U3D
         public override void Spawned()
         {
             if (!isNetworked) return;
-            // Networked initialization if needed
+            // Networked initialization handled in DetectOperatingMode
         }
 
         // Debug information for development
@@ -782,6 +957,9 @@ namespace U3D
             public bool hasThrowableComponent;
             public Vector3 spawnPosition;
             public float distanceFromSpawn;
+            public bool isInstanceMode;
+            public bool canLocalPlayerInteract;
+            public PlayerRef instanceOwner;
         }
 
         public PhysicsDebugInfo GetPhysicsDebugInfo()
@@ -795,7 +973,10 @@ namespace U3D
                 currentGravity = hasRigidbody ? rb.useGravity : false,
                 hasThrowableComponent = throwable != null,
                 spawnPosition = spawnPosition,
-                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f
+                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f,
+                isInstanceMode = isInstanceMode,
+                canLocalPlayerInteract = canLocalPlayerInteract,
+                instanceOwner = instanceOwner
             };
         }
     }

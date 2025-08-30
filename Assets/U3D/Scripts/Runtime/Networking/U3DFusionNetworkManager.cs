@@ -154,17 +154,17 @@ namespace U3D.Networking
         }
 
         void SetupTouchControls()
-{
-    // Find existing or create touch zone controller
-    touchZones = UnityEngine.Object.FindFirstObjectByType<U3DSimpleTouchZones>();
-    if (touchZones == null)
-    {
-        GameObject touchControllerObj = new GameObject("TouchZoneController");
-        touchZones = touchControllerObj.AddComponent<U3DSimpleTouchZones>();
-        DontDestroyOnLoad(touchControllerObj);
-        Debug.Log("✅ Touch zone controller created for mobile input");
-    }
-}
+        {
+            // Find existing or create touch zone controller
+            touchZones = UnityEngine.Object.FindFirstObjectByType<U3DSimpleTouchZones>();
+            if (touchZones == null)
+            {
+                GameObject touchControllerObj = new GameObject("TouchZoneController");
+                touchZones = touchControllerObj.AddComponent<U3DSimpleTouchZones>();
+                DontDestroyOnLoad(touchControllerObj);
+                Debug.Log("✅ Touch zone controller created for mobile input");
+            }
+        }
 
         void InitializeNetworking()
         {
@@ -472,12 +472,24 @@ namespace U3D.Networking
                 if (physicsSimulatorType != null)
                 {
                     var physicsComponent = runnerObject.AddComponent(physicsSimulatorType);
+
+                    // CRITICAL: Configure physics simulation mode for shared authority
+                    // In Shared Mode, clients need physics simulation enabled for proper interaction
+                    var simulationModeProperty = physicsSimulatorType.GetProperty("ClientPhysicsSimulation");
+                    if (simulationModeProperty != null)
+                    {
+                        // Enable client physics simulation for shared mode - this allows all clients to interact with physics
+                        simulationModeProperty.SetValue(physicsComponent, 1); // 1 = Enable simulation
+                        Debug.Log("✅ Enabled client physics simulation for shared mode multiplayer");
+                    }
+
                     Debug.Log("✅ Added RunnerSimulatePhysics3D to NetworkRunner for physics synchronization");
                 }
                 else
                 {
-                    Debug.LogWarning("⚠️ RunnerSimulatePhysics3D not found - ensure Fusion Physics Addon is installed");
-                    Debug.LogWarning("Physics objects may not sync properly in multiplayer without Physics Addon");
+                    Debug.LogError("❌ RunnerSimulatePhysics3D not found - Fusion Physics Addon is not properly installed");
+                    Debug.LogError("❌ Download and import the Physics Addon from: https://doc.photonengine.com/fusion/current/addons/physics/download");
+                    Debug.LogError("❌ Without this addon, physics objects will not sync properly in multiplayer");
                 }
 
                 // Register this component as callback handler
@@ -594,8 +606,14 @@ namespace U3D.Networking
 
             if (shouldSpawn && playerPrefab.IsValid)
             {
-                // ONLY CHANGE: Add delay to prevent falling through floor
+                // Add delay to prevent falling through floor
                 StartCoroutine(DelayedSpawn(runner, player));
+            }
+
+            // Trigger instance creation for all instance managers
+            if (runner.IsServer || runner.GameMode == GameMode.Shared)
+            {
+                U3D.Networking.U3DInstanceManager.HandlePlayerJoined(player);
             }
 
             if (player == runner.LocalPlayer)
@@ -665,6 +683,9 @@ namespace U3D.Networking
             Debug.Log($"Player left: {player}");
 
             U3D.Networking.U3DPlayerNametag.RemovePlayer(player);
+
+            // Cleanup instances for leaving player
+            U3D.Networking.U3DInstanceManager.HandlePlayerLeft(player);
 
             if (_spawnedPlayers.TryGetValue(player, out NetworkObject playerObject))
             {
