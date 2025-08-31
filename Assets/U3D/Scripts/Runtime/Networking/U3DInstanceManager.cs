@@ -131,29 +131,29 @@ namespace U3D.Networking
             // Set a clear name for debugging
             instance.name = $"{instancePrefab.name}_Player{player}_{instanceIndex}";
 
-            // Ensure NetworkObject settings are correct for per-player instances
-            // These instances should not transfer authority since each player owns their own
-            var networkObj = instance.GetComponent<NetworkObject>();
-            if (networkObj != null)
-            {
-                // These instances are owned by specific players and shouldn't transfer
-                // This is different from shared objects that need authority transfer
-            }
+            // Configure the instance with a slight delay to ensure spawning completes
+            StartCoroutine(DelayedInstanceConfiguration(instance, player, instanceIndex));
+        }
 
-            // Configure any U3DGrabbable components for per-player behavior
-            var grabbable = instance.GetComponent<U3DGrabbable>();
-            if (grabbable != null)
-            {
-                // Mark as player-owned instance to prevent authority transfer attempts
-                grabbable.SetInstanceMode(true, player);
-            }
+        private IEnumerator DelayedInstanceConfiguration(NetworkObject instance, PlayerRef player, int instanceIndex)
+        {
+            yield return new WaitForSeconds(0.1f); // Wait for spawn to complete
 
-            // Configure any U3DThrowable components
-            var throwable = instance.GetComponent<U3DThrowable>();
-            if (throwable != null)
+            if (instance != null)
             {
-                // Update spawn position to instance position for proper reset behavior
-                throwable.UpdateSpawnPosition(instance.transform.position, instance.transform.rotation);
+                var grabbable = instance.GetComponent<U3DGrabbable>();
+                if (grabbable != null)
+                {
+                    grabbable.SetInstanceMode(true, player);
+                    Debug.Log($"✅ Configured instance '{instance.name}' for player {player}");
+                }
+
+                // Configure throwable if present
+                var throwable = instance.GetComponent<U3DThrowable>();
+                if (throwable != null)
+                {
+                    throwable.UpdateSpawnPosition(instance.transform.position, instance.transform.rotation);
+                }
             }
         }
 

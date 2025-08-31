@@ -1,4 +1,5 @@
 ﻿using Fusion;
+using Fusion.Addons.Physics;
 using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
@@ -467,30 +468,9 @@ namespace U3D.Networking
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;
 
-                // PHYSICS FIX: Add RunnerSimulatePhysics3D for proper Fusion 2 physics networking
-                var physicsSimulatorType = System.Type.GetType("Fusion.RunnerSimulatePhysics3D, Fusion.Addons.Physics");
-                if (physicsSimulatorType != null)
-                {
-                    var physicsComponent = runnerObject.AddComponent(physicsSimulatorType);
-
-                    // CRITICAL: Configure physics simulation mode for shared authority
-                    // In Shared Mode, clients need physics simulation enabled for proper interaction
-                    var simulationModeProperty = physicsSimulatorType.GetProperty("ClientPhysicsSimulation");
-                    if (simulationModeProperty != null)
-                    {
-                        // Enable client physics simulation for shared mode - this allows all clients to interact with physics
-                        simulationModeProperty.SetValue(physicsComponent, 1); // 1 = Enable simulation
-                        Debug.Log("✅ Enabled client physics simulation for shared mode multiplayer");
-                    }
-
-                    Debug.Log("✅ Added RunnerSimulatePhysics3D to NetworkRunner for physics synchronization");
-                }
-                else
-                {
-                    Debug.LogError("❌ RunnerSimulatePhysics3D not found - Fusion Physics Addon is not properly installed");
-                    Debug.LogError("❌ Download and import the Physics Addon from: https://doc.photonengine.com/fusion/current/addons/physics/download");
-                    Debug.LogError("❌ Without this addon, physics objects will not sync properly in multiplayer");
-                }
+                var physicsSimulator = runnerObject.AddComponent<RunnerSimulatePhysics3D>();
+                physicsSimulator.ClientPhysicsSimulation = ClientPhysicsSimulation.SimulateAlways;
+                Debug.Log("✅ Added RunnerSimulatePhysics3D with SimulateAlways for shared mode");
 
                 // Register this component as callback handler
                 _runner.AddCallbacks(this);

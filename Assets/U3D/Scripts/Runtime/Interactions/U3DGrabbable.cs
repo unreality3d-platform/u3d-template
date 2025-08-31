@@ -202,13 +202,15 @@ namespace U3D
                 return;
             }
 
+            Debug.Log($"U3DGrabbable '{name}': InputAuthority={Object.InputAuthority}, LocalPlayer={Runner?.LocalPlayer}");
+
             // Check if this object was spawned with a specific player as authority (instance mode)
             if (Object.InputAuthority != PlayerRef.None)
             {
                 isInstanceMode = true;
                 instanceOwner = Object.InputAuthority;
-                canLocalPlayerInteract = (Runner.LocalPlayer == instanceOwner);
-                Debug.Log($"U3DGrabbable '{name}': Instance mode - owned by player {instanceOwner}");
+                canLocalPlayerInteract = (Runner != null && Runner.LocalPlayer == instanceOwner);
+                Debug.Log($"U3DGrabbable '{name}': Instance mode - owner: {instanceOwner}, can interact: {canLocalPlayerInteract}");
             }
             else
             {
