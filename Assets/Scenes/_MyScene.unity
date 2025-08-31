@@ -2792,6 +2792,7 @@ GameObject:
   - component: {fileID: 934474719}
   - component: {fileID: 934474722}
   - component: {fileID: 934474721}
+  - component: {fileID: 934474728}
   - component: {fileID: 934474727}
   - component: {fileID: 934474726}
   - component: {fileID: 934474725}
@@ -2884,9 +2885,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fc3500da3d5d83f46a3b0ac942babcd1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  throwForce: 20
+  throwForce: 10
   upwardThrowBoost: 2
-  maxThrowVelocity: 50
+  maxThrowVelocity: 20
   minThrowVelocity: 1
   OnThrown:
     m_PersistentCalls:
@@ -2906,6 +2907,12 @@ MonoBehaviour:
   worldBoundsFloor: -50
   worldBoundsRadius: 1000
   boundsCheckInterval: 1
+  _NetworkHasBeenThrown: 0
+  _NetworkIsPhysicsActive: 0
+  _NetworkPosition: {x: 0, y: 0, z: 0}
+  _NetworkRotation: {x: 0, y: 0, z: 0, w: 0}
+  _NetworkVelocity: {x: 0, y: 0, z: 0}
+  _NetworkAngularVelocity: {x: 0, y: 0, z: 0}
 --- !u!54 &934474724
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2948,9 +2955,9 @@ MonoBehaviour:
   grabDetectionRadius: 1
   useRadiusDetection: 1
   minGrabDistance: 0
-  maxGrabDistance: 20
+  maxGrabDistance: 2
   handBoneName: RightHand
-  grabOffset: {x: 0, y: 0.5, z: 0}
+  grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
   OnGrabbed:
     m_PersistentCalls:
@@ -2986,18 +2993,38 @@ MonoBehaviour:
   m_GameObject: {fileID: 934474718}
   m_Enabled: 1
   m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8258c9cfcc04b648965038e9ecb5faa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableInstancing: 1
+  instancePrefab: {fileID: 0}
+  instanceSpacing: {x: 1.5, y: 0, z: 0}
+  maxInstances: 10
+  cleanupOnPlayerLeave: 1
+  showInstancePositions: 1
+  _ActiveInstanceCount: 0
+--- !u!114 &934474727
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SortKey: 3182252643
+  SortKey: 2671718466
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
+  - {fileID: 934474726}
   - {fileID: 934474725}
   - {fileID: 934474723}
   ForceRemoteRenderTimeframe: 0
---- !u!65 &934474727
+--- !u!65 &934474728
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -4517,6 +4544,7 @@ GameObject:
   - component: {fileID: 1246158079}
   - component: {fileID: 1246158078}
   - component: {fileID: 1246158077}
+  - component: {fileID: 1246158083}
   - component: {fileID: 1246158082}
   - component: {fileID: 1246158081}
   - component: {fileID: 1246158080}
@@ -4648,17 +4676,37 @@ MonoBehaviour:
   m_GameObject: {fileID: 1246158075}
   m_Enabled: 1
   m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8258c9cfcc04b648965038e9ecb5faa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableInstancing: 1
+  instancePrefab: {fileID: 0}
+  instanceSpacing: {x: 1.5, y: 0, z: 0}
+  maxInstances: 10
+  cleanupOnPlayerLeave: 1
+  showInstancePositions: 1
+  _ActiveInstanceCount: 0
+--- !u!114 &1246158082
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SortKey: 2810127569
+  SortKey: 2299593392
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
+  - {fileID: 1246158081}
   - {fileID: 1246158080}
   ForceRemoteRenderTimeframe: 0
---- !u!65 &1246158082
+--- !u!65 &1246158083
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
