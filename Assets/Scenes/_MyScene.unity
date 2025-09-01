@@ -2792,12 +2792,12 @@ GameObject:
   - component: {fileID: 934474719}
   - component: {fileID: 934474722}
   - component: {fileID: 934474721}
-  - component: {fileID: 934474728}
   - component: {fileID: 934474727}
   - component: {fileID: 934474726}
   - component: {fileID: 934474725}
-  - component: {fileID: 934474724}
-  - component: {fileID: 934474723}
+  - component: {fileID: 934474730}
+  - component: {fileID: 934474729}
+  - component: {fileID: 934474728}
   m_Layer: 0
   m_Name: Green Cube
   m_TagString: Untagged
@@ -2873,73 +2873,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 934474718}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!114 &934474723
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fc3500da3d5d83f46a3b0ac942babcd1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  throwForce: 10
-  upwardThrowBoost: 2
-  maxThrowVelocity: 20
-  minThrowVelocity: 1
-  OnThrown:
-    m_PersistentCalls:
-      m_Calls: []
-  OnImpact:
-    m_PersistentCalls:
-      m_Calls: []
-  OnSleep:
-    m_PersistentCalls:
-      m_Calls: []
-  OnWorldBoundsReset:
-    m_PersistentCalls:
-      m_Calls: []
-  sleepCheckDelay: 2
-  sleepVelocityThreshold: 0.5
-  maxActiveTime: 10
-  worldBoundsFloor: -50
-  worldBoundsRadius: 1000
-  boundsCheckInterval: 1
-  _NetworkHasBeenThrown: 0
-  _NetworkIsPhysicsActive: 0
-  _NetworkPosition: {x: 0, y: 0, z: 0}
-  _NetworkRotation: {x: 0, y: 0, z: 0, w: 0}
-  _NetworkVelocity: {x: 0, y: 0, z: 0}
-  _NetworkAngularVelocity: {x: 0, y: 0, z: 0}
---- !u!54 &934474724
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  serializedVersion: 5
-  m_Mass: 1
-  m_LinearDamping: 0
-  m_AngularDamping: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 0
-  m_IsKinematic: 1
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!114 &934474725
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2955,7 +2888,7 @@ MonoBehaviour:
   grabDetectionRadius: 1
   useRadiusDetection: 1
   minGrabDistance: 0
-  maxGrabDistance: 2
+  maxGrabDistance: 20
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
@@ -2993,38 +2926,19 @@ MonoBehaviour:
   m_GameObject: {fileID: 934474718}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e8258c9cfcc04b648965038e9ecb5faa, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  enableInstancing: 1
-  instancePrefab: {fileID: 0}
-  instanceSpacing: {x: 1.5, y: 0, z: 0}
-  maxInstances: 10
-  cleanupOnPlayerLeave: 1
-  showInstancePositions: 1
-  _ActiveInstanceCount: 0
---- !u!114 &934474727
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SortKey: 2671718466
+  SortKey: 3182252643
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
-  - {fileID: 934474726}
   - {fileID: 934474725}
-  - {fileID: 934474723}
+  - {fileID: 934474729}
+  - {fileID: 934474728}
   ForceRemoteRenderTimeframe: 0
---- !u!65 &934474728
+--- !u!65 &934474727
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3045,6 +2959,90 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &934474728
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fc3500da3d5d83f46a3b0ac942babcd1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  throwForce: 10
+  upwardThrowBoost: 2
+  maxThrowVelocity: 20
+  minThrowVelocity: 1
+  OnThrown:
+    m_PersistentCalls:
+      m_Calls: []
+  OnImpact:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSleep:
+    m_PersistentCalls:
+      m_Calls: []
+  OnWorldBoundsReset:
+    m_PersistentCalls:
+      m_Calls: []
+  sleepCheckDelay: 2
+  sleepVelocityThreshold: 0.5
+  maxActiveTime: 10
+  worldBoundsFloor: -50
+  worldBoundsRadius: 1000
+  boundsCheckInterval: 1
+--- !u!114 &934474729
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a591d221a634417e9827eb58e17de84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 1
+  _interpolationTarget: {fileID: 0}
+  UsePreciseRotation: 0
+  UseRenderSleepThresholds: 1
+  RenderThresholds:
+    UseEnergy: 1
+    Position: 0.01
+    Rotation: 0.01
+    Scale: 0.01
+--- !u!54 &934474730
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1 &953970226
 GameObject:
   m_ObjectHideFlags: 0
@@ -4544,7 +4542,6 @@ GameObject:
   - component: {fileID: 1246158079}
   - component: {fileID: 1246158078}
   - component: {fileID: 1246158077}
-  - component: {fileID: 1246158083}
   - component: {fileID: 1246158082}
   - component: {fileID: 1246158081}
   - component: {fileID: 1246158080}
@@ -4638,7 +4635,7 @@ MonoBehaviour:
   grabDetectionRadius: 1
   useRadiusDetection: 1
   minGrabDistance: 0
-  maxGrabDistance: 2
+  maxGrabDistance: 20
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
@@ -4676,37 +4673,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 1246158075}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e8258c9cfcc04b648965038e9ecb5faa, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  enableInstancing: 1
-  instancePrefab: {fileID: 0}
-  instanceSpacing: {x: 1.5, y: 0, z: 0}
-  maxInstances: 10
-  cleanupOnPlayerLeave: 1
-  showInstancePositions: 1
-  _ActiveInstanceCount: 0
---- !u!114 &1246158082
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1246158075}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SortKey: 2299593392
+  SortKey: 2810127569
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
-  - {fileID: 1246158081}
   - {fileID: 1246158080}
   ForceRemoteRenderTimeframe: 0
---- !u!65 &1246158083
+--- !u!65 &1246158082
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

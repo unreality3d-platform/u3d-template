@@ -27,7 +27,7 @@ namespace U3D.UI
 
         void FindPlayerController()
         {
-            U3DPlayerController[] controllers = FindObjectsOfType<U3DPlayerController>();
+            U3DPlayerController[] controllers = Object.FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
 
             foreach (var controller in controllers)
             {

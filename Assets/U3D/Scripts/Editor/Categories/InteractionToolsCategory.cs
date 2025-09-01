@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using Fusion;
+using Fusion.Addons.Physics;
 
 namespace U3D.Editor
 {
@@ -17,10 +18,6 @@ namespace U3D.Editor
         private static bool addNetworkObjectToEnterTrigger = true;
         private static bool addNetworkObjectToExitTrigger = true;
         private static bool addNetworkObjectToParentTrigger = true;
-
-        // NEW: Instance mode preferences
-        private static bool enableInstanceModeForGrabbable = true;
-        private static bool enableInstanceModeForThrowable = true;
 
         public InteractionToolsCategory()
         {
@@ -53,10 +50,6 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("Interaction Tools", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Add interactive behaviors to your objects. Select an object first, then click Apply.", MessageType.Info);
-
-            // NEW: Instance mode explanation
-            EditorGUILayout.Space(5);
-            EditorGUILayout.HelpBox("Instance Mode: Each visitor gets their own copy for collaborative experiences.\nShared Mode: Single object with authority transfer for competitive interactions.", MessageType.Info);
             EditorGUILayout.Space(10);
 
             // Update the description for Make Throwable based on selection
@@ -73,18 +66,11 @@ namespace U3D.Editor
             // Draw the main tool UI
             ProjectToolsTab.DrawCategoryTool(tool);
 
-            // Add networking and instance options for tools that support them
+            // Add networking checkbox for tools that support networking
             if (tool.title == "🟢 Make Grabbable")
             {
                 EditorGUI.indentLevel++;
                 addNetworkObjectToGrabbable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToGrabbable);
-                if (addNetworkObjectToGrabbable)
-                {
-                    enableInstanceModeForGrabbable = EditorGUILayout.Toggle("Enable Instance Mode", enableInstanceModeForGrabbable);
-                    EditorGUILayout.HelpBox(enableInstanceModeForGrabbable ?
-                        "Each visitor gets their own grabbable copy" :
-                        "Single shared object with authority transfer", MessageType.None);
-                }
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space(5);
             }
@@ -92,13 +78,6 @@ namespace U3D.Editor
             {
                 EditorGUI.indentLevel++;
                 addNetworkObjectToThrowable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToThrowable);
-                if (addNetworkObjectToThrowable)
-                {
-                    enableInstanceModeForThrowable = EditorGUILayout.Toggle("Enable Instance Mode", enableInstanceModeForThrowable);
-                    EditorGUILayout.HelpBox(enableInstanceModeForThrowable ?
-                        "Each visitor gets their own throwable copy" :
-                        "Single shared object with authority transfer", MessageType.None);
-                }
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space(5);
             }
@@ -172,33 +151,8 @@ namespace U3D.Editor
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-
-                // Configure NetworkObject for the selected mode
-                if (enableInstanceModeForGrabbable)
-                {
-                    // Instance mode: Allow State Authority Override = false (each player owns their instance)
-                    // Set via reflection since these properties might not be directly accessible
-                    SetNetworkObjectForInstanceMode(networkObject);
-                    Debug.Log($"✅ Added NetworkObject to '{selected.name}' configured for Instance Mode");
-                }
-                else
-                {
-                    // Shared mode: Allow State Authority Override = true (authority can transfer)
-                    SetNetworkObjectForSharedMode(networkObject);
-                    Debug.Log($"✅ Added NetworkObject to '{selected.name}' configured for Shared Mode");
-                }
-            }
-
-            // Add Instance Manager if instance mode is enabled
-            if (addNetworkObjectToGrabbable && enableInstanceModeForGrabbable)
-            {
-                if (!selected.GetComponent<U3D.Networking.U3DInstanceManager>())
-                {
-                    var instanceManager = selected.AddComponent<U3D.Networking.U3DInstanceManager>();
-                    // The Instance Manager will handle creating per-player copies
-                    Debug.Log($"✅ Added Instance Manager to '{selected.name}' for per-player instancing");
-                }
+                selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
             // Add grabbable component
@@ -237,19 +191,8 @@ namespace U3D.Editor
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-
-                // Configure NetworkObject for the selected mode
-                if (enableInstanceModeForThrowable)
-                {
-                    SetNetworkObjectForInstanceMode(networkObject);
-                    Debug.Log($"✅ Added NetworkObject to '{selected.name}' configured for Instance Mode");
-                }
-                else
-                {
-                    SetNetworkObjectForSharedMode(networkObject);
-                    Debug.Log($"✅ Added NetworkObject to '{selected.name}' configured for Shared Mode");
-                }
+                selected.AddComponent<NetworkObject>();
+                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
             // Add Rigidbody (required for throwable physics) - set to sleep initially
@@ -262,34 +205,47 @@ namespace U3D.Editor
                 Debug.Log($"✅ Added sleeping Rigidbody to '{selected.name}'");
             }
 
-            // CORRECTED: Add NetworkRigidbody3D for proper Fusion 2 physics networking
+            // Add NetworkRigidbody3D for proper Fusion 2 physics networking
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
-                // Try to find and add NetworkRigidbody3D from Physics Addon
-                var networkRigidbody3DType = System.Type.GetType("Fusion.NetworkRigidbody3D, Fusion.Addons.Physics");
-                if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
+                try
                 {
-                    selected.AddComponent(networkRigidbody3DType);
-                    Debug.Log($"✅ Added NetworkRigidbody3D to '{selected.name}' for physics networking");
-                }
-                else if (networkRigidbody3DType == null)
-                {
-                    Debug.LogWarning("NetworkRigidbody3D type not found - ensure Fusion Physics Addon is installed");
-                    Debug.LogWarning("Physics will sync via [Networked] properties in U3DThrowable instead");
-                }
-                else
-                {
-                    Debug.Log($"NetworkRigidbody3D already present on '{selected.name}'");
-                }
-            }
+                    // --- Preferred: direct reference if type is available ---
+#if FUSION_ADDONS_PHYSICS
+        if (!selected.GetComponent<NetworkRigidbody3D>())
+        {
+            selected.AddComponent<NetworkRigidbody3D>();
+            Debug.Log($"✅ Added NetworkRigidbody3D to '{selected.name}' for physics networking");
+        }
+        else
+        {
+            Debug.Log($"NetworkRigidbody3D already present on '{selected.name}'");
+        }
+#else
+                    // --- Fallback: reflection in case addon not installed ---
+                    var networkRigidbody3DType = System.Type.GetType(
+                        "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
+                    );
 
-            // Add Instance Manager if instance mode is enabled
-            if (addNetworkObjectToThrowable && enableInstanceModeForThrowable)
-            {
-                if (!selected.GetComponent<U3D.Networking.U3DInstanceManager>())
+                    if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
+                    {
+                        selected.AddComponent(networkRigidbody3DType);
+                        Debug.Log($"✅ Added NetworkRigidbody3D (via reflection) to '{selected.name}'");
+                    }
+                    else if (networkRigidbody3DType == null)
+                    {
+                        Debug.LogWarning("⚠️ NetworkRigidbody3D type not found - Fusion Physics Addon not installed?");
+                        Debug.LogWarning("Physics will sync via [Networked] properties in U3DThrowable instead");
+                    }
+                    else
+                    {
+                        Debug.Log($"NetworkRigidbody3D already present on '{selected.name}' (reflection path)");
+                    }
+#endif
+                }
+                catch (System.Exception ex)
                 {
-                    var instanceManager = selected.AddComponent<U3D.Networking.U3DInstanceManager>();
-                    Debug.Log($"✅ Added Instance Manager to '{selected.name}' for per-player instancing");
+                    Debug.LogError($"❌ Error adding NetworkRigidbody3D: {ex.Message}");
                 }
             }
 
@@ -328,8 +284,7 @@ namespace U3D.Editor
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                SetNetworkObjectForSharedMode(networkObject); // Triggers typically use shared mode
+                selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
@@ -368,8 +323,7 @@ namespace U3D.Editor
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                SetNetworkObjectForSharedMode(networkObject); // Triggers typically use shared mode
+                selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
@@ -408,8 +362,7 @@ namespace U3D.Editor
             // Add NetworkObject if requested and not already present
             if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                SetNetworkObjectForSharedMode(networkObject); // Parent triggers typically use shared mode
+                selected.AddComponent<NetworkObject>();
                 Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
             }
 
@@ -426,64 +379,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-        }
-
-        // Helper methods to configure NetworkObject for different modes
-        private static void SetNetworkObjectForInstanceMode(NetworkObject networkObject)
-        {
-            // Instance mode: Each player owns their own copy, no authority transfer needed
-            // Use reflection to set properties that may not be publicly accessible
-            try
-            {
-                var allowStateAuthorityOverrideField = networkObject.GetType().GetField("_allowStateAuthorityOverride",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (allowStateAuthorityOverrideField != null)
-                {
-                    allowStateAuthorityOverrideField.SetValue(networkObject, false);
-                }
-
-                var destroyWhenStateAuthorityLeavesField = networkObject.GetType().GetField("_destroyWhenStateAuthorityLeaves",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (destroyWhenStateAuthorityLeavesField != null)
-                {
-                    destroyWhenStateAuthorityLeavesField.SetValue(networkObject, true); // Instance should be destroyed when owner leaves
-                }
-
-                Debug.Log("Configured NetworkObject for Instance Mode");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"Could not configure NetworkObject properties via reflection: {e.Message}");
-                Debug.LogWarning("You may need to manually configure NetworkObject settings in the Inspector");
-            }
-        }
-
-        private static void SetNetworkObjectForSharedMode(NetworkObject networkObject)
-        {
-            // Shared mode: Allow authority transfer between players
-            try
-            {
-                var allowStateAuthorityOverrideField = networkObject.GetType().GetField("_allowStateAuthorityOverride",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (allowStateAuthorityOverrideField != null)
-                {
-                    allowStateAuthorityOverrideField.SetValue(networkObject, true);
-                }
-
-                var destroyWhenStateAuthorityLeavesField = networkObject.GetType().GetField("_destroyWhenStateAuthorityLeaves",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (destroyWhenStateAuthorityLeavesField != null)
-                {
-                    destroyWhenStateAuthorityLeavesField.SetValue(networkObject, false); // Shared object should persist when authority leaves
-                }
-
-                Debug.Log("Configured NetworkObject for Shared Mode");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"Could not configure NetworkObject properties via reflection: {e.Message}");
-                Debug.LogWarning("You may need to manually configure NetworkObject settings in the Inspector");
-            }
         }
     }
 }

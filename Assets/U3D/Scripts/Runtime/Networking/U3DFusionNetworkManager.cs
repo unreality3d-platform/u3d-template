@@ -590,12 +590,6 @@ namespace U3D.Networking
                 StartCoroutine(DelayedSpawn(runner, player));
             }
 
-            // Trigger instance creation for all instance managers
-            if (runner.IsServer || runner.GameMode == GameMode.Shared)
-            {
-                U3D.Networking.U3DInstanceManager.HandlePlayerJoined(player);
-            }
-
             if (player == runner.LocalPlayer)
             {
                 UpdateStatus($"Joined multiplayer session: {_currentSessionName}");
@@ -663,9 +657,6 @@ namespace U3D.Networking
             Debug.Log($"Player left: {player}");
 
             U3D.Networking.U3DPlayerNametag.RemovePlayer(player);
-
-            // Cleanup instances for leaving player
-            U3D.Networking.U3DInstanceManager.HandlePlayerLeft(player);
 
             if (_spawnedPlayers.TryGetValue(player, out NetworkObject playerObject))
             {
