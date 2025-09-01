@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.Events;
 using Fusion;
+using Fusion.Addons.Physics;
 using System.Collections;
 
 namespace U3D
@@ -11,6 +12,8 @@ namespace U3D
     /// Throws objects in the direction the player camera is facing
     /// Manages Rigidbody physics activation and auto-sleep
     /// ENHANCED: Includes world bounds safety and proper grab-throw cycling
+    /// MULTIPLAYER: Compatible with NetworkRigidbody3D for Fusion 2 physics sync
+    /// PHYSICS: Proper state management that doesn't conflict with NetworkRigidbody3D
     /// SIMPLIFIED INSPECTOR: Complex physics and bounds settings hidden from creators
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
@@ -74,23 +77,36 @@ namespace U3D
         private Camera playerCamera;
         private Transform playerTransform;
         private NetworkObject networkObject;
+        private NetworkRigidbody3D networkRigidbody;
 
         // State tracking
         private bool hasBeenThrown = false;
         private bool isNetworked = false;
-        private bool isPhysicsActive = false;
         private Coroutine sleepCheckCoroutine;
         private Coroutine boundsCheckCoroutine;
+
+        // Physics state management
+        private PhysicsState currentPhysicsState = PhysicsState.Sleeping;
+        private bool physicsStateInitialized = false;
 
         // Original position and rotation for reset purposes
         private Vector3 originalPosition;
         private Quaternion originalRotation;
         private bool hasRecordedOriginalTransform = false;
 
+        public enum PhysicsState
+        {
+            Sleeping,      // Kinematic, no gravity - grabbable state
+            Grabbed,       // Kinematic, no gravity - held in hand
+            Active,        // Non-kinematic, gravity - physics simulation
+            Resetting      // Temporarily kinematic while resetting position
+        }
+
         private void Awake()
         {
             rb = GetComponent<Rigidbody>();
             grabbable = GetComponent<U3DGrabbable>();
+            networkRigidbody = GetComponent<NetworkRigidbody3D>();
 
             // Check if this object has networking support
             networkObject = GetComponent<NetworkObject>();
@@ -108,13 +124,18 @@ namespace U3D
             grabbable.OnReleased.AddListener(OnObjectReleased);
             grabbable.OnGrabbed.AddListener(OnObjectGrabbed);
 
-            // Ensure rigidbody starts in sleep state
-            SetPhysicsSleeping();
-
             if (!isNetworked)
             {
                 Debug.Log($"U3DThrowable on '{name}' running in non-networked mode");
             }
+        }
+
+        public override void Spawned()
+        {
+            if (!isNetworked) return;
+
+            // Initialize physics state after network spawn
+            InitializePhysicsState();
         }
 
         private void Start()
@@ -125,8 +146,94 @@ namespace U3D
             // Record original spawn position for reset purposes
             RecordOriginalTransform();
 
+            // Initialize physics state for non-networked objects
+            if (!isNetworked)
+            {
+                InitializePhysicsState();
+            }
+
             // Start world bounds monitoring
             StartBoundsMonitoring();
+        }
+
+        private void InitializePhysicsState()
+        {
+            if (physicsStateInitialized) return;
+
+            // Start in sleeping state (grabbable and ready)
+            SetPhysicsState(PhysicsState.Sleeping);
+            physicsStateInitialized = true;
+        }
+
+        public void OnStateAuthorityChanged()
+        {
+            if (!isNetworked) return;
+
+            // When authority changes, ensure physics state is appropriate
+            if (Object.HasStateAuthority)
+            {
+                // We gained authority - maintain current state
+                ApplyCurrentPhysicsState();
+            }
+            else
+            {
+                // We lost authority - NetworkRigidbody3D will handle remote sync
+                // Don't modify physics directly on non-authority clients
+            }
+        }
+
+        private void SetPhysicsState(PhysicsState newState)
+        {
+            // Only allow state changes on authority (or non-networked)
+            if (isNetworked && !Object.HasStateAuthority && newState != PhysicsState.Sleeping)
+            {
+                return;
+            }
+
+            currentPhysicsState = newState;
+            ApplyCurrentPhysicsState();
+        }
+
+        private void ApplyCurrentPhysicsState()
+        {
+            // Only apply physics changes on authority (or non-networked)
+            if (isNetworked && !Object.HasStateAuthority)
+            {
+                return;
+            }
+
+            if (rb == null) return;
+
+            switch (currentPhysicsState)
+            {
+                case PhysicsState.Sleeping:
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    break;
+
+                case PhysicsState.Grabbed:
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    break;
+
+                case PhysicsState.Active:
+                    rb.isKinematic = false;
+                    rb.useGravity = true;
+                    break;
+
+                case PhysicsState.Resetting:
+                    rb.isKinematic = true;
+                    rb.useGravity = false;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    break;
+            }
+
+            // NetworkRigidbody3D will automatically sync these changes to non-authority clients
         }
 
         private void RecordOriginalTransform()
@@ -136,7 +243,6 @@ namespace U3D
                 originalPosition = transform.position;
                 originalRotation = transform.rotation;
                 hasRecordedOriginalTransform = true;
-                Debug.Log($"U3DThrowable: Recorded spawn transform for '{name}' at {originalPosition}");
             }
         }
 
@@ -145,30 +251,6 @@ namespace U3D
             if (boundsCheckCoroutine == null)
             {
                 boundsCheckCoroutine = StartCoroutine(MonitorWorldBounds());
-            }
-        }
-
-        private void SetPhysicsSleeping()
-        {
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-                isPhysicsActive = false;
-                Debug.Log($"Physics put to sleep on '{name}'");
-            }
-        }
-
-        private void ActivatePhysics()
-        {
-            if (rb != null && !isPhysicsActive)
-            {
-                rb.isKinematic = false;
-                rb.useGravity = true;
-                isPhysicsActive = true;
-                Debug.Log($"Physics activated on '{name}'");
             }
         }
 
@@ -199,16 +281,14 @@ namespace U3D
                 sleepCheckCoroutine = null;
             }
 
-            // Put physics to sleep while grabbed - this ensures stable hand attachment
-            SetPhysicsSleeping();
+            // Set to grabbed state - ensures stable hand attachment
+            SetPhysicsState(PhysicsState.Grabbed);
 
             // Ensure we have player references
             if (playerCamera == null || playerTransform == null)
             {
                 FindPlayerComponents();
             }
-
-            Debug.Log($"U3DThrowable: Object '{name}' grabbed - physics sleeping, ready for throw");
         }
 
         private void OnObjectReleased()
@@ -220,11 +300,12 @@ namespace U3D
             if (playerCamera == null)
             {
                 Debug.LogWarning("U3DThrowable: No player camera found - cannot determine throw direction");
+                SetPhysicsState(PhysicsState.Sleeping);
                 return;
             }
 
             // Activate physics for throwing
-            ActivatePhysics();
+            SetPhysicsState(PhysicsState.Active);
 
             // Calculate throw direction based on camera forward
             Vector3 throwDirection = playerCamera.transform.forward;
@@ -242,7 +323,7 @@ namespace U3D
                 throwVelocity = throwVelocity.normalized * maxThrowVelocity;
             }
 
-            // Apply velocity to rigidbody
+            // Apply velocity
             rb.linearVelocity = throwVelocity;
 
             // Mark as thrown if velocity is significant
@@ -257,14 +338,11 @@ namespace U3D
                     StopCoroutine(sleepCheckCoroutine);
                 }
                 sleepCheckCoroutine = StartCoroutine(CheckForSleep());
-
-                Debug.Log($"Object thrown with velocity: {throwVelocity.magnitude:F2} in direction: {throwDirection}");
             }
             else
             {
                 // If throw velocity too low, just put back to sleep immediately
-                SetPhysicsSleeping();
-                Debug.Log($"U3DThrowable: Throw velocity too low ({throwVelocity.magnitude:F2}), returning to sleep");
+                SetPhysicsState(PhysicsState.Sleeping);
             }
         }
 
@@ -280,17 +358,20 @@ namespace U3D
                 // Skip checks if object has been grabbed again
                 if (grabbable != null && grabbable.IsGrabbed)
                 {
-                    Debug.Log($"U3DThrowable: Object '{name}' was re-grabbed during sleep check - stopping monitoring");
                     yield break;
                 }
 
-                // Check if velocity is low enough to sleep
-                if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
-                    rb.angularVelocity.magnitude < sleepVelocityThreshold)
+                // Only check sleep on authority (or non-networked)
+                if (!isNetworked || (Object != null && Object.HasStateAuthority))
                 {
-                    // Object has come to rest - put to sleep and ensure grabbable
-                    ReturnToGrabbableSleepState();
-                    yield break;
+                    // Check if velocity is low enough to sleep
+                    if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
+                        rb.angularVelocity.magnitude < sleepVelocityThreshold)
+                    {
+                        // Object has come to rest - return to grabbable sleep state
+                        ReturnToGrabbableSleepState();
+                        yield break;
+                    }
                 }
 
                 // Wait before next check
@@ -308,11 +389,9 @@ namespace U3D
         /// </summary>
         private void ReturnToGrabbableSleepState()
         {
-            SetPhysicsSleeping();
+            SetPhysicsState(PhysicsState.Sleeping);
             hasBeenThrown = false;
             OnSleep?.Invoke();
-
-            Debug.Log($"U3DThrowable: Object '{name}' returned to grabbable sleep state - ready for next grab/throw cycle");
         }
 
         private IEnumerator MonitorWorldBounds()
@@ -323,6 +402,12 @@ namespace U3D
 
                 // Skip bounds check if object is currently being grabbed
                 if (grabbable != null && grabbable.IsGrabbed)
+                {
+                    continue;
+                }
+
+                // Only check bounds on authority (or non-networked)
+                if (isNetworked && (Object == null || !Object.HasStateAuthority))
                 {
                     continue;
                 }
@@ -360,15 +445,18 @@ namespace U3D
                 sleepCheckCoroutine = null;
             }
 
+            // Set to resetting state to prevent physics interference
+            SetPhysicsState(PhysicsState.Resetting);
+
             // Reset position and rotation to spawn point
             transform.position = originalPosition;
             transform.rotation = originalRotation;
 
             // Return to grabbable sleep state
-            ReturnToGrabbableSleepState();
+            SetPhysicsState(PhysicsState.Sleeping);
+            hasBeenThrown = false;
 
             OnWorldBoundsReset?.Invoke();
-            Debug.Log($"U3DThrowable: Reset '{name}' to spawn position {originalPosition} - ready for interaction");
         }
 
         private void OnCollisionEnter(Collision collision)
@@ -377,7 +465,6 @@ namespace U3D
             if (hasBeenThrown && collision.relativeVelocity.magnitude > 2f)
             {
                 OnImpact?.Invoke();
-                Debug.Log($"Thrown object impacted with force: {collision.relativeVelocity.magnitude:F2}");
             }
         }
 
@@ -394,7 +481,7 @@ namespace U3D
             }
 
             // Activate physics
-            ActivatePhysics();
+            SetPhysicsState(PhysicsState.Active);
 
             // Apply throw force
             Vector3 throwVelocity = direction.normalized * force;
@@ -415,8 +502,6 @@ namespace U3D
                 StopCoroutine(sleepCheckCoroutine);
             }
             sleepCheckCoroutine = StartCoroutine(CheckForSleep());
-
-            Debug.Log($"Object manually thrown with velocity: {throwVelocity.magnitude:F2}");
         }
 
         // Public method to throw in camera direction with custom force
@@ -458,8 +543,7 @@ namespace U3D
             // Only activate physics if not currently grabbed
             if (grabbable == null || !grabbable.IsGrabbed)
             {
-                ActivatePhysics();
-                Debug.Log($"U3DThrowable: Manually woke up '{name}'");
+                SetPhysicsState(PhysicsState.Active);
             }
         }
 
@@ -474,16 +558,16 @@ namespace U3D
         {
             originalPosition = newPosition;
             originalRotation = newRotation;
-            Debug.Log($"U3DThrowable: Updated spawn position for '{name}' to {originalPosition}");
         }
 
         // Public properties for inspection
         public bool HasBeenThrown => hasBeenThrown;
         public bool IsCurrentlyGrabbed => grabbable != null && grabbable.IsGrabbed;
         public bool IsNetworked => isNetworked;
-        public bool IsPhysicsActive => isPhysicsActive;
+        public PhysicsState CurrentPhysicsState => currentPhysicsState;
         public Vector3 OriginalPosition => originalPosition;
         public Quaternion OriginalRotation => originalRotation;
+        public bool HasNetworkRigidbody => networkRigidbody != null;
 
         private void OnDestroy()
         {
@@ -535,20 +619,12 @@ namespace U3D
             }
         }
 
-        // Override NetworkBehaviour methods for non-networked compatibility
-        public override void Spawned()
-        {
-            if (!isNetworked) return;
-            // Ensure physics starts sleeping on spawn
-            SetPhysicsSleeping();
-        }
-
         // Debug information for development
         [System.Serializable]
         public struct ThrowableDebugInfo
         {
             public bool hasBeenThrown;
-            public bool isPhysicsActive;
+            public PhysicsState currentPhysicsState;
             public bool isCurrentlyGrabbed;
             public bool isSleepCheckActive;
             public bool isBoundsCheckActive;
@@ -556,6 +632,10 @@ namespace U3D
             public Vector3 spawnPosition;
             public float currentVelocity;
             public float distanceFromSpawn;
+            public bool hasAuthority;
+            public bool hasNetworkRigidbody;
+            public bool rigidbodyIsKinematic;
+            public bool physicsStateInitialized;
         }
 
         public ThrowableDebugInfo GetDebugInfo()
@@ -563,14 +643,18 @@ namespace U3D
             return new ThrowableDebugInfo
             {
                 hasBeenThrown = hasBeenThrown,
-                isPhysicsActive = isPhysicsActive,
+                currentPhysicsState = currentPhysicsState,
                 isCurrentlyGrabbed = IsCurrentlyGrabbed,
                 isSleepCheckActive = sleepCheckCoroutine != null,
                 isBoundsCheckActive = boundsCheckCoroutine != null,
                 currentPosition = transform.position,
                 spawnPosition = originalPosition,
                 currentVelocity = rb != null ? rb.linearVelocity.magnitude : 0f,
-                distanceFromSpawn = Vector3.Distance(transform.position, originalPosition)
+                distanceFromSpawn = Vector3.Distance(transform.position, originalPosition),
+                hasAuthority = isNetworked ? Object.HasStateAuthority : true,
+                hasNetworkRigidbody = networkRigidbody != null,
+                rigidbodyIsKinematic = rb != null ? rb.isKinematic : false,
+                physicsStateInitialized = physicsStateInitialized
             };
         }
     }

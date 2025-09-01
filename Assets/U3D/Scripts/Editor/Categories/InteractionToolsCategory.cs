@@ -133,6 +133,28 @@ namespace U3D.Editor
             }
         }
 
+        private static void ConfigureNetworkObjectForSharedAuthority(NetworkObject networkObject)
+        {
+            // Configure for WebGL Shared Authority mode
+            var so = new SerializedObject(networkObject);
+
+            // Enable Allow State Authority Override for shared authority transfer
+            var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
+            if (allowOverrideProp != null)
+            {
+                allowOverrideProp.boolValue = true;
+            }
+
+            // Disable Destroy When State Authority Leaves (objects persist when players disconnect)
+            var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
+            if (destroyOnLeaveProp != null)
+            {
+                destroyOnLeaveProp.boolValue = false;
+            }
+
+            so.ApplyModifiedProperties();
+        }
+
         private static void ApplyGrabbable()
         {
             GameObject selected = Selection.activeGameObject;
@@ -148,11 +170,11 @@ namespace U3D.Editor
                 selected.AddComponent<BoxCollider>();
             }
 
-            // Add NetworkObject if requested and not already present
+            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
             {
-                selected.AddComponent<NetworkObject>();
-                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedAuthority(networkObject);
             }
 
             // Add grabbable component
@@ -160,11 +182,6 @@ namespace U3D.Editor
             if (grabbable == null)
             {
                 grabbable = selected.AddComponent<U3DGrabbable>();
-                Debug.Log($"✅ Made '{selected.name}' grabbable");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' is already grabbable");
             }
 
             EditorUtility.SetDirty(selected);
@@ -188,11 +205,11 @@ namespace U3D.Editor
                 return;
             }
 
-            // Add NetworkObject if requested and not already present
+            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
             {
-                selected.AddComponent<NetworkObject>();
-                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedAuthority(networkObject);
             }
 
             // Add Rigidbody (required for throwable physics) - set to sleep initially
@@ -202,7 +219,6 @@ namespace U3D.Editor
                 rb.isKinematic = true; // Start kinematic/sleeping
                 rb.useGravity = false; // Don't fall until thrown
                 rb.mass = 1f;
-                Debug.Log($"✅ Added sleeping Rigidbody to '{selected.name}'");
             }
 
             // Add NetworkRigidbody3D for proper Fusion 2 physics networking
@@ -210,42 +226,28 @@ namespace U3D.Editor
             {
                 try
                 {
-                    // --- Preferred: direct reference if type is available ---
 #if FUSION_ADDONS_PHYSICS
-        if (!selected.GetComponent<NetworkRigidbody3D>())
-        {
-            selected.AddComponent<NetworkRigidbody3D>();
-            Debug.Log($"✅ Added NetworkRigidbody3D to '{selected.name}' for physics networking");
-        }
-        else
-        {
-            Debug.Log($"NetworkRigidbody3D already present on '{selected.name}'");
-        }
+                    if (!selected.GetComponent<NetworkRigidbody3D>())
+                    {
+                        var networkRigidbody = selected.AddComponent<NetworkRigidbody3D>();
+                        ConfigureNetworkRigidbody3DForGrabThrow(networkRigidbody);
+                    }
 #else
-                    // --- Fallback: reflection in case addon not installed ---
+                    // Fallback: reflection in case addon not installed
                     var networkRigidbody3DType = System.Type.GetType(
                         "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
                     );
 
                     if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
                     {
-                        selected.AddComponent(networkRigidbody3DType);
-                        Debug.Log($"✅ Added NetworkRigidbody3D (via reflection) to '{selected.name}'");
-                    }
-                    else if (networkRigidbody3DType == null)
-                    {
-                        Debug.LogWarning("⚠️ NetworkRigidbody3D type not found - Fusion Physics Addon not installed?");
-                        Debug.LogWarning("Physics will sync via [Networked] properties in U3DThrowable instead");
-                    }
-                    else
-                    {
-                        Debug.Log($"NetworkRigidbody3D already present on '{selected.name}' (reflection path)");
+                        var networkRigidbody = selected.AddComponent(networkRigidbody3DType) as Component;
+                        ConfigureNetworkRigidbody3DViaReflection(networkRigidbody);
                     }
 #endif
                 }
                 catch (System.Exception ex)
                 {
-                    Debug.LogError($"❌ Error adding NetworkRigidbody3D: {ex.Message}");
+                    Debug.LogError($"Error adding NetworkRigidbody3D: {ex.Message}");
                 }
             }
 
@@ -254,14 +256,53 @@ namespace U3D.Editor
             if (throwable == null)
             {
                 throwable = selected.AddComponent<U3DThrowable>();
-                Debug.Log($"✅ Made '{selected.name}' throwable");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' is already throwable");
             }
 
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void ConfigureNetworkRigidbody3DForGrabThrow(NetworkRigidbody3D networkRigidbody)
+        {
+            var so = new SerializedObject(networkRigidbody);
+
+            // Disable SyncParent to prevent conflicts with grab parenting
+            var syncParentProp = so.FindProperty("_syncParent");
+            if (syncParentProp != null)
+            {
+                syncParentProp.boolValue = false;
+            }
+
+            // Set sync mode for multiplayer physics
+            var syncModeProp = so.FindProperty("_syncMode");
+            if (syncModeProp != null)
+            {
+                // 0 = SyncTransform, 1 = SyncRigidbody, 2 = SyncAll
+                syncModeProp.intValue = 1; // SyncRigidbody mode for throwables
+            }
+
+            so.ApplyModifiedProperties();
+        }
+
+        private static void ConfigureNetworkRigidbody3DViaReflection(Component networkRigidbody)
+        {
+            if (networkRigidbody == null) return;
+
+            var so = new SerializedObject(networkRigidbody);
+
+            // Disable SyncParent via reflection
+            var syncParentProp = so.FindProperty("_syncParent");
+            if (syncParentProp != null)
+            {
+                syncParentProp.boolValue = false;
+            }
+
+            var syncModeProp = so.FindProperty("_syncMode");
+            if (syncModeProp != null)
+            {
+                syncModeProp.intValue = 1; // SyncRigidbody mode
+            }
+
+            so.ApplyModifiedProperties();
         }
 
         private static void ApplyEnterTrigger()
@@ -281,11 +322,11 @@ namespace U3D.Editor
             }
             collider.isTrigger = true;
 
-            // Add NetworkObject if requested and not already present
+            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
             {
-                selected.AddComponent<NetworkObject>();
-                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedAuthority(networkObject);
             }
 
             // Add enter trigger component
@@ -293,11 +334,6 @@ namespace U3D.Editor
             if (enterTrigger == null)
             {
                 enterTrigger = selected.AddComponent<U3DEnterTrigger>();
-                Debug.Log($"✅ Made '{selected.name}' an enter trigger - configure actions in Inspector");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' already has enter trigger");
             }
 
             EditorUtility.SetDirty(selected);
@@ -320,11 +356,11 @@ namespace U3D.Editor
             }
             collider.isTrigger = true;
 
-            // Add NetworkObject if requested and not already present
+            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
             {
-                selected.AddComponent<NetworkObject>();
-                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedAuthority(networkObject);
             }
 
             // Add exit trigger component
@@ -332,11 +368,6 @@ namespace U3D.Editor
             if (exitTrigger == null)
             {
                 exitTrigger = selected.AddComponent<U3DExitTrigger>();
-                Debug.Log($"✅ Made '{selected.name}' an exit trigger - configure actions in Inspector");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' already has exit trigger");
             }
 
             EditorUtility.SetDirty(selected);
@@ -359,11 +390,11 @@ namespace U3D.Editor
             }
             collider.isTrigger = true;
 
-            // Add NetworkObject if requested and not already present
+            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
             {
-                selected.AddComponent<NetworkObject>();
-                Debug.Log($"✅ Added NetworkObject to '{selected.name}' for multiplayer support");
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedAuthority(networkObject);
             }
 
             // Add parent trigger component
@@ -371,11 +402,6 @@ namespace U3D.Editor
             if (parentTrigger == null)
             {
                 parentTrigger = selected.AddComponent<U3DParentTrigger>();
-                Debug.Log($"✅ Made '{selected.name}' a parent trigger - players will follow this object when inside trigger");
-            }
-            else
-            {
-                Debug.Log($"'{selected.name}' already has parent trigger");
             }
 
             EditorUtility.SetDirty(selected);

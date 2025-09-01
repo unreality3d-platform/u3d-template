@@ -144,11 +144,6 @@ namespace U3D
                     }
                 }
             }
-
-            if (debugMode && nearbyInteractables.Count > 0)
-            {
-                Debug.Log($"Found {nearbyInteractables.Count} interactables in range");
-            }
         }
 
         /// <summary>

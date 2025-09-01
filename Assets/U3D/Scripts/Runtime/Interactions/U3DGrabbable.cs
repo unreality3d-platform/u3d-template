@@ -11,6 +11,7 @@ namespace U3D
     /// Supports both networked and non-networked modes automatically
     /// ENHANCED: Smart drop behavior prevents midair floating while respecting user placement intent
     /// FIXED: Properly manages original physics state for throwable objects
+    /// MULTIPLAYER: Handles authority requests for Shared Authority mode (WebGL)
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -38,8 +39,6 @@ namespace U3D
 
         [Tooltip("Can this object be grabbed while another is held?")]
         [SerializeField] private bool allowMultiGrab = false;
-
-
 
         [Header("Events")]
         [Tooltip("Called when object is grabbed")]
@@ -87,6 +86,10 @@ namespace U3D
         private float lastAimCheckTime;
         private bool isNetworked = false;
         private bool hasRigidbody = false;
+
+        // Authority management
+        private bool isWaitingForAuthority = false;
+        private bool hasRequestedAuthority = false;
 
         // Hidden smart drop and safety recovery - enabled by default with optimal settings
         private const bool ENABLE_SMART_DROP = true;
@@ -146,7 +149,6 @@ namespace U3D
                 spawnPosition = transform.position;
                 spawnRotation = transform.rotation;
                 hasRecordedSpawn = true;
-                Debug.Log($"U3DGrabbable: Recorded spawn position for '{name}' at {spawnPosition}");
             }
         }
 
@@ -161,14 +163,12 @@ namespace U3D
                     // For throwable objects, the original/desired state is physics-ready
                     originalWasKinematic = false; // Ready for physics when thrown
                     originalUsedGravity = true;   // Affected by gravity when thrown
-                    Debug.Log($"U3DGrabbable: Stored throwable-ready physics state for '{name}'");
                 }
                 else
                 {
                     // For non-throwable objects, store whatever the designer set
                     originalWasKinematic = rb.isKinematic;
                     originalUsedGravity = rb.useGravity;
-                    Debug.Log($"U3DGrabbable: Stored original physics state for '{name}': kinematic={originalWasKinematic}, gravity={originalUsedGravity}");
                 }
 
                 hasStoredOriginalPhysicsState = true;
@@ -178,7 +178,7 @@ namespace U3D
         private void Update()
         {
             // Only run Update logic on networked objects if they have authority, or always on non-networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (isNetworked && (Object == null || (!Object.HasStateAuthority && !isWaitingForAuthority))) return;
 
             // Update range and aim status
             UpdatePlayerProximity();
@@ -194,6 +194,29 @@ namespace U3D
             if (ENABLE_SAFETY_RECOVERY && !isGrabbed && hasRecordedSpawn)
             {
                 CheckSafetyBounds();
+            }
+        }
+
+        public override void Spawned()
+        {
+            if (!isNetworked) return;
+            // Networked initialization if needed
+        }
+
+        public void OnStateAuthorityChanged()
+        {
+            if (!isNetworked) return;
+
+            if (Object.HasStateAuthority && isWaitingForAuthority)
+            {
+                // We got authority, proceed with grab
+                isWaitingForAuthority = false;
+                PerformGrab();
+            }
+            else if (!Object.HasStateAuthority && isGrabbed)
+            {
+                // Lost authority while grabbed, release
+                PerformRelease();
             }
         }
 
@@ -321,7 +344,6 @@ namespace U3D
                         if (angle <= maxAllowedAngle)
                         {
                             isAimedAt = true;
-                            Debug.Log($"Grabbable '{name}' detected via radius - angle: {angle:F1}°, max: {maxAllowedAngle:F1}°, distance: {distanceToObject:F2}m");
                         }
                     }
                 }
@@ -338,7 +360,6 @@ namespace U3D
                         if (hit.collider == col)
                         {
                             isAimedAt = true;
-                            Debug.Log($"Grabbable '{name}' aimed at from avatar position - distance: {avatarDistance:F2}m");
                         }
                     }
                 }
@@ -383,7 +404,6 @@ namespace U3D
                         t != playerCamera?.transform)
                     {
                         handTransform = t;
-                        Debug.Log($"Found hand bone: {handBoneName} on transform: {t.name}");
                         break;
                     }
                 }
@@ -402,7 +422,6 @@ namespace U3D
                     handAnchor.transform.localRotation = Quaternion.identity;
                 }
                 handTransform = handAnchor.transform;
-                Debug.Log($"Created safe hand anchor for grabbable objects at: {handTransform.localPosition}");
             }
         }
 
@@ -438,9 +457,36 @@ namespace U3D
         {
             if (isGrabbed || !CanGrabFromCurrentPosition()) return;
 
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            // For networked objects, handle authority first
+            if (isNetworked)
+            {
+                if (!Object.HasStateAuthority)
+                {
+                    // Request authority from current owner
+                    if (!hasRequestedAuthority)
+                    {
+                        Object.RequestStateAuthority();
+                        hasRequestedAuthority = true;
+                        isWaitingForAuthority = true;
+                        return; // Wait for authority callback
+                    }
+                    else if (!isWaitingForAuthority)
+                    {
+                        // Authority request failed or denied
+                        hasRequestedAuthority = false;
+                        return;
+                    }
+                    // Still waiting for authority...
+                    return;
+                }
+            }
 
+            // We have authority (or non-networked), proceed with grab
+            PerformGrab();
+        }
+
+        private void PerformGrab()
+        {
             // Check single grab mode
             if (!allowMultiGrab && currentlyGrabbed != null && currentlyGrabbed != this)
             {
@@ -457,6 +503,7 @@ namespace U3D
 
             isGrabbed = true;
             currentlyGrabbed = this;
+            hasRequestedAuthority = false; // Reset authority request flag
 
             // Update network state if networked
             if (isNetworked)
@@ -473,14 +520,12 @@ namespace U3D
             if (throwable != null)
             {
                 // Throwable component will handle physics state via its OnObjectGrabbed callback
-                Debug.Log($"U3DGrabbable: Grabbed throwable object '{name}' - throwable component handles physics");
             }
             else if (hasRigidbody)
             {
                 // For non-throwable objects with rigidbody, make kinematic while grabbed
                 rb.isKinematic = true;
                 rb.useGravity = false;
-                Debug.Log($"U3DGrabbable: Made non-throwable rigidbody kinematic for '{name}'");
             }
 
             // FIXED: Set collider to trigger AND exclude from camera collision to prevent camera snapping
@@ -498,17 +543,20 @@ namespace U3D
             transform.localPosition = grabOffset;
 
             OnGrabbed?.Invoke();
-
-            Debug.Log($"U3DGrabbable: Object '{name}' grabbed and excluded from camera collision detection");
         }
 
         public void Release()
         {
             if (!isGrabbed) return;
 
-            // Authority check for networked objects
+            // For networked objects, only release if we have authority
             if (isNetworked && !Object.HasStateAuthority) return;
 
+            PerformRelease();
+        }
+
+        private void PerformRelease()
+        {
             isGrabbed = false;
             if (currentlyGrabbed == this)
             {
@@ -547,14 +595,12 @@ namespace U3D
             {
                 // Let throwable component handle its own physics restoration via OnObjectReleased callback
                 // It will activate physics for throwing, then manage sleep cycles properly
-                Debug.Log($"U3DGrabbable: Released throwable object '{name}' - throwable component handles physics");
             }
             else if (hasRigidbody && hasStoredOriginalPhysicsState)
             {
                 // For non-throwable objects, restore their original state
                 rb.isKinematic = originalWasKinematic;
                 rb.useGravity = originalUsedGravity;
-                Debug.Log($"U3DGrabbable: Restored original physics state for non-throwable '{name}': kinematic={originalWasKinematic}, gravity={originalUsedGravity}");
             }
 
             // Clear references if not in range
@@ -567,7 +613,9 @@ namespace U3D
 
             OnReleased?.Invoke();
 
-            Debug.Log($"U3DGrabbable: Object '{name}' released and restored to original collision layer");
+            // Reset authority flags
+            hasRequestedAuthority = false;
+            isWaitingForAuthority = false;
         }
 
         private void PerformSmartDrop(Vector3 releasePosition)
@@ -587,14 +635,12 @@ namespace U3D
                 Vector3 surfacePosition = new Vector3(objectBounds.center.x, hit.point.y + yOffset, objectBounds.center.z);
                 transform.position = surfacePosition;
 
-                Debug.Log($"U3DGrabbable: Smart drop placed '{name}' on surface '{hit.collider.name}' using collider bounds");
                 OnSmartDrop?.Invoke();
             }
             else
             {
                 // No surface found within range - leave at release position
                 transform.position = releasePosition;
-                Debug.Log($"U3DGrabbable: No surface found for smart drop - left '{name}' at release position");
             }
         }
 
@@ -736,6 +782,7 @@ namespace U3D
         public bool HasThrowable => throwable != null;
         public Vector3 SpawnPosition => spawnPosition;
         public Quaternion SpawnRotation => spawnRotation;
+        public bool IsWaitingForAuthority => isWaitingForAuthority;
 
         // Public method to update spawn position (useful for dynamic placement)
         public void UpdateSpawnPosition(Vector3 newPosition, Quaternion newRotation)
@@ -743,7 +790,6 @@ namespace U3D
             spawnPosition = newPosition;
             spawnRotation = newRotation;
             hasRecordedSpawn = true;
-            Debug.Log($"U3DGrabbable: Updated spawn position for '{name}' to {spawnPosition}");
         }
 
         // Public method to manually trigger safety recovery
@@ -763,13 +809,6 @@ namespace U3D
             }
         }
 
-        // Override NetworkBehaviour methods for non-networked compatibility
-        public override void Spawned()
-        {
-            if (!isNetworked) return;
-            // Networked initialization if needed
-        }
-
         // Debug information for development
         [System.Serializable]
         public struct PhysicsDebugInfo
@@ -782,6 +821,9 @@ namespace U3D
             public bool hasThrowableComponent;
             public Vector3 spawnPosition;
             public float distanceFromSpawn;
+            public bool hasAuthority;
+            public bool isWaitingForAuthority;
+            public bool hasRequestedAuthority;
         }
 
         public PhysicsDebugInfo GetPhysicsDebugInfo()
@@ -795,7 +837,10 @@ namespace U3D
                 currentGravity = hasRigidbody ? rb.useGravity : false,
                 hasThrowableComponent = throwable != null,
                 spawnPosition = spawnPosition,
-                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f
+                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f,
+                hasAuthority = isNetworked ? Object.HasStateAuthority : true,
+                isWaitingForAuthority = isWaitingForAuthority,
+                hasRequestedAuthority = hasRequestedAuthority
             };
         }
     }
