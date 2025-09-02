@@ -231,13 +231,17 @@ MonoBehaviour:
   perspectiveTransitionSpeed: 8
   enableCameraCollision: 1
   enableSmoothTransitions: 1
-  mouseSensitivity: 2
+  baseMouseSensitivity: 1
+  webglSensitivityMultiplier: 0.25
+  mobileSensitivityMultiplier: 0.8
+  userSensitivityMultiplier: 1
+  enableMouseSmoothing: 1
+  mouseSmoothingAmount: 0.1
   lookUpLimit: 80
   lookDownLimit: -80
   cameraCollisionRadius: 0.2
   cameraCollisionBuffer: 0.1
   enableAdvancedCamera: 1
-  cameraOrbitSensitivity: 2
   characterTurnSpeed: 90
   enableAlwaysFreeLook: 1
   cameraDistanceCurve:
@@ -706,7 +710,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   SortKey: 2829484168
   ObjectInterest: 1
-  Flags: 131073
+  Flags: 524289
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 227767514918744194}
