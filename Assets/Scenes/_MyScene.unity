@@ -2792,12 +2792,12 @@ GameObject:
   - component: {fileID: 934474719}
   - component: {fileID: 934474722}
   - component: {fileID: 934474721}
+  - component: {fileID: 934474728}
   - component: {fileID: 934474727}
   - component: {fileID: 934474726}
   - component: {fileID: 934474725}
-  - component: {fileID: 934474730}
-  - component: {fileID: 934474729}
-  - component: {fileID: 934474728}
+  - component: {fileID: 934474724}
+  - component: {fileID: 934474723}
   m_Layer: 0
   m_Name: Green Cube
   m_TagString: Untagged
@@ -2873,93 +2873,7 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 934474718}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!114 &934474725
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  grabDetectionRadius: 1
-  useRadiusDetection: 1
-  minGrabDistance: 0
-  maxGrabDistance: 20
-  handBoneName: RightHand
-  grabOffset: {x: 0, y: 0, z: 0}
-  allowMultiGrab: 0
-  OnGrabbed:
-    m_PersistentCalls:
-      m_Calls: []
-  OnReleased:
-    m_PersistentCalls:
-      m_Calls: []
-  OnEnterGrabRange:
-    m_PersistentCalls:
-      m_Calls: []
-  OnExitGrabRange:
-    m_PersistentCalls:
-      m_Calls: []
-  OnAimEnter:
-    m_PersistentCalls:
-      m_Calls: []
-  OnAimExit:
-    m_PersistentCalls:
-      m_Calls: []
-  OnSmartDrop:
-    m_PersistentCalls:
-      m_Calls: []
-  OnSafetyRecovery:
-    m_PersistentCalls:
-      m_Calls: []
-  _NetworkIsGrabbed: 0
---- !u!114 &934474726
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  SortKey: 3182252643
-  ObjectInterest: 1
-  Flags: 262145
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 934474725}
-  - {fileID: 934474729}
-  - {fileID: 934474728}
-  ForceRemoteRenderTimeframe: 0
---- !u!65 &934474727
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 934474718}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &934474728
+--- !u!114 &934474723
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -2993,7 +2907,9 @@ MonoBehaviour:
   worldBoundsFloor: -50
   worldBoundsRadius: 1000
   boundsCheckInterval: 1
---- !u!114 &934474729
+  _NetworkIsThrown: 0
+  _NetworkIsPhysicsActive: 0
+--- !u!114 &934474724
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3016,7 +2932,7 @@ MonoBehaviour:
     Position: 0.01
     Rotation: 0.01
     Scale: 0.01
---- !u!54 &934474730
+--- !u!54 &934474725
 Rigidbody:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3043,6 +2959,84 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &934474726
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grabDetectionRadius: 1
+  useRadiusDetection: 1
+  minGrabDistance: 0
+  maxGrabDistance: 2
+  handBoneName: RightHand
+  grabOffset: {x: 0, y: 0, z: 0}
+  allowMultiGrab: 0
+  OnGrabbed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnReleased:
+    m_PersistentCalls:
+      m_Calls: []
+  OnEnterGrabRange:
+    m_PersistentCalls:
+      m_Calls: []
+  OnExitGrabRange:
+    m_PersistentCalls:
+      m_Calls: []
+  OnGrabFailed:
+    m_PersistentCalls:
+      m_Calls: []
+  _NetworkIsGrabbed: 0
+  _NetworkGrabState: 0
+--- !u!114 &934474727
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 2671718466
+  ObjectInterest: 1
+  Flags: 262145
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 934474726}
+  - {fileID: 934474724}
+  - {fileID: 934474723}
+  ForceRemoteRenderTimeframe: 0
+--- !u!65 &934474728
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 934474718}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &953970226
 GameObject:
   m_ObjectHideFlags: 0
@@ -4635,7 +4629,7 @@ MonoBehaviour:
   grabDetectionRadius: 1
   useRadiusDetection: 1
   minGrabDistance: 0
-  maxGrabDistance: 20
+  maxGrabDistance: 2
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
@@ -4651,19 +4645,11 @@ MonoBehaviour:
   OnExitGrabRange:
     m_PersistentCalls:
       m_Calls: []
-  OnAimEnter:
-    m_PersistentCalls:
-      m_Calls: []
-  OnAimExit:
-    m_PersistentCalls:
-      m_Calls: []
-  OnSmartDrop:
-    m_PersistentCalls:
-      m_Calls: []
-  OnSafetyRecovery:
+  OnGrabFailed:
     m_PersistentCalls:
       m_Calls: []
   _NetworkIsGrabbed: 0
+  _NetworkGrabState: 0
 --- !u!114 &1246158081
 MonoBehaviour:
   m_ObjectHideFlags: 0

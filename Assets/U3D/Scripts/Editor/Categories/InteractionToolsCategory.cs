@@ -133,26 +133,35 @@ namespace U3D.Editor
             }
         }
 
-        private static void ConfigureNetworkObjectForSharedAuthority(NetworkObject networkObject)
+        // FIXED: Unified NetworkObject configuration for Shared Mode
+        private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
         {
-            // Configure for WebGL Shared Authority mode
             var so = new SerializedObject(networkObject);
 
-            // Enable Allow State Authority Override for shared authority transfer
+            // CRITICAL: Enable Allow State Authority Override for authority transfer
             var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
             if (allowOverrideProp != null)
             {
                 allowOverrideProp.boolValue = true;
             }
 
-            // Disable Destroy When State Authority Leaves (objects persist when players disconnect)
+            // CRITICAL: Disable Destroy When State Authority Leaves (objects persist)
             var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
             if (destroyOnLeaveProp != null)
             {
                 destroyOnLeaveProp.boolValue = false;
             }
 
+            // CRITICAL: Disable Is Master Client Object (any player can grab)
+            var isMasterClientProp = so.FindProperty("_isMasterClientObject");
+            if (isMasterClientProp != null)
+            {
+                isMasterClientProp.boolValue = false;
+            }
+
             so.ApplyModifiedProperties();
+
+            Debug.Log($"Configured NetworkObject for Shared Mode: AllowOverride=true, DestroyOnLeave=false, MasterClient=false");
         }
 
         private static void ApplyGrabbable()
@@ -174,7 +183,7 @@ namespace U3D.Editor
             if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedAuthority(networkObject);
+                ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
             // Add grabbable component
@@ -185,6 +194,7 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Grabbable to {selected.name}");
         }
 
         private static void ApplyThrowable()
@@ -209,10 +219,10 @@ namespace U3D.Editor
             if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedAuthority(networkObject);
+                ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add Rigidbody (required for throwable physics) - set to sleep initially
+            // Add Rigidbody (required for throwable physics)
             if (!selected.GetComponent<Rigidbody>())
             {
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
@@ -230,7 +240,7 @@ namespace U3D.Editor
                     if (!selected.GetComponent<NetworkRigidbody3D>())
                     {
                         var networkRigidbody = selected.AddComponent<NetworkRigidbody3D>();
-                        ConfigureNetworkRigidbody3DForGrabThrow(networkRigidbody);
+                        ConfigureNetworkRigidbody3DForSharedMode(networkRigidbody);
                     }
 #else
                     // Fallback: reflection in case addon not installed
@@ -259,13 +269,15 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Throwable to {selected.name}");
         }
 
-        private static void ConfigureNetworkRigidbody3DForGrabThrow(NetworkRigidbody3D networkRigidbody)
+        // FIXED: Consistent NetworkRigidbody3D configuration for Shared Mode
+        private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
         {
             var so = new SerializedObject(networkRigidbody);
 
-            // Disable SyncParent to prevent conflicts with grab parenting
+            // CRITICAL: Disable SyncParent to prevent conflicts with grab parenting
             var syncParentProp = so.FindProperty("_syncParent");
             if (syncParentProp != null)
             {
@@ -276,11 +288,26 @@ namespace U3D.Editor
             var syncModeProp = so.FindProperty("_syncMode");
             if (syncModeProp != null)
             {
-                // 0 = SyncTransform, 1 = SyncRigidbody, 2 = SyncAll
-                syncModeProp.intValue = 1; // SyncRigidbody mode for throwables
+                syncModeProp.intValue = 1; // SyncRigidbody mode for physics objects
+            }
+
+            // Enable scale synchronization for consistency
+            var syncScaleProp = so.FindProperty("_syncScale");
+            if (syncScaleProp != null)
+            {
+                syncScaleProp.boolValue = true;
+            }
+
+            // CRITICAL: Leave InterpolationTarget as null (let Fusion 2 handle)
+            var interpolationTargetProp = so.FindProperty("_interpolationTarget");
+            if (interpolationTargetProp != null)
+            {
+                interpolationTargetProp.objectReferenceValue = null;
             }
 
             so.ApplyModifiedProperties();
+
+            Debug.Log("Configured NetworkRigidbody3D for Shared Mode: SyncParent=false, SyncMode=SyncRigidbody, InterpolationTarget=null");
         }
 
         private static void ConfigureNetworkRigidbody3DViaReflection(Component networkRigidbody)
@@ -289,7 +316,7 @@ namespace U3D.Editor
 
             var so = new SerializedObject(networkRigidbody);
 
-            // Disable SyncParent via reflection
+            // CRITICAL: Disable SyncParent via reflection
             var syncParentProp = so.FindProperty("_syncParent");
             if (syncParentProp != null)
             {
@@ -302,7 +329,21 @@ namespace U3D.Editor
                 syncModeProp.intValue = 1; // SyncRigidbody mode
             }
 
+            var syncScaleProp = so.FindProperty("_syncScale");
+            if (syncScaleProp != null)
+            {
+                syncScaleProp.boolValue = true;
+            }
+
+            var interpolationTargetProp = so.FindProperty("_interpolationTarget");
+            if (interpolationTargetProp != null)
+            {
+                interpolationTargetProp.objectReferenceValue = null;
+            }
+
             so.ApplyModifiedProperties();
+
+            Debug.Log("Configured NetworkRigidbody3D via reflection for Shared Mode");
         }
 
         private static void ApplyEnterTrigger()
@@ -326,7 +367,7 @@ namespace U3D.Editor
             if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedAuthority(networkObject);
+                ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
             // Add enter trigger component
@@ -337,6 +378,7 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Enter Trigger to {selected.name}");
         }
 
         private static void ApplyExitTrigger()
@@ -360,7 +402,7 @@ namespace U3D.Editor
             if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedAuthority(networkObject);
+                ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
             // Add exit trigger component
@@ -371,6 +413,7 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Exit Trigger to {selected.name}");
         }
 
         private static void ApplyParentTrigger()
@@ -394,7 +437,7 @@ namespace U3D.Editor
             if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedAuthority(networkObject);
+                ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
             // Add parent trigger component
@@ -405,6 +448,7 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Parent Trigger to {selected.name}");
         }
     }
 }

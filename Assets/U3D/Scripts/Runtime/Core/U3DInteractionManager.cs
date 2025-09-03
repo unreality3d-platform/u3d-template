@@ -1,18 +1,18 @@
 ﻿using UnityEngine;
-using UnityEngine.InputSystem;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace U3D
 {
     /// <summary>
-    /// Unified interaction system that connects PlayerController with all interaction systems
-    /// Replaces the placeholder in PlayerController.OnInteract()
+    /// SIMPLIFIED: Direct integration with U3DPlayerController
+    /// Handles interaction detection and processing for the grab/throw system
     /// </summary>
     public class U3DInteractionManager : MonoBehaviour
     {
         [Header("Interaction System Configuration")]
         [Tooltip("Maximum distance to check for interactables")]
-        [SerializeField] private float interactionRange = 5f;
+        [SerializeField] private float interactionRange = 3f;
 
         [Tooltip("Layer mask for interaction raycasting")]
         [SerializeField] private LayerMask interactionLayerMask = -1;
@@ -23,7 +23,8 @@ namespace U3D
         private static U3DInteractionManager instance;
         private List<IU3DInteractable> nearbyInteractables = new List<IU3DInteractable>();
         private IU3DInteractable currentInteractable;
-        private U3DPlayerController playerController;
+        private U3DPlayerController localPlayerController;
+        private Camera playerCamera;
 
         public static U3DInteractionManager Instance
         {
@@ -40,68 +41,113 @@ namespace U3D
             if (instance == null)
             {
                 instance = this;
-                playerController = GetComponent<U3DPlayerController>();
+                Debug.Log("InteractionManager: Singleton instance created");
             }
             else if (instance != this)
             {
                 Debug.LogWarning("Multiple InteractionManagers found. Destroying duplicate on: " + gameObject.name);
                 Destroy(this);
+                return;
             }
         }
 
         private void Start()
         {
-            // Initialize key management system
-            U3DKeyManager.InitializeFromPlayerController(playerController);
+            // Find the local player controller
+            FindLocalPlayer();
         }
 
-        /// <summary>
-        /// Called by PlayerController when interact button is pressed
-        /// This replaces the placeholder implementation
-        /// </summary>
-        public void OnPlayerInteract()
+        private void FindLocalPlayer()
         {
-            if (currentInteractable != null)
-            {
-                currentInteractable.OnInteract();
-                Debug.Log($"Interacted with: {currentInteractable.GetInteractionPrompt()}");
-            }
-            else
-            {
-                // Check for interactables in range
-                FindNearbyInteractables();
+            U3DPlayerController[] allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
 
-                if (nearbyInteractables.Count > 0)
+            foreach (U3DPlayerController player in allPlayers)
+            {
+                if (player.IsLocalPlayer)
                 {
-                    // Interact with closest one
-                    IU3DInteractable closest = GetClosestInteractable();
-                    closest.OnInteract();
-                    Debug.Log($"Interacted with: {closest.GetInteractionPrompt()}");
+                    localPlayerController = player;
+                    playerCamera = player.GetComponentInChildren<Camera>();
+                    Debug.Log($"InteractionManager: Found local player {player.name}");
+                    break;
                 }
-                else
-                {
-                    if (debugMode)
-                        Debug.Log("No interactables in range");
-                }
+            }
+
+            if (localPlayerController == null)
+            {
+                Debug.LogWarning("InteractionManager: No local player found!");
             }
         }
 
         private void Update()
         {
+            if (localPlayerController == null)
+            {
+                FindLocalPlayer();
+                return;
+            }
+
             UpdateNearbyInteractables();
         }
 
         /// <summary>
-        /// Update list of nearby interactables and current primary target
+        /// Called by PlayerController when interact button is pressed
+        /// </summary>
+        public void OnPlayerInteract()
+        {
+            if (localPlayerController == null)
+            {
+                Debug.LogWarning("InteractionManager: No local player available for interaction");
+                return;
+            }
+
+            // Find the best interactable to use
+            IU3DInteractable targetInteractable = GetBestInteractable();
+
+            if (targetInteractable != null)
+            {
+                Debug.Log($"Interacted with: {targetInteractable.GetInteractionPrompt()}");
+                targetInteractable.OnInteract();
+            }
+            else
+            {
+                if (debugMode)
+                {
+                    Debug.Log("No interactables found in range");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Find all interactables within range and update current target
         /// </summary>
         private void UpdateNearbyInteractables()
         {
-            FindNearbyInteractables();
+            nearbyInteractables.Clear();
 
-            // Determine primary interactable based on priority and distance
-            IU3DInteractable newPrimary = GetPrimaryInteractable();
+            if (localPlayerController == null) return;
 
-            // Handle range enter/exit events
+            Vector3 playerPosition = localPlayerController.transform.position;
+
+            // Use sphere overlap to find all colliders in range
+            Collider[] colliders = Physics.OverlapSphere(playerPosition, interactionRange, interactionLayerMask);
+
+            foreach (Collider col in colliders)
+            {
+                // Get all IU3DInteractable components on this object and its children
+                IU3DInteractable[] interactables = col.GetComponentsInChildren<IU3DInteractable>();
+
+                foreach (IU3DInteractable interactable in interactables)
+                {
+                    if (interactable != null && interactable.CanInteract())
+                    {
+                        nearbyInteractables.Add(interactable);
+                    }
+                }
+            }
+
+            // Update current primary interactable
+            IU3DInteractable newPrimary = GetBestInteractable();
+
             if (newPrimary != currentInteractable)
             {
                 // Exit previous
@@ -121,125 +167,103 @@ namespace U3D
         }
 
         /// <summary>
-        /// Find all interactables within range
+        /// Get the best interactable based on priority and distance
         /// </summary>
-        private void FindNearbyInteractables()
-        {
-            nearbyInteractables.Clear();
-
-            // Use sphere overlap to find all colliders in range
-            Collider[] colliders = Physics.OverlapSphere(transform.position, interactionRange, interactionLayerMask);
-
-            foreach (Collider col in colliders)
-            {
-                // Check for IU3DInteractable components
-                MonoBehaviour[] components = col.GetComponentsInChildren<MonoBehaviour>();
-                IU3DInteractable[] interactables = components.OfType<IU3DInteractable>().ToArray();
-
-                foreach (IU3DInteractable interactable in interactables)
-                {
-                    if (interactable.CanInteract())
-                    {
-                        nearbyInteractables.Add(interactable);
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Get the closest interactable object
-        /// </summary>
-        private IU3DInteractable GetClosestInteractable()
+        private IU3DInteractable GetBestInteractable()
         {
             if (nearbyInteractables.Count == 0) return null;
+            if (localPlayerController == null) return null;
 
-            IU3DInteractable closest = null;
-            float closestDistance = Mathf.Infinity;
+            Vector3 playerPosition = localPlayerController.transform.position;
 
-            foreach (IU3DInteractable interactable in nearbyInteractables)
-            {
-                if (interactable.CanInteract())
-                {
-                    Vector3 targetPos = ((MonoBehaviour)interactable).transform.position;
-                    float distance = Vector3.Distance(transform.position, targetPos);
-
-                    if (distance < closestDistance)
-                    {
-                        closestDistance = distance;
-                        closest = interactable;
-                    }
-                }
-            }
-
-            return closest;
-        }
-
-        /// <summary>
-        /// Get primary interactable based on priority and distance
-        /// Higher priority objects take precedence
-        /// </summary>
-        private IU3DInteractable GetPrimaryInteractable()
-        {
-            if (nearbyInteractables.Count == 0) return null;
-
-            IU3DInteractable primary = null;
+            IU3DInteractable best = null;
             int highestPriority = int.MinValue;
             float closestDistance = Mathf.Infinity;
 
             foreach (IU3DInteractable interactable in nearbyInteractables)
             {
-                if (interactable.CanInteract())
-                {
-                    int priority = interactable.GetInteractionPriority();
-                    Vector3 targetPos = ((MonoBehaviour)interactable).transform.position;
-                    float distance = Vector3.Distance(transform.position, targetPos);
+                if (interactable == null || !interactable.CanInteract()) continue;
 
-                    // Higher priority wins, or closer distance if same priority
-                    if (priority > highestPriority || (priority == highestPriority && distance < closestDistance))
-                    {
-                        primary = interactable;
-                        highestPriority = priority;
-                        closestDistance = distance;
-                    }
+                // Get the transform of the interactable
+                Transform interactableTransform = ((MonoBehaviour)interactable).transform;
+                if (interactableTransform == null) continue;
+
+                int priority = interactable.GetInteractionPriority();
+                float distance = Vector3.Distance(playerPosition, interactableTransform.position);
+
+                // Higher priority wins, or closer distance if same priority
+                if (priority > highestPriority || (priority == highestPriority && distance < closestDistance))
+                {
+                    best = interactable;
+                    highestPriority = priority;
+                    closestDistance = distance;
                 }
             }
 
-            return primary;
+            return best;
         }
 
         private void OnDrawGizmosSelected()
         {
-            // Draw interaction range
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(transform.position, interactionRange);
-
-            // Draw connections to nearby interactables
-            if (debugMode && nearbyInteractables != null)
+            if (localPlayerController != null)
             {
-                Gizmos.color = Color.yellow;
-                foreach (IU3DInteractable interactable in nearbyInteractables)
+                // Draw interaction range
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(localPlayerController.transform.position, interactionRange);
+
+                // Draw connections to nearby interactables
+                if (debugMode && nearbyInteractables != null)
                 {
-                    if (interactable != null)
+                    Gizmos.color = Color.yellow;
+                    foreach (IU3DInteractable interactable in nearbyInteractables)
                     {
-                        Vector3 targetPos = ((MonoBehaviour)interactable).transform.position;
-                        Gizmos.DrawLine(transform.position, targetPos);
+                        if (interactable != null)
+                        {
+                            Transform interactableTransform = ((MonoBehaviour)interactable).transform;
+                            if (interactableTransform != null)
+                            {
+                                Gizmos.DrawLine(localPlayerController.transform.position, interactableTransform.position);
+                            }
+                        }
+                    }
+
+                    // Highlight current primary
+                    if (currentInteractable != null)
+                    {
+                        Gizmos.color = Color.red;
+                        Transform primaryTransform = ((MonoBehaviour)currentInteractable).transform;
+                        if (primaryTransform != null)
+                        {
+                            Gizmos.DrawWireSphere(primaryTransform.position, 0.5f);
+                        }
                     }
                 }
-
-                // Highlight current primary
-                if (currentInteractable != null)
-                {
-                    Gizmos.color = Color.red;
-                    Vector3 primaryPos = ((MonoBehaviour)currentInteractable).transform.position;
-                    Gizmos.DrawWireSphere(primaryPos, 0.5f);
-                }
             }
+        }
+
+        // Public API for external systems
+        public IU3DInteractable GetCurrentInteractable()
+        {
+            return currentInteractable;
+        }
+
+        public int GetNearbyInteractableCount()
+        {
+            return nearbyInteractables.Count;
+        }
+
+        public bool IsPlayerInRange(Vector3 objectPosition, float customRange = -1f)
+        {
+            if (localPlayerController == null) return false;
+
+            float checkRange = customRange > 0 ? customRange : interactionRange;
+            float distance = Vector3.Distance(localPlayerController.transform.position, objectPosition);
+            return distance <= checkRange;
         }
     }
 
     /// <summary>
     /// Interface that all interactable objects must implement
-    /// This creates a unified system for all interaction types
     /// </summary>
     public interface IU3DInteractable
     {
@@ -265,7 +289,6 @@ namespace U3D
 
         /// <summary>
         /// Get interaction priority (higher = more important)
-        /// QuestGivers = 100, Regular objects = 50, etc.
         /// </summary>
         int GetInteractionPriority();
 
@@ -273,79 +296,5 @@ namespace U3D
         /// Get text to show in interaction prompt
         /// </summary>
         string GetInteractionPrompt();
-    }
-
-    /// <summary>
-    /// Updated QuestGiver that implements the unified interaction interface
-    /// RESTORED: Original working behavior where dialog only shows on interaction
-    /// </summary>
-    public partial class U3DQuestGiver : IU3DInteractable
-    {
-        // IU3DInteractable implementation - methods have different names than UnityEvents
-        public void OnInteract()
-        {
-            StartInteraction();
-        }
-
-        public void OnPlayerEnterRange()
-        {
-            // RESTORED: Just invoke Creator's custom event, don't auto-show dialog
-            // Dialog will be shown when player actually interacts via OnInteract() → StartInteraction()
-            OnPlayerEnterRangeEvent?.Invoke();
-        }
-
-        public void OnPlayerExitRange()
-        {
-            // System method - hide dialog canvas
-            CloseDialog();
-
-            // Invoke Creator's custom UnityEvent (use field names)  
-            OnPlayerExitRangeEvent?.Invoke();
-        }
-
-        public bool CanInteract()
-        {
-            return CanGiveQuest();
-        }
-
-        public int GetInteractionPriority()
-        {
-            return 100; // QuestGivers have high priority
-        }
-
-        public string GetInteractionPrompt()
-        {
-            if (questToGive == null) return "Talk";
-
-            if (questToGive.IsCompleted)
-                return "Quest Complete";
-            else if (questToGive.IsActive)
-                return "Quest Active";
-            else
-                return "New Quest";
-        }
-    }
-
-    /// <summary>
-    /// Extension methods to help with the LINQ operations
-    /// </summary>
-    public static class U3DInteractionExtensions
-    {
-        public static System.Collections.Generic.IEnumerable<T> OfType<T>(this MonoBehaviour[] source)
-        {
-            foreach (var item in source)
-            {
-                if (item is T result)
-                    yield return result;
-            }
-        }
-
-        public static T[] ToArray<T>(this System.Collections.Generic.IEnumerable<T> source)
-        {
-            var list = new System.Collections.Generic.List<T>();
-            foreach (var item in source)
-                list.Add(item);
-            return list.ToArray();
-        }
     }
 }

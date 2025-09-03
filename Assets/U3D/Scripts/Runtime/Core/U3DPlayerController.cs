@@ -58,12 +58,14 @@ public class U3DPlayerController : NetworkBehaviour
     );
     [SerializeField]
     private AnimationCurve cameraHeightCurve = new AnimationCurve(
-        new Keyframe(0f, 1.5f),   // FIXED: First person at eye level (1.5 units)
-        new Keyframe(1f, 1.5f)    // FIXED: Third person also at eye level (1.5 units)
+        new Keyframe(0f, 1.5f),   // First person at eye level (1.5 units)
+        new Keyframe(1f, 1.5f)    // Third person also at eye level (1.5 units)
     );
     [SerializeField] private float transitionTime = 1.5f;
 
-    // ENHANCED: Runtime sensitivity calculation
+    private U3DInteractionManager _interactionManager;
+
+    // Runtime sensitivity calculation
     private float _runtimeMouseSensitivity;
     private float _runtimeOrbitSensitivity;
     private RuntimePlatform _currentPlatform;
@@ -116,7 +118,7 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float defaultFOV = 60f;
     [HideInInspector][SerializeField] private float zoomSpeed = 5f;
 
-    // CLEANED: Core Networked Properties for Animation System (HIDDEN from Creator users)
+    // Core Networked Properties for Animation System (HIDDEN from Creator users)
     [HideInInspector][Networked] public Vector3 NetworkPosition { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRotation { get; set; }
     [HideInInspector][Networked] public bool NetworkIsMoving { get; set; }
@@ -127,7 +129,7 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public bool NetworkIsInteracting { get; set; }
     [HideInInspector][Networked] public bool NetworkIsJumping { get; set; }
 
-    // UPDATED: Environmental states (set by external trigger systems) - HIDDEN from Creator users
+    // Environmental states (set by external trigger systems) - HIDDEN from inspector
     [HideInInspector][Networked] public bool NetworkIsSwimming { get; set; }
     [HideInInspector][Networked] public bool NetworkIsClimbing { get; set; }
 
@@ -196,18 +198,15 @@ public class U3DPlayerController : NetworkBehaviour
         {
             case RuntimePlatform.WebGLPlayer:
                 platformMultiplier = webglSensitivityMultiplier; // 0.25f default
-                Debug.Log($"🌐 WebGL Platform: Applying {webglSensitivityMultiplier}x sensitivity reduction");
                 break;
 
             case RuntimePlatform.IPhonePlayer:
             case RuntimePlatform.Android:
                 platformMultiplier = mobileSensitivityMultiplier; // 0.8f default
-                Debug.Log($"📱 Mobile Platform: Applying {mobileSensitivityMultiplier}x sensitivity adjustment");
                 break;
 
             default:
                 platformMultiplier = 1.0f; // Desktop - no adjustment needed
-                Debug.Log("🖥️ Desktop Platform: Using base sensitivity");
                 break;
         }
 
@@ -218,8 +217,6 @@ public class U3DPlayerController : NetworkBehaviour
         // Update legacy compatibility values
         mouseSensitivity = _runtimeMouseSensitivity;
         cameraOrbitSensitivity = _runtimeOrbitSensitivity;
-
-        Debug.Log($"✅ Mouse Sensitivity Calculated: Base={baseMouseSensitivity}, Platform={platformMultiplier}, User={userSensitivityMultiplier}, Final={_runtimeMouseSensitivity}");
     }
 
     // ENHANCED: User settings methods
@@ -228,7 +225,6 @@ public class U3DPlayerController : NetworkBehaviour
         userSensitivityMultiplier = Mathf.Clamp(sensitivity, 0.1f, 3.0f);
         CalculateRuntimeSensitivity();
         SaveSensitivitySettings();
-        Debug.Log($"🎯 User sensitivity updated: {userSensitivityMultiplier}");
     }
 
     public float GetUserSensitivity()
@@ -244,14 +240,12 @@ public class U3DPlayerController : NetworkBehaviour
     void LoadSensitivitySettings()
     {
         userSensitivityMultiplier = PlayerPrefs.GetFloat("U3D_MouseSensitivity", 1.0f);
-        Debug.Log($"📂 Loaded user sensitivity: {userSensitivityMultiplier}");
     }
 
     void SaveSensitivitySettings()
     {
         PlayerPrefs.SetFloat("U3D_MouseSensitivity", userSensitivityMultiplier);
         PlayerPrefs.Save();
-        Debug.Log($"💾 Saved user sensitivity: {userSensitivityMultiplier}");
     }
 
     public override void Spawned()
@@ -262,7 +256,7 @@ public class U3DPlayerController : NetworkBehaviour
         // Initialize components
         InitializeComponents();
 
-        // ENHANCED: Calculate platform-appropriate sensitivity
+        // Calculate platform-appropriate sensitivity
         LoadSensitivitySettings();
         CalculateRuntimeSensitivity();
 
@@ -277,7 +271,6 @@ public class U3DPlayerController : NetworkBehaviour
         {
             // Initialize camera yaw with the spawn rotation
             cameraYaw = transform.eulerAngles.y;
-            Debug.Log($"🎯 Initialized camera yaw with spawn rotation: {cameraYaw}°");
         }
     }
 
@@ -309,8 +302,6 @@ public class U3DPlayerController : NetworkBehaviour
             cameraYaw = transform.eulerAngles.y;
             cameraPitchAdvanced = 0f;
         }
-
-        Debug.Log("✅ Advanced AAA camera pivot system initialized at eye level with smooth transitions");
     }
 
     void UpdateCameraTransitionPosition()
@@ -396,7 +387,6 @@ public class U3DPlayerController : NetworkBehaviour
             // Non-WebGL mode - lock cursor directly
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-            Debug.Log("✅ Non-WebGL mode - cursor locked directly");
         }
     }
 
@@ -407,7 +397,7 @@ public class U3DPlayerController : NetworkBehaviour
             // CORRECTED: Keep PlayerInput ENABLED but disable its notifications
             if (playerInput != null)
             {
-                Debug.Log("✅ Local Player: Configuring PlayerInput for Fusion compatibility");
+                Debug.Log("Local Player: Configuring PlayerInput for Fusion compatibility");
 
                 // Set notification behavior to disable Unity callbacks but keep device pairing
                 playerInput.notificationBehavior = PlayerNotifications.InvokeCSharpEvents;
@@ -420,6 +410,9 @@ public class U3DPlayerController : NetworkBehaviour
                 playerCamera.enabled = true;
                 playerCamera.tag = "MainCamera";
             }
+
+            // FIXED: Initialize interaction manager for local player
+            InitializeInteractionManager();
         }
         else
         {
@@ -437,6 +430,24 @@ public class U3DPlayerController : NetworkBehaviour
                 characterController.enabled = false;
         }
     }
+
+    void InitializeInteractionManager()
+    {
+        // Find existing interaction manager or create one
+        _interactionManager = FindAnyObjectByType<U3DInteractionManager>();
+
+        if (_interactionManager == null)
+        {
+            // Create interaction manager if it doesn't exist
+            GameObject interactionManagerObj = new GameObject("InteractionManager");
+            _interactionManager = interactionManagerObj.AddComponent<U3DInteractionManager>();
+            Debug.Log("Created U3DInteractionManager for player interaction system");
+        }
+
+        // The interaction manager will automatically detect this as the local player
+        Debug.Log("Interaction manager initialized for local player");
+    }
+
 
     void Start()
     {
@@ -482,11 +493,8 @@ public class U3DPlayerController : NetworkBehaviour
         // Only create nametags for remote players (not local player)
         if (_isLocalPlayer)
         {
-            Debug.Log("🏷️ Skipping nametag creation for local player");
             yield break;
         }
-
-        Debug.Log("🏷️ Creating nametag for remote player");
 
         // Create nametag anchor above player head
         var nametagAnchor = new GameObject("NametagAnchor");
@@ -496,8 +504,6 @@ public class U3DPlayerController : NetworkBehaviour
         // Add and initialize nametag component
         var nametag = nametagAnchor.AddComponent<U3D.Networking.U3DPlayerNametag>();
         nametag.Initialize(this);
-
-        Debug.Log($"✅ Nametag created and initialized for remote player: {name}");
     }
 
     bool IsCursorLocked()
@@ -512,14 +518,12 @@ public class U3DPlayerController : NetworkBehaviour
         return Cursor.lockState == CursorLockMode.Locked;
     }
 
-    // CORRECTED: Method called by NetworkManager after spawning
+    // Method called by NetworkManager after spawning
     public void RefreshInputActionsFromNetworkManager(U3D.Networking.U3DFusionNetworkManager networkManager)
     {
         if (!_isLocalPlayer) return;
 
         _networkManager = networkManager;
-
-        Debug.Log("✅ PlayerController linked to NetworkManager for input");
     }
 
     // FUSION 2 REQUIRED: Replace Update with FixedUpdateNetwork
@@ -565,7 +569,6 @@ public class U3DPlayerController : NetworkBehaviour
             if (_justTeleported)
             {
                 _justTeleported = false;
-                Debug.Log("🎯 Teleport flag cleared - Render won't override position this frame");
             }
 
             return; // Don't interpolate local player position!
@@ -583,7 +586,6 @@ public class U3DPlayerController : NetworkBehaviour
         if (_justTeleported)
         {
             _justTeleported = false;
-            Debug.Log("🎯 Remote player teleported - skipping interpolation this frame");
             return;
         }
 
@@ -668,7 +670,7 @@ public class U3DPlayerController : NetworkBehaviour
         // Use Advanced movement if any Advanced controls are active
         Vector2 finalMovement = (advancedMovement.magnitude > 0.1f) ? advancedMovement : moveInput;
 
-        // NEW: Snap character to camera direction when starting to move after left-click camera orbiting
+        // Snap character to camera direction when starting to move after left-click camera orbiting
         if (enableAdvancedCamera && cameraPivot != null)
         {
             bool isStartingToMove = (finalMovement.magnitude > 0.1f && !NetworkIsMoving);
@@ -679,8 +681,6 @@ public class U3DPlayerController : NetworkBehaviour
                 float targetYaw = cameraYaw;
                 transform.rotation = Quaternion.Euler(0, targetYaw, 0);
                 NetworkRotation = transform.rotation;
-
-                Debug.Log($"🔄 Character snapped to camera direction: {targetYaw}°");
             }
         }
 
@@ -1046,7 +1046,7 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
-        // ADDED: Movement cancels crouch (add this AFTER the crouch toggle logic)
+        // Movement cancels crouch (add this AFTER the crouch toggle logic)
         if (isCrouching && NetworkIsMoving && !isFlying)
         {
             isCrouching = false;
@@ -1057,7 +1057,7 @@ public class U3DPlayerController : NetworkBehaviour
             characterController.center = new Vector3(0, 1f, 0);
         }
 
-        // UPDATED: Flying (toggle) - fixed to stop immediately on second press
+        // Flying (toggle) - fixed to stop immediately on second press
         if (enableFlying && pressed.IsSet(U3DInputButtons.Fly))
         {
             isFlying = !isFlying;
@@ -1066,12 +1066,10 @@ public class U3DPlayerController : NetworkBehaviour
             if (isFlying)
             {
                 velocity = Vector3.zero; // Reset velocity when starting to fly
-                Debug.Log("🛫 Flying started");
             }
             else
             {
                 velocity = Vector3.zero; // Reset velocity when stopping flying
-                Debug.Log("🛬 Flying stopped immediately");
             }
         }
 
@@ -1085,7 +1083,16 @@ public class U3DPlayerController : NetworkBehaviour
         if (pressed.IsSet(U3DInputButtons.Interact))
         {
             NetworkIsInteracting = true;
-            U3DInteractionManager.Instance?.OnPlayerInteract();
+
+            // Use interaction manager directly
+            if (_interactionManager != null)
+            {
+                _interactionManager.OnPlayerInteract();
+            }
+            else
+            {
+                Debug.LogWarning("No interaction manager found - interaction ignored");
+            }
         }
 
         // Zoom
@@ -1149,12 +1156,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (teleportPressed)
         {
-            Debug.Log("✅ Teleport button pressed - performing teleport");
             PerformTeleport();
         }
     }
 
-    // FIXED: Network-aware teleport method WITHOUT NetworkTransform
+    // Network-aware teleport method WITHOUT NetworkTransform
     public void PerformTeleport()
     {
         if (playerCamera == null)
@@ -1231,8 +1237,6 @@ public class U3DPlayerController : NetworkBehaviour
 
             // Reset velocity to prevent continued falling/movement
             velocity = Vector3.zero;
-
-            Debug.Log($"✅ Teleport completed - Local: {transform.position}, Network: {NetworkPosition}");
         }
         else
         {
@@ -1325,7 +1329,7 @@ public class U3DPlayerController : NetworkBehaviour
             return desiredPosition; // Too close for meaningful collision detection
         }
 
-        // ENHANCED: Layer mask to ignore grabbed objects and specific collision layers
+        // Layer mask to ignore grabbed objects and specific collision layers
         int layerMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("Player"));
 
         if (Physics.SphereCast(pivotWorldPosition, cameraCollisionRadius, direction, out RaycastHit hit, maxDistance, layerMask))
@@ -1333,7 +1337,7 @@ public class U3DPlayerController : NetworkBehaviour
             float safeDistance = Mathf.Max(0.1f, hit.distance - cameraCollisionBuffer);
             Vector3 safeWorldPosition = pivotWorldPosition + direction * safeDistance;
 
-            // FIXED: Convert back to local space using camera pivot instead of player transform
+            // Convert back to local space using camera pivot instead of player transform
             if (cameraPivot != null)
             {
                 // Use camera pivot's inverse transform for stable coordinate conversion
@@ -1399,11 +1403,11 @@ public class U3DPlayerController : NetworkBehaviour
         // Load look inversion preference (player-specific, not creator setting)
         lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
 
-        // ENHANCED: Load additional sensitivity preferences
+        // Load additional sensitivity preferences
         LoadSensitivitySettings();
     }
 
-    // ENHANCED: Public methods for settings UI integration
+    // Public methods for settings UI integration
     public void SetMouseSmoothing(bool enabled)
     {
         enableMouseSmoothing = enabled;
@@ -1431,7 +1435,6 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetLookInverted(bool inverted)
     {
         lookInverted = inverted;
-        Debug.Log($"🔄 Look inversion set to: {inverted}");
     }
 
     // ENHANCED: Platform detection utilities for settings UI
@@ -1586,7 +1589,6 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
         NetworkIsSwimming = isSwimming;
-        Debug.Log($"🏊 Swimming state set to: {isSwimming}");
     }
 
     /// <summary>
@@ -1596,6 +1598,5 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
         NetworkIsClimbing = isClimbing;
-        Debug.Log($"🧗 Climbing state set to: {isClimbing}");
     }
 }

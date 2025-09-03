@@ -51,7 +51,7 @@ namespace U3D.Networking
         private string _currentSessionName = "";
         private FirebaseIntegration _firebaseIntegration;
 
-        // CORRECTED: Input handling using direct Action polling
+        // Input handling using direct Action polling
         private InputAction _moveAction;
         private InputAction _lookAction;
         private InputAction _jumpAction;
@@ -178,7 +178,7 @@ namespace U3D.Networking
             Debug.Log("U3D Fusion Network Manager initialized for WebGL");
         }
 
-        // CORRECTED: Setup input actions properly for Unity 6 + Fusion 2
+        // Setup input actions properly for Unity 6 + Fusion 2
         void SetupInputActions()
         {
             if (inputActionAsset == null)
@@ -228,14 +228,14 @@ namespace U3D.Networking
 
         void Update()
         {
-            // CORRECTED: Poll input actions directly for Fusion
+            // Poll input actions directly for Fusion
             if (_moveAction == null) return;
 
             // Check if we should process input (not escaped from WebGL)
             var cursorManager = FindAnyObjectByType<U3DWebGLCursorManager>();
             bool shouldProcessInput = cursorManager == null || cursorManager.ShouldProcessGameInput();
 
-            // NEW: Check for UI focus to prevent input conflicts
+            // Check for UI focus to prevent input conflicts
             bool isUIInteracting = CheckUIInteraction();
 
             if (!shouldProcessInput || isUIInteracting)
@@ -445,7 +445,7 @@ namespace U3D.Networking
         }
 
         /// <summary>
-        /// Start networking with session name from Firebase token
+        /// Start networking with proper physics configuration
         /// </summary>
         public async Task<bool> StartNetworking(string sessionName, string photonAppId = "")
         {
@@ -468,17 +468,17 @@ namespace U3D.Networking
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;
 
+                // FIXED: Proper physics simulator configuration for Shared Mode
                 var physicsSimulator = runnerObject.AddComponent<RunnerSimulatePhysics3D>();
-                physicsSimulator.ClientPhysicsSimulation = ClientPhysicsSimulation.SimulateAlways;
-                Debug.Log("✅ Added RunnerSimulatePhysics3D with SimulateAlways for shared mode");
+                ConfigurePhysicsSimulatorForSharedMode(physicsSimulator);
 
                 // Register this component as callback handler
                 _runner.AddCallbacks(this);
 
-                // WebGL-optimized configuration
+                // FIXED: WebGL Shared Mode configuration
                 var args = new StartGameArgs()
                 {
-                    GameMode = gameMode,
+                    GameMode = GameMode.Shared, // Correct mode for WebGL
                     SessionName = sessionName,
                     Scene = SceneRef.FromIndex(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex),
                     SceneManager = runnerObject.AddComponent<NetworkSceneManagerDefault>(),
@@ -509,6 +509,22 @@ namespace U3D.Networking
                 return false;
             }
         }
+
+
+        /// <summary>
+        /// Configure physics simulator for proper Shared Mode operation
+        /// </summary>
+        private void ConfigurePhysicsSimulatorForSharedMode(RunnerSimulatePhysics3D physicsSimulator)
+        {
+            // CRITICAL: Set ClientPhysicsSimulation for Shared Mode
+            physicsSimulator.ClientPhysicsSimulation = ClientPhysicsSimulation.SimulateAlways;
+
+            Debug.Log("✅ Configured RunnerSimulatePhysics3D for Shared Mode:");
+            Debug.Log($"   - ClientPhysicsSimulation: {physicsSimulator.ClientPhysicsSimulation}");
+
+            // Note: PhysicsSimulationTiming is handled automatically by Fusion 2
+        }
+
 
         /// <summary>
         /// Stop networking and cleanup
@@ -603,10 +619,13 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
         }
 
+        /// <summary>
+        /// Delayed spawn with proper physics initialization timing
+        /// </summary>
         private System.Collections.IEnumerator DelayedSpawn(NetworkRunner runner, PlayerRef player)
         {
-            // Wait for scene physics to initialize
-            yield return new WaitForSeconds(0.3f);
+            // CRITICAL: Wait for physics system to initialize before spawning physics objects
+            yield return new WaitForSeconds(0.5f); // Increased delay for physics initialization
 
             // Get spawn data (position AND rotation) from spawner
             Vector3 spawnPosition;
@@ -614,7 +633,6 @@ namespace U3D.Networking
 
             if (U3DPlayerSpawner.Instance != null)
             {
-                // Use the enhanced spawn system with rotation support
                 var spawnData = U3DPlayerSpawner.Instance.GetSpawnData();
                 spawnPosition = spawnData.position;
                 spawnRotation = spawnData.rotation;
@@ -623,7 +641,6 @@ namespace U3D.Networking
             }
             else
             {
-                // Fallback to old method if no spawner found
                 spawnPosition = GetSpawnPosition();
                 spawnRotation = Quaternion.identity;
                 Debug.LogWarning("⚠️ No PlayerSpawner found, using NetworkManager fallback");
@@ -631,7 +648,7 @@ namespace U3D.Networking
 
             Debug.Log($"🎯 Spawning player {player} at: {spawnPosition} facing: {spawnRotation.eulerAngles.y}°");
 
-            // FIXED: Now spawns with both position AND rotation
+            // Spawn with both position AND rotation
             var playerObject = runner.Spawn(playerPrefab, spawnPosition, spawnRotation, player);
 
             if (playerObject != null)
@@ -645,11 +662,42 @@ namespace U3D.Networking
                 {
                     playerController.RefreshInputActionsFromNetworkManager(this);
                 }
+
+                // FIXED: Initialize any grab/throw objects in the scene after player spawn
+                InitializePhysicsObjectsForPlayer(player);
             }
             else
             {
                 Debug.LogError($"❌ Failed to spawn player at {spawnPosition}");
             }
+        }
+
+        /// <summary>
+        /// Initialize physics objects when players join to prevent authority conflicts
+        /// </summary>
+        private void InitializePhysicsObjectsForPlayer(PlayerRef player)
+        {
+            if (_runner.GameMode != GameMode.Shared) return;
+
+            // Find all grabbable objects in the scene and ensure proper authority state
+            U3DGrabbable[] grabbables = FindObjectsByType<U3DGrabbable>(FindObjectsSortMode.None);
+
+            foreach (var grabbable in grabbables)
+            {
+                if (grabbable.IsNetworked && grabbable.GetComponent<NetworkObject>() != null)
+                {
+                    var netObj = grabbable.GetComponent<NetworkObject>();
+
+                    // Ensure objects are in proper initial state (not grabbed)
+                    if (netObj.HasStateAuthority && grabbable.IsGrabbed)
+                    {
+                        Debug.LogWarning($"Found grabbed object {grabbable.name} on player join - releasing");
+                        grabbable.Release();
+                    }
+                }
+            }
+
+            Debug.Log($"✅ Initialized {grabbables.Length} grabbable objects for player {player}");
         }
 
         public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)

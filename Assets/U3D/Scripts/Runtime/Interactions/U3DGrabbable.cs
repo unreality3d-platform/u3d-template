@@ -1,17 +1,13 @@
+using Fusion;
+using Fusion.Addons.Physics;
 using UnityEngine;
 using UnityEngine.Events;
-using Fusion;
 
 namespace U3D
 {
     /// <summary>
-    /// Universal grabbable component for both near and far interactions
-    /// Objects snap to the player's hand position when grabbed
-    /// Distance-based grabbing uses avatar position, not camera position for third-person compatibility
-    /// Supports both networked and non-networked modes automatically
-    /// ENHANCED: Smart drop behavior prevents midair floating while respecting user placement intent
-    /// FIXED: Properly manages original physics state for throwable objects
-    /// MULTIPLAYER: Handles authority requests for Shared Authority mode (WebGL)
+    /// FIXED: Reliable authority management for Shared Mode grab/throw system
+    /// Prevents race conditions and ensures deterministic state synchronization
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -53,25 +49,18 @@ namespace U3D
         [Tooltip("Called when player exits grab range")]
         public UnityEvent OnExitGrabRange;
 
-        [Tooltip("Called when player aims at this object (distance grab only)")]
-        public UnityEvent OnAimEnter;
+        [Tooltip("Called when grab attempt fails")]
+        public UnityEvent OnGrabFailed;
 
-        [Tooltip("Called when player stops aiming at this object (distance grab only)")]
-        public UnityEvent OnAimExit;
-
-        [Tooltip("Called when object is smart-dropped to a surface")]
-        public UnityEvent OnSmartDrop;
-
-        [Tooltip("Called when object is recovered due to safety bounds")]
-        public UnityEvent OnSafetyRecovery;
-
-        // Network state (only used if NetworkObject is present)
+        // FIXED: Proper network state management for Shared Mode
         [Networked] public bool NetworkIsGrabbed { get; set; }
         [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
+        [Networked] public byte NetworkGrabState { get; set; } // 0=Free, 1=Grabbing, 2=Grabbed
 
         // Components
-        private Rigidbody rb; // Optional - only for throwable objects
-        private U3DThrowable throwable; // Reference to throwable component if present
+        private Rigidbody rb;
+        private NetworkRigidbody3D networkRb3D;
+        private U3DThrowable throwable;
         private Collider col;
         private Transform originalParent;
         private Transform handTransform;
@@ -79,30 +68,26 @@ namespace U3D
         private Camera playerCamera;
         private NetworkObject networkObject;
 
-        // State
-        private bool isGrabbed = false;
+        // Deterministic state management
+        private GrabState localGrabState = GrabState.Free;
         private bool isInRange = false;
         private bool isAimedAt = false;
         private float lastAimCheckTime;
         private bool isNetworked = false;
         private bool hasRigidbody = false;
+        private bool hasNetworkRb3D = false;
 
-        // Authority management
-        private bool isWaitingForAuthority = false;
-        private bool hasRequestedAuthority = false;
-
-        // Hidden smart drop and safety recovery - enabled by default with optimal settings
-        private const bool ENABLE_SMART_DROP = true;
-        private const bool ENABLE_SAFETY_RECOVERY = true;
-        private const float SAFETY_FLOOR_Y = -50f;
-        private const float MAX_DISTANCE_FROM_SPAWN = 1000f;
+        // Authority management - FIXED for race conditions
+        private bool isRequestingAuthority = false;
+        private float authorityRequestTime = 0f;
+        private const float AUTHORITY_REQUEST_TIMEOUT = 2f;
 
         // Safety recovery state
         private Vector3 spawnPosition;
         private Quaternion spawnRotation;
         private bool hasRecordedSpawn = false;
 
-        // FIXED: Store original physics state once at initialization for throwable objects
+        // Physics state management - FIXED
         private bool originalWasKinematic;
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
@@ -110,15 +95,21 @@ namespace U3D
         // Static tracking for single grab mode
         private static U3DGrabbable currentlyGrabbed;
 
+        public enum GrabState : byte
+        {
+            Free = 0,           // Available for grabbing
+            Requesting = 1,     // Authority request in progress
+            Grabbed = 2,        // Successfully grabbed
+            Released = 3        // Recently released (cooldown)
+        }
+
         private void Awake()
         {
-            // Rigidbody is optional for grabbables
             rb = GetComponent<Rigidbody>();
             hasRigidbody = rb != null;
-
-            // Check for throwable component
+            networkRb3D = GetComponent<NetworkRigidbody3D>();
+            hasNetworkRb3D = networkRb3D != null;
             throwable = GetComponent<U3DThrowable>();
-
             col = GetComponent<Collider>();
             originalParent = transform.parent;
 
@@ -134,355 +125,129 @@ namespace U3D
 
         private void Start()
         {
-            // Record spawn position for safety recovery
             RecordSpawnPosition();
-
-            // FIXED: Store original physics state after all components are initialized
-            // This ensures we capture the intended "throwable" physics settings
             StoreOriginalPhysicsState();
-        }
-
-        private void RecordSpawnPosition()
-        {
-            if (!hasRecordedSpawn)
-            {
-                spawnPosition = transform.position;
-                spawnRotation = transform.rotation;
-                hasRecordedSpawn = true;
-            }
-        }
-
-        private void StoreOriginalPhysicsState()
-        {
-            if (hasRigidbody && !hasStoredOriginalPhysicsState)
-            {
-                // If this object has a throwable component, we want to restore to "throwable ready" state
-                // which means: isKinematic = false, useGravity = true (ready for physics)
-                if (throwable != null)
-                {
-                    // For throwable objects, the original/desired state is physics-ready
-                    originalWasKinematic = false; // Ready for physics when thrown
-                    originalUsedGravity = true;   // Affected by gravity when thrown
-                }
-                else
-                {
-                    // For non-throwable objects, store whatever the designer set
-                    originalWasKinematic = rb.isKinematic;
-                    originalUsedGravity = rb.useGravity;
-                }
-
-                hasStoredOriginalPhysicsState = true;
-            }
         }
 
         private void Update()
         {
-            // Only run Update logic on networked objects if they have authority, or always on non-networked objects
-            if (isNetworked && (Object == null || (!Object.HasStateAuthority && !isWaitingForAuthority))) return;
-
-            // Update range and aim status
             UpdatePlayerProximity();
 
-            // Check aim only for distance grabbing (when max distance > 0)
-            if (maxGrabDistance > 0f && !isGrabbed && Time.time - lastAimCheckTime > 0.1f)
+            // Check aim only for distance grabbing
+            if (maxGrabDistance > 0f && !IsCurrentlyGrabbed() && Time.time - lastAimCheckTime > 0.1f)
             {
                 lastAimCheckTime = Time.time;
                 CheckIfAimedAt();
             }
 
-            // Safety recovery check (only if enabled and not grabbed)
-            if (ENABLE_SAFETY_RECOVERY && !isGrabbed && hasRecordedSpawn)
+            // FIXED: Timeout authority requests to prevent hanging
+            if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
-                CheckSafetyBounds();
+                Debug.LogWarning($"Authority request timeout for {name}");
+                isRequestingAuthority = false;
+                OnGrabFailed?.Invoke();
             }
         }
 
         public override void Spawned()
         {
             if (!isNetworked) return;
-            // Networked initialization if needed
+            // Reset network state on spawn
+            NetworkGrabState = (byte)GrabState.Free;
+            NetworkIsGrabbed = false;
+            NetworkGrabbedBy = PlayerRef.None;
         }
 
+        // FIXED: Reliable authority change handling
         public void OnStateAuthorityChanged()
         {
             if (!isNetworked) return;
 
-            if (Object.HasStateAuthority && isWaitingForAuthority)
+            if (Object.HasStateAuthority && isRequestingAuthority)
             {
-                // We got authority, proceed with grab
-                isWaitingForAuthority = false;
+                // Successfully got authority
+                isRequestingAuthority = false;
                 PerformGrab();
             }
-            else if (!Object.HasStateAuthority && isGrabbed)
+            else if (!Object.HasStateAuthority && localGrabState == GrabState.Grabbed)
             {
-                // Lost authority while grabbed, release
-                PerformRelease();
+                // Lost authority while grabbed - force release
+                PerformLocalRelease();
             }
         }
 
-        private void CheckSafetyBounds()
+        // Networked property change detection
+        public override void Render()
         {
-            bool needsRecovery = false;
-            string reason = "";
+            base.Render();
 
-            // Check if fallen through world
-            if (transform.position.y < SAFETY_FLOOR_Y)
+            // Only do this if we have a hand, are grabbed, and a networked rigidbody is present
+            if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D)
             {
-                needsRecovery = true;
-                reason = $"fell below safety floor (Y: {transform.position.y:F1})";
-            }
-            // Check if too far from spawn
-            else if (Vector3.Distance(transform.position, spawnPosition) > MAX_DISTANCE_FROM_SPAWN)
-            {
-                needsRecovery = true;
-                reason = $"moved too far from spawn ({Vector3.Distance(transform.position, spawnPosition):F1}m)";
-            }
+                // Smoothly interpolate toward the hand’s position/rotation
+                transform.position = Vector3.Lerp(
+                    transform.position,
+                    handTransform.position + handTransform.TransformVector(grabOffset),
+                    0.5f // tweak this smoothing factor (0.5 = medium smooth, 1.0 = instant snap)
+                );
 
-            if (needsRecovery)
-            {
-                PerformSafetyRecovery(reason);
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    handTransform.rotation,
+                    0.5f
+                );
             }
         }
 
-        private void PerformSafetyRecovery(string reason)
-        {
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
 
-            Debug.LogWarning($"U3DGrabbable: Object '{name}' {reason} - performing safety recovery");
-
-            // Reset to spawn position
-            transform.position = spawnPosition;
-            transform.rotation = spawnRotation;
-
-            // Reset physics state
-            if (hasRigidbody && hasStoredOriginalPhysicsState)
-            {
-                if (throwable != null)
-                {
-                    // Let throwable component handle its physics
-                    rb.isKinematic = false;
-                    rb.useGravity = true;
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                }
-                else
-                {
-                    // Restore original state for non-throwables
-                    rb.isKinematic = originalWasKinematic;
-                    rb.useGravity = originalUsedGravity;
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                }
-            }
-
-            // Ensure proper collider state
-            col.isTrigger = false;
-
-            OnSafetyRecovery?.Invoke();
-        }
-
-        private void UpdatePlayerProximity()
-        {
-            if (playerTransform == null)
-            {
-                FindPlayer();
-                return;
-            }
-
-            // Use avatar position for distance calculations (not camera)
-            float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-            bool wasInRange = isInRange;
-            isInRange = distanceToPlayer >= minGrabDistance && distanceToPlayer <= maxGrabDistance;
-
-            // Fire range events
-            if (isInRange && !wasInRange)
-            {
-                OnEnterGrabRange?.Invoke();
-            }
-            else if (!isInRange && wasInRange)
-            {
-                OnExitGrabRange?.Invoke();
-            }
-        }
-
-        private void CheckIfAimedAt()
-        {
-            if (playerCamera == null || maxGrabDistance <= 0f || playerTransform == null)
-            {
-                isAimedAt = false;
-                return;
-            }
-
-            bool wasAimedAt = isAimedAt;
-            isAimedAt = false;
-
-            float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
-
-            if (avatarDistance >= minGrabDistance && avatarDistance <= maxGrabDistance)
-            {
-                if (useRadiusDetection)
-                {
-                    // NEW: Check if camera is looking toward object within detection radius
-                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
-                    float distanceToObject = cameraToObject.magnitude;
-
-                    // Check if within max grab distance
-                    if (distanceToObject <= maxGrabDistance)
-                    {
-                        // Check if generally looking in the object's direction
-                        Vector3 cameraForward = playerCamera.transform.forward;
-                        Vector3 directionToObject = cameraToObject.normalized;
-
-                        // Calculate angle between camera direction and object direction
-                        float angle = Vector3.Angle(cameraForward, directionToObject);
-
-                        // Calculate maximum allowed angle based on distance and detection radius
-                        // Closer objects allow wider angles, farther objects require more precision
-                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
-
-                        if (angle <= maxAllowedAngle)
-                        {
-                            isAimedAt = true;
-                        }
-                    }
-                }
-                else
-                {
-                    // Original precise raycast check
-                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
-                    Vector3 rayDirection = playerCamera.transform.forward;
-                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
-                    RaycastHit hit;
-
-                    if (Physics.Raycast(ray, out hit, maxGrabDistance))
-                    {
-                        if (hit.collider == col)
-                        {
-                            isAimedAt = true;
-                        }
-                    }
-                }
-            }
-
-            if (isAimedAt && !wasAimedAt)
-            {
-                OnAimEnter?.Invoke();
-            }
-            else if (!isAimedAt && wasAimedAt)
-            {
-                OnAimExit?.Invoke();
-            }
-        }
-
-        private void FindPlayer()
-        {
-            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
-            if (playerController != null)
-            {
-                playerTransform = playerController.transform;
-                playerCamera = playerController.GetComponentInChildren<Camera>();
-                FindHandBone();
-            }
-        }
-
-        private void FindHandBone()
-        {
-            if (playerTransform == null) return;
-
-            handTransform = null; // Reset first
-
-            if (!string.IsNullOrEmpty(handBoneName))
-            {
-                Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
-                foreach (Transform t in allTransforms)
-                {
-                    // FIXED: Avoid camera-related transforms to prevent camera interference
-                    if (t.name == handBoneName &&
-                        !t.name.Contains("Camera") &&
-                        !t.name.Contains("Pivot") &&
-                        t != playerCamera?.transform)
-                    {
-                        handTransform = t;
-                        break;
-                    }
-                }
-            }
-
-            // FIXED: Safe fallback - use player root, NOT camera or camera pivot
-            if (handTransform == null)
-            {
-                // Create a dedicated hand anchor that won't interfere with camera
-                GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
-                if (handAnchor == null)
-                {
-                    handAnchor = new GameObject($"{playerTransform.name}_HandAnchor");
-                    handAnchor.transform.SetParent(playerTransform);
-                    handAnchor.transform.localPosition = Vector3.forward * 0.5f + Vector3.up * 1.2f; // In front of chest
-                    handAnchor.transform.localRotation = Quaternion.identity;
-                }
-                handTransform = handAnchor.transform;
-            }
-        }
-
-        private void OnTriggerEnter(Collider other)
-        {
-            // Handle touch-based near grabbing (when minGrabDistance is 0)
-            if (minGrabDistance <= 0f && other.CompareTag("Player"))
-            {
-                if (playerTransform == null)
-                {
-                    playerTransform = other.transform;
-                    playerCamera = other.GetComponentInChildren<Camera>();
-                    FindHandBone();
-                }
-            }
-        }
-
-        private void OnTriggerExit(Collider other)
-        {
-            // Handle touch-based range exit
-            if (minGrabDistance <= 0f && other.CompareTag("Player"))
-            {
-                if (!isGrabbed)
-                {
-                    playerTransform = null;
-                    handTransform = null;
-                    playerCamera = null;
-                }
-            }
-        }
-
+        // FIXED: Deterministic grab attempt
         public void Grab()
         {
-            if (isGrabbed || !CanGrabFromCurrentPosition()) return;
+            if (!CanAttemptGrab()) return;
 
-            // For networked objects, handle authority first
-            if (isNetworked)
+            if (!isNetworked)
             {
-                if (!Object.HasStateAuthority)
-                {
-                    // Request authority from current owner
-                    if (!hasRequestedAuthority)
-                    {
-                        Object.RequestStateAuthority();
-                        hasRequestedAuthority = true;
-                        isWaitingForAuthority = true;
-                        return; // Wait for authority callback
-                    }
-                    else if (!isWaitingForAuthority)
-                    {
-                        // Authority request failed or denied
-                        hasRequestedAuthority = false;
-                        return;
-                    }
-                    // Still waiting for authority...
-                    return;
-                }
+                // Non-networked mode - immediate grab
+                PerformGrab();
+                return;
             }
 
-            // We have authority (or non-networked), proceed with grab
-            PerformGrab();
+            // Networked mode - proper authority handling
+            if (Object.HasStateAuthority)
+            {
+                // Already have authority - grab immediately
+                PerformGrab();
+            }
+            else if (NetworkGrabState == (byte)GrabState.Free && !isRequestingAuthority)
+            {
+                // Request authority for free object
+                RequestGrabAuthority();
+            }
+            else
+            {
+                // Object is not available
+                OnGrabFailed?.Invoke();
+            }
+        }
+
+        private void RequestGrabAuthority()
+        {
+            if (isRequestingAuthority) return;
+
+            // Set network state to prevent other grab attempts
+            if (Object.HasStateAuthority || NetworkGrabState == (byte)GrabState.Free)
+            {
+                NetworkGrabState = (byte)GrabState.Requesting;
+                isRequestingAuthority = true;
+                authorityRequestTime = Time.time;
+
+                // Request state authority
+                Object.RequestStateAuthority();
+            }
+            else
+            {
+                OnGrabFailed?.Invoke();
+            }
         }
 
         private void PerformGrab()
@@ -499,15 +264,23 @@ namespace U3D
                 FindPlayer();
             }
 
-            if (handTransform == null) return;
-
-            isGrabbed = true;
-            currentlyGrabbed = this;
-            hasRequestedAuthority = false; // Reset authority request flag
-
-            // Update network state if networked
-            if (isNetworked)
+            if (handTransform == null)
             {
+                // As a safety net, make sure there’s always a hand anchor
+                FindHandBone();
+                if (handTransform == null) return;
+            }
+
+            // --- NEW: tell Fusion not to fight our parenting while grabbed ---
+            if (networkRb3D != null)
+            {
+                networkRb3D.SyncParent = false;
+            }
+
+            // Update network state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkGrabState = (byte)GrabState.Grabbed;
                 NetworkIsGrabbed = true;
                 if (Runner != null && Runner.LocalPlayer != null)
                 {
@@ -515,28 +288,21 @@ namespace U3D
                 }
             }
 
-            // FIXED: Let U3DThrowable handle its own physics during grab
-            // We don't modify rigidbody settings directly anymore
+            // Update local state
+            localGrabState = GrabState.Grabbed;
+            currentlyGrabbed = this;
+            isRequestingAuthority = false;
+
+            // Handle physics
             if (throwable != null)
             {
-                // Throwable component will handle physics state via its OnObjectGrabbed callback
+                // Throwable manages its own physics
             }
             else if (hasRigidbody)
             {
-                // For non-throwable objects with rigidbody, make kinematic while grabbed
                 rb.isKinematic = true;
                 rb.useGravity = false;
             }
-
-            // FIXED: Set collider to trigger AND exclude from camera collision to prevent camera snapping
-            col.isTrigger = true;
-
-            // Move to a layer that camera collision ignores, or disable collision detection temporarily
-            int originalLayer = gameObject.layer;
-            SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
-
-            // Store original layer for restoration on release
-            PlayerPrefs.SetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", originalLayer);
 
             // Parent to hand
             transform.SetParent(handTransform);
@@ -547,7 +313,7 @@ namespace U3D
 
         public void Release()
         {
-            if (!isGrabbed) return;
+            if (localGrabState != GrabState.Grabbed) return;
 
             // For networked objects, only release if we have authority
             if (isNetworked && !Object.HasStateAuthority) return;
@@ -557,48 +323,43 @@ namespace U3D
 
         private void PerformRelease()
         {
-            isGrabbed = false;
+            // Update network state
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkGrabState = (byte)GrabState.Free;
+                NetworkIsGrabbed = false;
+                NetworkGrabbedBy = PlayerRef.None;
+            }
+
+            // --- NEW: re-enable Fusion’s parent syncing after release ---
+            if (networkRb3D != null)
+            {
+                networkRb3D.SyncParent = true;
+            }
+
+            PerformLocalRelease();
+        }
+
+
+        private void PerformLocalRelease()
+        {
+            localGrabState = GrabState.Free;
             if (currentlyGrabbed == this)
             {
                 currentlyGrabbed = null;
             }
 
-            // Update network state if networked
-            if (isNetworked)
-            {
-                NetworkIsGrabbed = false;
-                NetworkGrabbedBy = default(PlayerRef);
-            }
+            // Unparent and restore physics
+            PerformDirectUnparenting();
 
-            // Store current position for smart drop calculation
-            Vector3 releasePosition = transform.position;
-
-            // Unparent first
-            transform.SetParent(originalParent);
-
-            // FIXED: Restore collider and layer settings
-            col.isTrigger = false;
-
-            // Restore original layer
-            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
-            SetLayerRecursively(gameObject, originalLayer);
-            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
-
-            // ENHANCED: Smart drop behavior for non-throwable objects
-            if (throwable == null && ENABLE_SMART_DROP)
-            {
-                PerformSmartDrop(releasePosition);
-            }
-
-            // FIXED: Restore to original "throwable-ready" physics state
+            // Handle physics restoration
             if (throwable != null)
             {
-                // Let throwable component handle its own physics restoration via OnObjectReleased callback
-                // It will activate physics for throwing, then manage sleep cycles properly
+                // Let throwable component handle physics via OnObjectReleased callback
             }
             else if (hasRigidbody && hasStoredOriginalPhysicsState)
             {
-                // For non-throwable objects, restore their original state
+                // For non-throwable objects, restore original state
                 rb.isKinematic = originalWasKinematic;
                 rb.useGravity = originalUsedGravity;
             }
@@ -606,42 +367,48 @@ namespace U3D
             // Clear references if not in range
             if (!isInRange)
             {
-                playerTransform = null;
-                handTransform = null;
-                playerCamera = null;
+                ClearPlayerReferences();
             }
 
             OnReleased?.Invoke();
-
-            // Reset authority flags
-            hasRequestedAuthority = false;
-            isWaitingForAuthority = false;
         }
 
-        private void PerformSmartDrop(Vector3 releasePosition)
+        // Handle remote player grabs
+        private void OnRemoteGrab()
         {
-            // Use the object's collider bounds to determine proper drop position
-            Bounds objectBounds = col.bounds;
+            // Visual feedback for remote grab
+            OnGrabbed?.Invoke();
+        }
 
-            // Cast from the bottom of the object's collider
-            Vector3 raycastStart = new Vector3(objectBounds.center.x, objectBounds.min.y, objectBounds.center.z);
-            float maxDropDistance = 50f; // Reasonable search distance
+        private void OnRemoteRelease()
+        {
+            // Visual feedback for remote release
+            OnReleased?.Invoke();
+        }
 
-            // Cast downward from bottom of collider to find surface
-            if (Physics.Raycast(raycastStart, Vector3.down, out RaycastHit hit, maxDropDistance))
-            {
-                // Position object so its bottom collider edge rests on the surface
-                float yOffset = objectBounds.center.y - objectBounds.min.y; // Distance from object center to bottom
-                Vector3 surfacePosition = new Vector3(objectBounds.center.x, hit.point.y + yOffset, objectBounds.center.z);
-                transform.position = surfacePosition;
+        private void PerformDirectParenting()
+        {
+            // Set collider to trigger and change layer while grabbed
+            col.isTrigger = true;
+            int originalLayer = gameObject.layer;
+            SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
+            PlayerPrefs.SetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", originalLayer);
 
-                OnSmartDrop?.Invoke();
-            }
-            else
-            {
-                // No surface found within range - leave at release position
-                transform.position = releasePosition;
-            }
+            // Parent to hand
+            transform.SetParent(handTransform);
+            transform.localPosition = grabOffset;
+        }
+
+        private void PerformDirectUnparenting()
+        {
+            // Unparent first
+            transform.SetParent(originalParent);
+
+            // Restore collider and layer settings
+            col.isTrigger = false;
+            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
+            SetLayerRecursively(gameObject, originalLayer);
+            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
         }
 
         private void SetLayerRecursively(GameObject obj, int layer)
@@ -653,8 +420,12 @@ namespace U3D
             }
         }
 
-        private bool CanGrabFromCurrentPosition()
+        private bool CanAttemptGrab()
         {
+            // Check if object is already grabbed
+            if (IsCurrentlyGrabbed()) return false;
+
+            // Check if we can grab from current position
             if (playerTransform == null)
             {
                 FindPlayer();
@@ -662,7 +433,6 @@ namespace U3D
             }
 
             float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-
             if (distanceToPlayer < minGrabDistance || distanceToPlayer > maxGrabDistance)
             {
                 return false;
@@ -671,76 +441,201 @@ namespace U3D
             // For distance grabbing, check if looking at object
             if (maxGrabDistance > minGrabDistance && playerCamera != null)
             {
-                if (useRadiusDetection)
-                {
-                    // NEW: Use radius-based detection
-                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
-                    float distanceToObject = cameraToObject.magnitude;
-
-                    if (distanceToObject <= maxGrabDistance)
-                    {
-                        Vector3 cameraForward = playerCamera.transform.forward;
-                        Vector3 directionToObject = cameraToObject.normalized;
-                        float angle = Vector3.Angle(cameraForward, directionToObject);
-                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
-
-                        return angle <= maxAllowedAngle;
-                    }
-                    return false;
-                }
-                else
-                {
-                    // Original precise raycast
-                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
-                    Vector3 rayDirection = playerCamera.transform.forward;
-                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
-                    RaycastHit hit;
-
-                    if (Physics.Raycast(ray, out hit, maxGrabDistance))
-                    {
-                        return hit.collider == col;
-                    }
-                    return false;
-                }
+                return CheckAimingAtObject();
             }
 
             return true;
         }
 
-        private void OnDrawGizmosSelected()
+        private bool IsCurrentlyGrabbed()
         {
+            if (isNetworked && Object != null && Object.IsValid)
+            {
+                return NetworkIsGrabbed || NetworkGrabState == (byte)GrabState.Grabbed;
+            }
+            return localGrabState == GrabState.Grabbed;
+        }
+
+        private void FindPlayer()
+        {
+            // Just grab the first available U3DPlayerController in the scene
+            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
+
+            if (playerController != null)
+            {
+                playerTransform = playerController.transform;
+                playerCamera = playerController.GetComponentInChildren<Camera>();
+                FindHandBone();
+            }
+            else
+            {
+                // No player found, clear references
+                playerTransform = null;
+                playerCamera = null;
+                handTransform = null;
+            }
+        }
+
+        private void FindHandBone()
+        {
+            if (playerTransform == null) return;
+
+            handTransform = null;
+
+            if (!string.IsNullOrEmpty(handBoneName))
+            {
+                Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
+                foreach (Transform t in allTransforms)
+                {
+                    if (t.name == handBoneName && !t.name.Contains("Camera") && t != playerCamera?.transform)
+                    {
+                        handTransform = t;
+                        break;
+                    }
+                }
+            }
+
+            // Safe fallback - use player root with offset
+            if (handTransform == null)
+            {
+                GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
+                if (handAnchor == null)
+                {
+                    handAnchor = new GameObject($"{playerTransform.name}_HandAnchor");
+                    handAnchor.transform.SetParent(playerTransform);
+                    handAnchor.transform.localPosition = Vector3.forward * 0.5f + Vector3.up * 1.2f;
+                    handAnchor.transform.localRotation = Quaternion.identity;
+                }
+                handTransform = handAnchor.transform;
+            }
+        }
+
+        private void UpdatePlayerProximity()
+        {
+            if (playerTransform == null)
+            {
+                FindPlayer();
+                return;
+            }
+
+            float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
+            bool wasInRange = isInRange;
+            isInRange = distanceToPlayer >= minGrabDistance && distanceToPlayer <= maxGrabDistance;
+
+            if (isInRange && !wasInRange)
+            {
+                OnEnterGrabRange?.Invoke();
+            }
+            else if (!isInRange && wasInRange)
+            {
+                OnExitGrabRange?.Invoke();
+            }
+        }
+
+        private void CheckIfAimedAt()
+        {
+            bool wasAimedAt = isAimedAt;
+            isAimedAt = CheckAimingAtObject();
+
+            if (isAimedAt && !wasAimedAt)
+            {
+                // OnAimEnter event if needed
+            }
+            else if (!isAimedAt && wasAimedAt)
+            {
+                // OnAimExit event if needed
+            }
+        }
+
+        private bool CheckAimingAtObject()
+        {
+            if (playerCamera == null || maxGrabDistance <= 0f || playerTransform == null)
+            {
+                return false;
+            }
+
+            float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
+            if (avatarDistance < minGrabDistance || avatarDistance > maxGrabDistance)
+            {
+                return false;
+            }
+
             if (useRadiusDetection)
             {
-                Gizmos.color = Color.yellow;
-                Gizmos.color = new Color(1, 1, 0, 0.3f);
-                Gizmos.DrawSphere(transform.position, grabDetectionRadius);
+                Vector3 cameraToObject = transform.position - playerCamera.transform.position;
+                float distanceToObject = cameraToObject.magnitude;
 
-                // Draw wire sphere for radius outline
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawWireSphere(transform.position, grabDetectionRadius);
+                if (distanceToObject <= maxGrabDistance)
+                {
+                    Vector3 cameraForward = playerCamera.transform.forward;
+                    Vector3 directionToObject = cameraToObject.normalized;
+                    float angle = Vector3.Angle(cameraForward, directionToObject);
+                    float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
+
+                    return angle <= maxAllowedAngle;
+                }
             }
-
-            // Draw safety bounds if recorded spawn position exists
-            if (hasRecordedSpawn)
+            else
             {
-                // Draw spawn position
-                Gizmos.color = Color.cyan;
-                Gizmos.DrawWireSphere(spawnPosition, 0.5f);
+                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
+                Vector3 rayDirection = playerCamera.transform.forward;
+                Ray ray = new Ray(avatarEyeLevel, rayDirection);
 
-                // Draw safety radius
-                Gizmos.color = new Color(1, 0, 0, 0.1f);
-                Gizmos.DrawSphere(spawnPosition, MAX_DISTANCE_FROM_SPAWN);
+                if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance))
+                {
+                    return hit.collider == col;
+                }
             }
+
+            return false;
+        }
+
+        private void RecordSpawnPosition()
+        {
+            if (!hasRecordedSpawn)
+            {
+                spawnPosition = transform.position;
+                spawnRotation = transform.rotation;
+                hasRecordedSpawn = true;
+            }
+        }
+
+        private void StoreOriginalPhysicsState()
+        {
+            if (hasRigidbody && !hasStoredOriginalPhysicsState)
+            {
+                if (throwable != null)
+                {
+                    // For throwable objects, desired state is physics-ready
+                    originalWasKinematic = false;
+                    originalUsedGravity = true;
+                }
+                else
+                {
+                    // For non-throwable objects, store designer settings
+                    originalWasKinematic = rb.isKinematic;
+                    originalUsedGravity = rb.useGravity;
+                }
+
+                hasStoredOriginalPhysicsState = true;
+            }
+        }
+
+        private void ClearPlayerReferences()
+        {
+            playerTransform = null;
+            handTransform = null;
+            playerCamera = null;
         }
 
         // IU3DInteractable implementation
         public void OnInteract()
         {
-            if (isGrabbed)
+            if (IsCurrentlyGrabbed())
             {
                 Release();
             }
-            else if (CanGrabFromCurrentPosition())
+            else if (CanAttemptGrab())
             {
                 Grab();
             }
@@ -758,90 +653,38 @@ namespace U3D
 
         public bool CanInteract()
         {
-            return isGrabbed || CanGrabFromCurrentPosition();
+            return CanAttemptGrab() || IsCurrentlyGrabbed();
         }
 
         public int GetInteractionPriority()
         {
-            if (isGrabbed) return 60; // High priority when already grabbed
-            if (minGrabDistance <= 0f) return 50; // Touch grabbing gets standard priority
-            return 40; // Distance grabbing gets slightly lower priority
+            if (IsCurrentlyGrabbed()) return 60;
+            if (minGrabDistance <= 0f) return 50;
+            return 40;
         }
 
         public string GetInteractionPrompt()
         {
-            return isGrabbed ? "Release" : "Grab";
+            if (isRequestingAuthority) return "Requesting...";
+            return IsCurrentlyGrabbed() ? "Release" : "Grab";
         }
 
         // Public properties
-        public bool IsGrabbed => isGrabbed;
+        public bool IsGrabbed => IsCurrentlyGrabbed();
         public bool IsInRange => isInRange;
         public bool IsAimedAt => isAimedAt;
         public bool IsNetworked => isNetworked;
         public bool HasRigidbody => hasRigidbody;
         public bool HasThrowable => throwable != null;
-        public Vector3 SpawnPosition => spawnPosition;
-        public Quaternion SpawnRotation => spawnRotation;
-        public bool IsWaitingForAuthority => isWaitingForAuthority;
-
-        // Public method to update spawn position (useful for dynamic placement)
-        public void UpdateSpawnPosition(Vector3 newPosition, Quaternion newRotation)
-        {
-            spawnPosition = newPosition;
-            spawnRotation = newRotation;
-            hasRecordedSpawn = true;
-        }
-
-        // Public method to manually trigger safety recovery
-        public void TriggerSafetyRecovery()
-        {
-            if (ENABLE_SAFETY_RECOVERY && hasRecordedSpawn)
-            {
-                PerformSafetyRecovery("manual trigger");
-            }
-        }
+        public GrabState CurrentGrabState => localGrabState;
+        public bool IsRequestingAuthority => isRequestingAuthority;
 
         private void OnDestroy()
         {
-            if (isGrabbed)
+            if (IsCurrentlyGrabbed())
             {
                 Release();
             }
-        }
-
-        // Debug information for development
-        [System.Serializable]
-        public struct PhysicsDebugInfo
-        {
-            public bool hasStoredState;
-            public bool originalKinematic;
-            public bool originalGravity;
-            public bool currentKinematic;
-            public bool currentGravity;
-            public bool hasThrowableComponent;
-            public Vector3 spawnPosition;
-            public float distanceFromSpawn;
-            public bool hasAuthority;
-            public bool isWaitingForAuthority;
-            public bool hasRequestedAuthority;
-        }
-
-        public PhysicsDebugInfo GetPhysicsDebugInfo()
-        {
-            return new PhysicsDebugInfo
-            {
-                hasStoredState = hasStoredOriginalPhysicsState,
-                originalKinematic = originalWasKinematic,
-                originalGravity = originalUsedGravity,
-                currentKinematic = hasRigidbody ? rb.isKinematic : false,
-                currentGravity = hasRigidbody ? rb.useGravity : false,
-                hasThrowableComponent = throwable != null,
-                spawnPosition = spawnPosition,
-                distanceFromSpawn = hasRecordedSpawn ? Vector3.Distance(transform.position, spawnPosition) : 0f,
-                hasAuthority = isNetworked ? Object.HasStateAuthority : true,
-                isWaitingForAuthority = isWaitingForAuthority,
-                hasRequestedAuthority = hasRequestedAuthority
-            };
         }
     }
 }
