@@ -131,33 +131,34 @@ public class FirebaseIntegration : MonoBehaviour
     void DetectDeploymentEnvironment()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        try
+    try
+    {
+        var deploymentInfoPtr = UnityGetDeploymentInfo();
+        var deploymentInfoJson = Marshal.PtrToStringAnsi(deploymentInfoPtr);
+        
+        if (!string.IsNullOrEmpty(deploymentInfoJson))
         {
-            var deploymentInfoPtr = UnityGetDeploymentInfo();
-            var deploymentInfoJson = Marshal.PtrToStringAnsi(deploymentInfoPtr);
+            _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
             
-            if (!string.IsNullOrEmpty(deploymentInfoJson))
+            // Update Inspector display
+            detectedEnvironment = _deploymentInfo.deploymentType;
+            
+            if (_deploymentInfo.isProfessionalURL)
             {
-                _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
-                
-                // Update Inspector display
-                detectedEnvironment = _deploymentInfo.deploymentType;
-                
-                if (_deploymentInfo.isProfessionalURL)
-                {
-                    professionalURL = $"{_deploymentInfo.creatorUsername}.unreality3d.com/{_deploymentInfo.projectName}";
-                    contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
-                }
-                
-                // Report metrics after load
-                Invoke(nameof(ReportDeploymentMetrics), 2f);
+                // NEW: Use path-based format for display
+                professionalURL = $"unreality3d.com/{_deploymentInfo.creatorUsername}/{_deploymentInfo.projectName}";
+                contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
             }
+            
+            // Report metrics after load
+            Invoke(nameof(ReportDeploymentMetrics), 2f);
         }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"Platform detection failed: {e.Message}");
-            detectedEnvironment = "Detection failed";
-        }
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogWarning($"Platform detection failed: {e.Message}");
+        detectedEnvironment = "Detection failed";
+    }
 #else
         detectedEnvironment = "Unity Editor";
         _deploymentInfo = new DeploymentInfo

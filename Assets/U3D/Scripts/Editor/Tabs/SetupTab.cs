@@ -362,7 +362,7 @@ namespace U3D.Editor
 
             EditorGUILayout.HelpBox(
                 "Your username creates your professional URL:\n" +
-                "https://[username].unreality3d.com/\n\n" +
+                "https://unreality3d.com/[username]/\n\n" +
                 "Choose carefully - this represents your creator brand.",
                 MessageType.Info);
 
@@ -667,7 +667,7 @@ namespace U3D.Editor
             if (!string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 EditorGUILayout.LabelField($"🔗 Username: {U3DAuthenticator.CreatorUsername}", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField($"🌐 URL: https://{U3DAuthenticator.CreatorUsername}.unreality3d.com/", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"🌐 URL: https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/", EditorStyles.miniLabel);
             }
 
             string savedPayPalEmail = GetSavedPayPalEmail();
@@ -891,7 +891,7 @@ namespace U3D.Editor
                     }
                     UpdateCompletion();
                     EditorUtility.DisplayDialog("Success!",
-                        $"Username '{desiredUsername}' reserved successfully!\n\nYour professional URL: https://{desiredUsername}.unreality3d.com/",
+                        $"Username '{desiredUsername}' reserved successfully!\n\nYour professional URL: https://unreality3d.com/{desiredUsername}/",
                         "Awesome!");
                 }
                 else

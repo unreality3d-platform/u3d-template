@@ -45,7 +45,7 @@ mergeInto(LibraryManager.library, {
         } else {
             console.warn('❌ Direct PayPal function not available');
             console.warn('🔍 Make sure PayPal SDK is loaded and direct integration is configured');
-            
+
             // Send failure back to Unity
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance && window.currentPayPalGameObject) {
                 window.unityInstance.SendMessage(window.currentPayPalGameObject, 'OnPaymentComplete', 'false');
@@ -56,16 +56,16 @@ mergeInto(LibraryManager.library, {
     // Test direct PayPal connection
     UnityTestDirectPayPalConnection: function (gameObjectNamePtr) {
         var gameObjectName = UTF8ToString(gameObjectNamePtr);
-        
+
         console.log('🧪 Testing direct PayPal connection for GameObject:', gameObjectName);
-        
+
         // Store the GameObject name
         window.currentPayPalGameObject = gameObjectName;
 
         // Check if PayPal SDK is available
         if (typeof paypal !== 'undefined' && paypal.Buttons) {
             console.log('✅ PayPal SDK is available');
-            
+
             // Test connection
             if (typeof window.TestDirectPayPalConnection === 'function') {
                 window.TestDirectPayPalConnection(gameObjectName);
@@ -86,7 +86,7 @@ mergeInto(LibraryManager.library, {
     },
 
     // ========== EXISTING PAYPAL FUNCTIONS (LEGACY - FIREBASE DEPENDENT) ==========
-    
+
     UnityCallTestFunction: function () {
         if (typeof window.UnityCallTestFunction === 'function') {
             window.UnityCallTestFunction();
@@ -139,37 +139,51 @@ mergeInto(LibraryManager.library, {
         var hostname = window.location.hostname.toLowerCase();
         var pathname = window.location.pathname;
 
-        if (hostname.endsWith('.unreality3d.com') && hostname !== 'unreality3d.com') {
+        // NEW: Path-based professional URL detection
+        if (hostname === 'unreality3d.com' && pathname.startsWith('/')) {
+            var pathParts = pathname.split('/').filter(part => part.length > 0);
+            if (pathParts.length >= 2) {
+                deploymentInfo.isProfessionalURL = true;
+                deploymentInfo.isProduction = true;
+                deploymentInfo.deploymentType = 'professional';
+                deploymentInfo.creatorUsername = pathParts[0];
+                deploymentInfo.projectName = pathParts[1];
+
+                console.log('Path-based professional URL detected:', deploymentInfo.creatorUsername + '/' + deploymentInfo.projectName);
+            }
+        }
+        // LEGACY: Subdomain-based professional URL detection (backward compatibility)
+        else if (hostname.endsWith('.unreality3d.com') && hostname !== 'unreality3d.com') {
             deploymentInfo.isProfessionalURL = true;
             deploymentInfo.isProduction = true;
             deploymentInfo.deploymentType = 'professional';
-            
+
             var subdomain = hostname.replace('.unreality3d.com', '');
             deploymentInfo.creatorUsername = subdomain;
-            
+
             var pathParts = pathname.split('/').filter(part => part.length > 0);
             if (pathParts.length > 0) {
                 deploymentInfo.projectName = pathParts[0];
             }
-            
-            console.log('Professional URL detected:', deploymentInfo.creatorUsername + '.unreality3d.com/' + deploymentInfo.projectName);
-            
+
+            console.log('Legacy subdomain professional URL detected:', deploymentInfo.creatorUsername + '.unreality3d.com/' + deploymentInfo.projectName);
+
         } else if (hostname.includes('unreality3d.web.app') || hostname.includes('unreality3d.firebaseapp.com')) {
             deploymentInfo.isProduction = hostname.includes('unreality3d.web.app');
             deploymentInfo.deploymentType = deploymentInfo.isProduction ? 'firebase-production' : 'firebase-development';
-            
+
             console.log('Firebase hosting detected:', deploymentInfo.deploymentType);
-            
+
         } else if (hostname.includes('unreality3d2025.web.app') || hostname.includes('unreality3d2025.firebaseapp.com')) {
             deploymentInfo.isProduction = false;
             deploymentInfo.deploymentType = 'firebase-development';
-            
+
             console.log('Development environment detected');
-            
+
         } else if (hostname === 'localhost' || hostname.startsWith('192.168.') || hostname.startsWith('127.0.0.1')) {
             deploymentInfo.deploymentType = 'local';
             console.log('Local development detected');
-            
+
         } else {
             deploymentInfo.deploymentType = 'unknown';
             console.log('Unknown deployment type for hostname:', hostname);
@@ -185,13 +199,13 @@ mergeInto(LibraryManager.library, {
     UnityReportDeploymentMetrics: function (deploymentTypePtr, loadTimePtr) {
         var deploymentType = UTF8ToString(deploymentTypePtr);
         var loadTime = UTF8ToString(loadTimePtr);
-        
+
         console.log('Unity deployment metrics:', {
             type: deploymentType,
             loadTime: loadTime + 'ms',
             timestamp: new Date().toISOString()
         });
-        
+
         if (typeof window.UnityReportAnalyticsEvent === 'function') {
             window.UnityReportAnalyticsEvent('deployment_metrics', JSON.stringify({
                 deploymentType: deploymentType,
@@ -207,15 +221,15 @@ mergeInto(LibraryManager.library, {
     UnityGetPhotonToken: function (roomNamePtr, contentIdPtr) {
         var roomName = UTF8ToString(roomNamePtr);
         var contentId = UTF8ToString(contentIdPtr);
-        
+
         console.log('Unity requested Photon token for room:', roomName, 'content:', contentId);
-        
+
         if (typeof window.UnityGetPhotonToken === 'function') {
             window.UnityGetPhotonToken(roomName, contentId);
         } else {
             console.warn('UnityGetPhotonToken not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived', 
+                window.unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived',
                     JSON.stringify({ error: 'Multiplayer functions not available' }));
             }
         }
@@ -225,15 +239,15 @@ mergeInto(LibraryManager.library, {
         var contentId = UTF8ToString(contentIdPtr);
         var sessionName = UTF8ToString(sessionNamePtr);
         var maxPlayers = UTF8ToString(maxPlayersPtr);
-        
+
         console.log('Unity creating multiplayer session:', sessionName, 'for content:', contentId, 'max players:', maxPlayers);
-        
+
         if (typeof window.UnityCreateMultiplayerSession === 'function') {
             window.UnityCreateMultiplayerSession(contentId, sessionName, maxPlayers);
         } else {
             console.warn('UnityCreateMultiplayerSession not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated', 
+                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated',
                     JSON.stringify({ error: 'Session creation not available' }));
             }
         }
@@ -241,15 +255,15 @@ mergeInto(LibraryManager.library, {
 
     UnityJoinMultiplayerSession: function (roomNamePtr) {
         var roomName = UTF8ToString(roomNamePtr);
-        
+
         console.log('Unity joining multiplayer session:', roomName);
-        
+
         if (typeof window.UnityJoinMultiplayerSession === 'function') {
             window.UnityJoinMultiplayerSession(roomName);
         } else {
             console.warn('UnityJoinMultiplayerSession not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse', 
+                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse',
                     JSON.stringify({ error: 'Session join not available' }));
             }
         }
@@ -259,7 +273,7 @@ mergeInto(LibraryManager.library, {
 
     UnityGetUserProfile: function () {
         console.log('Unity requesting user profile');
-        
+
         if (typeof window.UnityGetUserProfile === 'function') {
             window.UnityGetUserProfile();
         } else {
@@ -272,7 +286,7 @@ mergeInto(LibraryManager.library, {
                     paypalConnected: false,
                     creatorUsername: ''
                 };
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnUserProfileReceived', 
+                window.unityInstance.SendMessage('FirebaseIntegration', 'OnUserProfileReceived',
                     JSON.stringify(defaultProfile));
             }
         }
@@ -282,9 +296,9 @@ mergeInto(LibraryManager.library, {
         var displayName = UTF8ToString(displayNamePtr);
         var userType = UTF8ToString(userTypePtr);
         var paypalConnected = UTF8ToString(paypalConnectedPtr) === 'true';
-        
+
         console.log('Unity updating user profile:', displayName, userType, paypalConnected);
-        
+
         if (typeof window.UnityUpdateUserProfile === 'function') {
             window.UnityUpdateUserProfile(displayName, userType, paypalConnected);
         } else {
@@ -297,9 +311,9 @@ mergeInto(LibraryManager.library, {
     UnityReportNetworkStatus: function (statusPtr, playerCountPtr) {
         var status = UTF8ToString(statusPtr);
         var playerCount = UTF8ToString(playerCountPtr);
-        
+
         console.log('Unity network status update:', status, 'players:', playerCount);
-        
+
         if (typeof window.UnityReportNetworkStatus === 'function') {
             window.UnityReportNetworkStatus(status, playerCount);
         }
@@ -308,9 +322,9 @@ mergeInto(LibraryManager.library, {
     UnityReportPlayerJoined: function (playerNamePtr, userTypePtr) {
         var playerName = UTF8ToString(playerNamePtr);
         var userType = UTF8ToString(userTypePtr);
-        
+
         console.log('Unity player joined:', playerName, 'type:', userType);
-        
+
         if (typeof window.UnityReportPlayerJoined === 'function') {
             window.UnityReportPlayerJoined(playerName, userType);
         }
@@ -318,9 +332,9 @@ mergeInto(LibraryManager.library, {
 
     UnityReportPlayerLeft: function (playerNamePtr) {
         var playerName = UTF8ToString(playerNamePtr);
-        
+
         console.log('Unity player left:', playerName);
-        
+
         if (typeof window.UnityReportPlayerLeft === 'function') {
             window.UnityReportPlayerLeft(playerName);
         }
@@ -331,9 +345,9 @@ mergeInto(LibraryManager.library, {
     UnityReportAnalyticsEvent: function (eventNamePtr, eventDataPtr) {
         var eventName = UTF8ToString(eventNamePtr);
         var eventData = UTF8ToString(eventDataPtr);
-        
+
         console.log('Unity analytics event:', eventName, eventData);
-        
+
         if (typeof window.UnityReportAnalyticsEvent === 'function') {
             window.UnityReportAnalyticsEvent(eventName, eventData);
         }
@@ -343,7 +357,7 @@ mergeInto(LibraryManager.library, {
         var fps = UTF8ToString(fpsPtr);
         var memoryUsage = UTF8ToString(memoryUsagePtr);
         var networkLatency = UTF8ToString(networkLatencyPtr);
-        
+
         if (typeof window.UnityReportPerformanceMetrics === 'function') {
             window.UnityReportPerformanceMetrics(fps, memoryUsage, networkLatency);
         }
@@ -353,7 +367,7 @@ mergeInto(LibraryManager.library, {
 
     UnityRequestFullscreen: function () {
         console.log('Unity requesting fullscreen');
-        
+
         if (typeof window.UnityRequestFullscreen === 'function') {
             window.UnityRequestFullscreen();
         } else {
@@ -369,7 +383,7 @@ mergeInto(LibraryManager.library, {
 
     UnityExitFullscreen: function () {
         console.log('Unity exiting fullscreen');
-        
+
         if (typeof window.UnityExitFullscreen === 'function') {
             window.UnityExitFullscreen();
         } else {
@@ -396,11 +410,11 @@ mergeInto(LibraryManager.library, {
             windowHeight: window.innerHeight,
             pixelRatio: window.devicePixelRatio || 1
         };
-        
+
         console.log('Unity browser info:', browserInfo);
-        
+
         if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-            window.unityInstance.SendMessage('FirebaseIntegration', 'OnBrowserInfoReceived', 
+            window.unityInstance.SendMessage('FirebaseIntegration', 'OnBrowserInfoReceived',
                 JSON.stringify(browserInfo));
         }
     },
@@ -410,14 +424,14 @@ mergeInto(LibraryManager.library, {
     UnityReportError: function (errorMessagePtr, stackTracePtr) {
         var errorMessage = UTF8ToString(errorMessagePtr);
         var stackTrace = UTF8ToString(stackTracePtr);
-        
+
         console.error('Unity error reported:', errorMessage);
         console.error('Stack trace:', stackTrace);
-        
+
         if (typeof window.UnityReportError === 'function') {
             window.UnityReportError(errorMessage, stackTrace);
         }
-        
+
         if (typeof window.UnityReportAnalyticsEvent === 'function') {
             window.UnityReportAnalyticsEvent('unity_error', JSON.stringify({
                 message: errorMessage,
@@ -430,7 +444,7 @@ mergeInto(LibraryManager.library, {
     UnityLog: function (levelPtr, messagePtr) {
         var level = UTF8ToString(levelPtr);
         var message = UTF8ToString(messagePtr);
-        
+
         switch (level.toLowerCase()) {
             case 'error':
                 console.error('[Unity]', message);
@@ -445,7 +459,7 @@ mergeInto(LibraryManager.library, {
                 console.log('[Unity]', message);
                 break;
         }
-        
+
         if (typeof window.UnityLog === 'function') {
             window.UnityLog(level, message);
         }
@@ -458,12 +472,12 @@ mergeInto(LibraryManager.library, {
     },
 
     UnityGetRandomGUID: function () {
-        var guid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var guid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             var r = Math.random() * 16 | 0;
             var v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
-        
+
         var bufferSize = lengthBytesUTF8(guid) + 1;
         var buffer = _malloc(bufferSize);
         stringToUTF8(guid, buffer, bufferSize);
@@ -473,7 +487,7 @@ mergeInto(LibraryManager.library, {
     UnitySetLocalStorage: function (keyPtr, valuePtr) {
         var key = UTF8ToString(keyPtr);
         var value = UTF8ToString(valuePtr);
-        
+
         try {
             localStorage.setItem('U3D_' + key, value);
             return 1;
@@ -485,7 +499,7 @@ mergeInto(LibraryManager.library, {
 
     UnityGetLocalStorage: function (keyPtr) {
         var key = UTF8ToString(keyPtr);
-        
+
         try {
             var value = localStorage.getItem('U3D_' + key) || '';
             var bufferSize = lengthBytesUTF8(value) + 1;
@@ -503,7 +517,7 @@ mergeInto(LibraryManager.library, {
 
     UnityRemoveLocalStorage: function (keyPtr) {
         var key = UTF8ToString(keyPtr);
-        
+
         try {
             localStorage.removeItem('U3D_' + key);
             return 1;
@@ -523,22 +537,22 @@ mergeInto(LibraryManager.library, {
         console.warn('⚠️ UnityStartDualTransactionWithGameObject is DEPRECATED');
         console.warn('⚠️ This method requires Firebase Functions authentication');
         console.warn('⚠️ Use UnityStartDirectPayPalTransaction for direct PayPal integration');
-        
+
         var gameObjectName = UTF8ToString(gameObjectNamePtr);
         var itemName = UTF8ToString(itemNamePtr);
         var itemDescription = UTF8ToString(itemDescriptionPtr);
         var price = UTF8ToString(pricePtr);
         var transactionId = UTF8ToString(transactionIdPtr);
-        
+
         window.currentPayPalGameObject = gameObjectName;
-        
+
         console.log('Unity dual transaction (DEPRECATED Firebase method):', {
             itemName: itemName,
             itemDescription: itemDescription,
             price: price,
             transactionId: transactionId
         });
-        
+
         if (typeof window.UnityStartDualTransaction === 'function') {
             window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
         } else {
@@ -553,13 +567,13 @@ mergeInto(LibraryManager.library, {
     UnityCheckAuthenticationStatusWithGameObject: function (gameObjectNamePtr) {
         console.warn('⚠️ UnityCheckAuthenticationStatusWithGameObject is DEPRECATED');
         console.warn('⚠️ Direct PayPal integration does not require authentication');
-        
+
         var gameObjectName = UTF8ToString(gameObjectNamePtr);
-        
+
         console.log('Unity authentication check (DEPRECATED) for GameObject:', gameObjectName);
-        
+
         window.currentPayPalGameObject = gameObjectName;
-        
+
         if (typeof window.UnityCheckAuthenticationStatus === 'function') {
             window.UnityCheckAuthenticationStatus();
         } else {
@@ -575,19 +589,19 @@ mergeInto(LibraryManager.library, {
         console.warn('⚠️ UnityStartDualTransaction (without GameObject name) is ULTRA-DEPRECATED');
         console.warn('⚠️ Will cause "SendMessage: object not found!" errors');
         console.warn('⚠️ Use UnityStartDirectPayPalTransaction instead');
-        
+
         var itemName = UTF8ToString(itemNamePtr);
         var itemDescription = UTF8ToString(itemDescriptionPtr);
         var price = UTF8ToString(pricePtr);
         var transactionId = UTF8ToString(transactionIdPtr);
-        
+
         console.log('Unity dual transaction (ULTRA-DEPRECATED method):', {
             itemName: itemName,
             itemDescription: itemDescription,
             price: price,
             transactionId: transactionId
         });
-        
+
         if (typeof window.UnityStartDualTransaction === 'function') {
             window.UnityStartDualTransaction(itemName, itemDescription, price, transactionId);
         } else {
@@ -601,9 +615,9 @@ mergeInto(LibraryManager.library, {
     UnityCheckAuthenticationStatus: function () {
         console.warn('⚠️ UnityCheckAuthenticationStatus (without GameObject name) is ULTRA-DEPRECATED');
         console.warn('⚠️ Will cause "SendMessage: object not found!" errors');
-        
+
         console.log('Unity authentication check (ULTRA-DEPRECATED method)');
-        
+
         if (typeof window.UnityCheckAuthenticationStatus === 'function') {
             window.UnityCheckAuthenticationStatus();
         } else {

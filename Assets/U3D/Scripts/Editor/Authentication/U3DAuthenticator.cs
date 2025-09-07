@@ -38,6 +38,38 @@ public static class U3DAuthenticator
     public static string CreatorUsername => _creatorUsername;
     public static string PayPalEmail => _paypalEmail;
 
+    private static readonly string[] RESERVED_PATHS = {
+    "api", "docs", "admin", "support", "help", "about", "legal",
+    "template", "download", "signup", "login", "dashboard", "creator-dashboard",
+    "js", "css", "assets", "images", "favicon", "robots", "sitemap",
+    "www", "mail", "ftp", "blog", "shop", "store", "app", "mobile",
+    "auth", "oauth", "callback", "webhook", "health", "status"
+};
+
+    public static bool IsValidCreatorUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return false;
+
+        // Existing validation rules
+        if (username.Length < 3 || username.Length > 30)
+            return false;
+
+        // Alphanumeric and hyphens only
+        if (!System.Text.RegularExpressions.Regex.IsMatch(username, @"^[a-zA-Z0-9-]+$"))
+            return false;
+
+        // Can't start or end with hyphen
+        if (username.StartsWith("-") || username.EndsWith("-"))
+            return false;
+
+        // NEW: Check against reserved paths (using Array.IndexOf for compatibility)
+        if (System.Array.IndexOf(RESERVED_PATHS, username.ToLower()) >= 0)
+            return false;
+
+        return true;
+    }
+
     public static class CurrentUser
     {
         public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
@@ -378,6 +410,13 @@ public static class U3DAuthenticator
     {
         try
         {
+            // First validate locally against reserved paths
+            if (!IsValidCreatorUsername(username))
+            {
+                return false;
+            }
+
+            // Then check server availability
             var result = await CallFirebaseFunction("checkUsernameAvailability", new { username = username });
             return result.ContainsKey("available") && (bool)result["available"];
         }
