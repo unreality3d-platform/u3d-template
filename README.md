@@ -4,11 +4,11 @@ Creator community platform with free template Unity project and platform-hosted 
 
 ## 🚀 Quick Start - Live in Under 20 Minutes
 
-1. **Grab this template** and open in Unity 6.0+
-2. **Create your interactive experience** in the beautifully pre-configured scene
-3. **Publish with one click** - get your professional URL instantly
+1. **Grab this template** and open in Unity 6.1+
+2. **Create your interactive experience** in the beautifully pre-configured scene or your own
+3. **Publish with one click** - get your professional Unreality3D.com URL instantly
 
-Your **interactive multiplayer 3D web experience** goes live at: `https://yourname.unreality3d.com/productname/`
+Your **interactive multiplayer 3D web experience** goes live at: `https://unreality3d.com/yourname/productname/`
 
 ## ⚙️ Requirements
 
