@@ -15,6 +15,7 @@ namespace U3D.Editor
         // Networking preferences
         private static bool addNetworkObjectToGrabbable = true;
         private static bool addNetworkObjectToThrowable = true;
+        private static bool addNetworkObjectToKickable = true;
         private static bool addNetworkObjectToEnterTrigger = true;
         private static bool addNetworkObjectToExitTrigger = true;
         private static bool addNetworkObjectToParentTrigger = true;
@@ -25,12 +26,12 @@ namespace U3D.Editor
             {
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+                new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
                 new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
-                new CreatorTool("🚧 Make Kickable", "Objects can be moved with avatar feet", () => Debug.Log("Applied Kickable"), true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),
                 new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => Debug.Log("Applied Rideable"), true),
                 new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => Debug.Log("Applied Steerable"), true),
@@ -78,6 +79,13 @@ namespace U3D.Editor
             {
                 EditorGUI.indentLevel++;
                 addNetworkObjectToThrowable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToThrowable);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
+            else if (tool.title == "🟢 Make Kickable")
+            {
+                EditorGUI.indentLevel++;
+                addNetworkObjectToKickable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToKickable);
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space(5);
             }
@@ -270,6 +278,78 @@ namespace U3D.Editor
 
             EditorUtility.SetDirty(selected);
             Debug.Log($"Applied Throwable to {selected.name}");
+        }
+
+        private static void ApplyKickable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Ensure object has a collider
+            if (!selected.GetComponent<Collider>())
+            {
+                selected.AddComponent<BoxCollider>();
+            }
+
+            // Add and configure NetworkObject if requested and not already present
+            if (addNetworkObjectToKickable && !selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            // Add Rigidbody (required for kickable physics)
+            if (!selected.GetComponent<Rigidbody>())
+            {
+                Rigidbody rb = selected.AddComponent<Rigidbody>();
+                rb.isKinematic = true; // Start kinematic/sleeping
+                rb.useGravity = false; // Don't fall until kicked
+                rb.mass = 1f;
+            }
+
+            // Add NetworkRigidbody3D for proper Fusion 2 physics networking
+            if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
+            {
+                try
+                {
+#if FUSION_ADDONS_PHYSICS
+                    if (!selected.GetComponent<NetworkRigidbody3D>())
+                    {
+                        var networkRigidbody = selected.AddComponent<NetworkRigidbody3D>();
+                        ConfigureNetworkRigidbody3DForSharedMode(networkRigidbody);
+                    }
+#else
+                    // Fallback: reflection in case addon not installed
+                    var networkRigidbody3DType = System.Type.GetType(
+                        "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
+                    );
+
+                    if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
+                    {
+                        var networkRigidbody = selected.AddComponent(networkRigidbody3DType) as Component;
+                        ConfigureNetworkRigidbody3DViaReflection(networkRigidbody);
+                    }
+#endif
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Error adding NetworkRigidbody3D: {ex.Message}");
+                }
+            }
+
+            // Add kickable component
+            U3DKickable kickable = selected.GetComponent<U3DKickable>();
+            if (kickable == null)
+            {
+                kickable = selected.AddComponent<U3DKickable>();
+            }
+
+            EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Kickable to {selected.name}");
         }
 
         // FIXED: Consistent NetworkRigidbody3D configuration for Shared Mode
