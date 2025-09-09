@@ -8,6 +8,7 @@ namespace U3D
     /// <summary>
     /// FIXED: Reliable authority management for Shared Mode grab/throw system
     /// Prevents race conditions and ensures deterministic state synchronization
+    /// Enhanced with remappable interaction keys using Unity Input System
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -25,6 +26,10 @@ namespace U3D
 
         [Tooltip("Maximum distance to grab from")]
         [SerializeField] private float maxGrabDistance = 2f;
+
+        [Header("Interaction Settings")]
+        [Tooltip("Key to trigger grab (remappable)")]
+        [SerializeField] private KeyCode grabKey = KeyCode.R;
 
         [Header("Hand Attachment")]
         [Tooltip("Name of the hand bone to attach to (leave empty to use player position)")]
@@ -127,6 +132,7 @@ namespace U3D
         {
             RecordSpawnPosition();
             StoreOriginalPhysicsState();
+            CheckForInputConflicts();
         }
 
         private void Update()
@@ -140,12 +146,90 @@ namespace U3D
                 CheckIfAimedAt();
             }
 
+            // Handle grab input using Input System
+            if (WasGrabKeyPressed() && CanAttemptGrab())
+            {
+                Grab();
+            }
+            else if (WasGrabKeyPressed() && IsCurrentlyGrabbed())
+            {
+                Release();
+            }
+
             // FIXED: Timeout authority requests to prevent hanging
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
                 Debug.LogWarning($"Authority request timeout for {name}");
                 isRequestingAuthority = false;
                 OnGrabFailed?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Check if grab key was pressed using Input System (following established pattern)
+        /// </summary>
+        private bool WasGrabKeyPressed()
+        {
+            if (UnityEngine.InputSystem.Keyboard.current == null) return false;
+
+            switch (grabKey)
+            {
+                case KeyCode.E:
+                    return UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame;
+                case KeyCode.F:
+                    return UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame;
+                case KeyCode.R:
+                    return UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame;
+                case KeyCode.T:
+                    return UnityEngine.InputSystem.Keyboard.current.tKey.wasPressedThisFrame;
+                case KeyCode.G:
+                    return UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
+                case KeyCode.Q:
+                    return UnityEngine.InputSystem.Keyboard.current.qKey.wasPressedThisFrame;
+                case KeyCode.X:
+                    return UnityEngine.InputSystem.Keyboard.current.xKey.wasPressedThisFrame;
+                case KeyCode.Z:
+                    return UnityEngine.InputSystem.Keyboard.current.zKey.wasPressedThisFrame;
+                case KeyCode.V:
+                    return UnityEngine.InputSystem.Keyboard.current.vKey.wasPressedThisFrame;
+                case KeyCode.B:
+                    return UnityEngine.InputSystem.Keyboard.current.bKey.wasPressedThisFrame;
+                case KeyCode.C:
+                    return UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
+                case KeyCode.Space:
+                    return UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
+                case KeyCode.LeftShift:
+                    return UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame;
+                case KeyCode.Tab:
+                    return UnityEngine.InputSystem.Keyboard.current.tabKey.wasPressedThisFrame;
+                case KeyCode.Alpha1:
+                    return UnityEngine.InputSystem.Keyboard.current.digit1Key.wasPressedThisFrame;
+                case KeyCode.Alpha2:
+                    return UnityEngine.InputSystem.Keyboard.current.digit2Key.wasPressedThisFrame;
+                case KeyCode.Alpha3:
+                    return UnityEngine.InputSystem.Keyboard.current.digit3Key.wasPressedThisFrame;
+                case KeyCode.Alpha4:
+                    return UnityEngine.InputSystem.Keyboard.current.digit4Key.wasPressedThisFrame;
+                case KeyCode.Alpha5:
+                    return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
+                default:
+                    // Fallback for other keys - can be expanded as needed
+                    return false;
+            }
+        }
+
+        private void CheckForInputConflicts()
+        {
+            // Check for other interaction components and auto-remap if needed
+            var kickable = GetComponent<U3DKickable>();
+            if (kickable != null && kickable.KickKey == grabKey)
+            {
+                // If kickable uses the same key, remap grabbable to F
+                if (grabKey == KeyCode.R)
+                {
+                    grabKey = KeyCode.F;
+                    Debug.Log($"U3DGrabbable: Auto-remapped grab key to {grabKey} due to kickable component");
+                }
             }
         }
 
@@ -184,7 +268,7 @@ namespace U3D
             // Only do this if we have a hand, are grabbed, and a networked rigidbody is present
             if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D)
             {
-                // Smoothly interpolate toward the hand’s position/rotation
+                // Smoothly interpolate toward the hand's position/rotation
                 transform.position = Vector3.Lerp(
                     transform.position,
                     handTransform.position + handTransform.TransformVector(grabOffset),
@@ -198,7 +282,6 @@ namespace U3D
                 );
             }
         }
-
 
         // FIXED: Deterministic grab attempt
         public void Grab()
@@ -252,8 +335,8 @@ namespace U3D
 
         private void PerformGrab()
         {
-            // Check single grab mode
-            if (!allowMultiGrab && currentlyGrabbed != null && currentlyGrabbed != this)
+            // Single grab mode - release any currently grabbed object
+            if (currentlyGrabbed != null && currentlyGrabbed != this)
             {
                 currentlyGrabbed.Release();
             }
@@ -266,7 +349,7 @@ namespace U3D
 
             if (handTransform == null)
             {
-                // As a safety net, make sure there’s always a hand anchor
+                // As a safety net, make sure there's always a hand anchor
                 FindHandBone();
                 if (handTransform == null) return;
             }
@@ -331,7 +414,7 @@ namespace U3D
                 NetworkGrabbedBy = PlayerRef.None;
             }
 
-            // --- NEW: re-enable Fusion’s parent syncing after release ---
+            // --- NEW: re-enable Fusion's parent syncing after release ---
             if (networkRb3D != null)
             {
                 networkRb3D.SyncParent = true;
@@ -339,7 +422,6 @@ namespace U3D
 
             PerformLocalRelease();
         }
-
 
         private void PerformLocalRelease()
         {
@@ -666,7 +748,7 @@ namespace U3D
         public string GetInteractionPrompt()
         {
             if (isRequestingAuthority) return "Requesting...";
-            return IsCurrentlyGrabbed() ? "Release" : "Grab";
+            return IsCurrentlyGrabbed() ? $"Release ({grabKey})" : $"Grab ({grabKey})";
         }
 
         // Public properties
@@ -678,6 +760,7 @@ namespace U3D
         public bool HasThrowable => throwable != null;
         public GrabState CurrentGrabState => localGrabState;
         public bool IsRequestingAuthority => isRequestingAuthority;
+        public KeyCode GrabKey { get => grabKey; set => grabKey = value; }
 
         private void OnDestroy()
         {

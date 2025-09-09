@@ -10,6 +10,7 @@ namespace U3D
     /// FIXED: Proper physics state management that works with NetworkRigidbody3D
     /// Eliminates conflicts with Fusion 2's automatic interpolation system
     /// Handles authority-based physics control for Shared Mode
+    /// Enhanced with remappable interaction keys using Unity Input System
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class U3DThrowable : NetworkBehaviour
@@ -26,6 +27,10 @@ namespace U3D
 
         [Tooltip("Minimum velocity required to trigger throw events")]
         [SerializeField] private float minThrowVelocity = 1f;
+
+        [Header("Interaction Settings")]
+        [Tooltip("Key to trigger throw (when not grabbed - remappable)")]
+        [SerializeField] private KeyCode throwKey = KeyCode.T;
 
         [Header("Events")]
         [Tooltip("Called when object is thrown")]
@@ -148,6 +153,98 @@ namespace U3D
             {
                 grabbable.OnReleased.AddListener(OnObjectReleased);
                 grabbable.OnGrabbed.AddListener(OnObjectGrabbed);
+            }
+
+            // Check for input conflicts
+            CheckForInputConflicts();
+        }
+
+        private void Update()
+        {
+            // Handle direct throw input (when not grabbed)
+            if (grabbable != null && !grabbable.IsGrabbed && WasThrowKeyPressed())
+            {
+                // Direct throw when not grabbed
+                ThrowInCameraDirection();
+            }
+        }
+
+        /// <summary>
+        /// Check if throw key was pressed using Input System (following established pattern)
+        /// </summary>
+        private bool WasThrowKeyPressed()
+        {
+            if (UnityEngine.InputSystem.Keyboard.current == null) return false;
+
+            switch (throwKey)
+            {
+                case KeyCode.E:
+                    return UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame;
+                case KeyCode.F:
+                    return UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame;
+                case KeyCode.R:
+                    return UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame;
+                case KeyCode.T:
+                    return UnityEngine.InputSystem.Keyboard.current.tKey.wasPressedThisFrame;
+                case KeyCode.G:
+                    return UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
+                case KeyCode.Q:
+                    return UnityEngine.InputSystem.Keyboard.current.qKey.wasPressedThisFrame;
+                case KeyCode.X:
+                    return UnityEngine.InputSystem.Keyboard.current.xKey.wasPressedThisFrame;
+                case KeyCode.Z:
+                    return UnityEngine.InputSystem.Keyboard.current.zKey.wasPressedThisFrame;
+                case KeyCode.V:
+                    return UnityEngine.InputSystem.Keyboard.current.vKey.wasPressedThisFrame;
+                case KeyCode.B:
+                    return UnityEngine.InputSystem.Keyboard.current.bKey.wasPressedThisFrame;
+                case KeyCode.C:
+                    return UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
+                case KeyCode.Space:
+                    return UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
+                case KeyCode.LeftShift:
+                    return UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame;
+                case KeyCode.Tab:
+                    return UnityEngine.InputSystem.Keyboard.current.tabKey.wasPressedThisFrame;
+                case KeyCode.Alpha1:
+                    return UnityEngine.InputSystem.Keyboard.current.digit1Key.wasPressedThisFrame;
+                case KeyCode.Alpha2:
+                    return UnityEngine.InputSystem.Keyboard.current.digit2Key.wasPressedThisFrame;
+                case KeyCode.Alpha3:
+                    return UnityEngine.InputSystem.Keyboard.current.digit3Key.wasPressedThisFrame;
+                case KeyCode.Alpha4:
+                    return UnityEngine.InputSystem.Keyboard.current.digit4Key.wasPressedThisFrame;
+                case KeyCode.Alpha5:
+                    return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
+                default:
+                    // Fallback for other keys - can be expanded as needed
+                    return false;
+            }
+        }
+
+        private void CheckForInputConflicts()
+        {
+            // Check for other interaction components and auto-remap if needed
+            var kickable = GetComponent<U3DKickable>();
+            if (kickable != null && kickable.KickKey == throwKey)
+            {
+                // If kickable uses the same key, remap throwable to G
+                if (throwKey == KeyCode.T)
+                {
+                    throwKey = KeyCode.G;
+                    Debug.Log($"U3DThrowable: Auto-remapped throw key to {throwKey} due to kickable component");
+                }
+            }
+
+            // Check for grabbable conflicts
+            if (grabbable != null && grabbable.GrabKey == throwKey)
+            {
+                // If grabbable uses the same key, remap throwable to G
+                if (throwKey == KeyCode.R)
+                {
+                    throwKey = KeyCode.G;
+                    Debug.Log($"U3DThrowable: Auto-remapped throw key to {throwKey} due to grabbable component");
+                }
             }
         }
 
@@ -326,7 +423,7 @@ namespace U3D
 
         private void OnObjectReleased()
         {
-            // If it’s networked but we don’t have authority, we can’t throw.
+            // If it's networked but we don't have authority, we can't throw.
             if (isNetworked && !Object.HasStateAuthority) return;
 
             if (playerCamera == null)
@@ -398,7 +495,7 @@ namespace U3D
                 yield break;
             }
 
-            // Mark as thrown on the network if it’s a meaningful toss
+            // Mark as thrown on the network if it's a meaningful toss
             if (throwVelocity.magnitude >= minThrowVelocity)
             {
                 if (isNetworked && Object.HasStateAuthority)
@@ -413,7 +510,6 @@ namespace U3D
                 SetPhysicsState(PhysicsState.Sleeping);
             }
         }
-
 
         // FIXED: Use Fusion's FixedUpdateNetwork for networked sleep checking
         public override void FixedUpdateNetwork()
@@ -632,6 +728,7 @@ namespace U3D
         public Quaternion OriginalRotation => originalRotation;
         public bool HasNetworkRigidbody => networkRigidbody != null;
         public bool IsPhysicsActive => isNetworked ? NetworkIsPhysicsActive : (currentPhysicsState == PhysicsState.Active);
+        public KeyCode ThrowKey { get => throwKey; set => throwKey = value; }
 
         private void OnDestroy()
         {
