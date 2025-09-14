@@ -46,19 +46,6 @@ namespace U3D.Editor.Tools
             "Assets/StreamingAssets/Video", // User streaming video
         };
 
-        [MenuItem("U3D/Platform Dev/Export Template Update Package")]
-        public static void ExportUpdatePackageMenu()
-        {
-            if (EditorUtility.DisplayDialog(
-                "Export Template Update",
-                "This will create an update package for existing U3D template users.\n\nThis is intended for Unreality3D platform developers.\n\nProceed?",
-                "Export",
-                "Cancel"))
-            {
-                ExportUpdatePackage();
-            }
-        }
-
         /// <summary>
         /// Main export method - can be called from command line automation
         /// </summary>
@@ -186,7 +173,7 @@ namespace U3D.Editor.Tools
         /// <summary>
         /// Validates the template structure before export
         /// </summary>
-        [MenuItem("U3D/Platform Dev/Validate Template Structure")]
+
         public static void ValidateTemplateStructure()
         {
             Debug.Log("🔍 Validating U3D Template structure for updates...");

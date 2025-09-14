@@ -174,13 +174,10 @@ ProjectSettings/VFXManager.asset
 *.localization
 crashlytics-build.properties
 
-# GitHub Actions (SELECTIVE INCLUSION)
+# GitHub Actions (INCLUDED IN REPOSITORY)  
 # -----------------------------------------------------------------
-# Include only workflows that Creators need for their publishing pipeline
-# Exclude platform developer workflows (template updates, etc.)
+# All workflows are committed to repository for development
+# Template packaging will selectively exclude developer workflows
 
-# Ignore all workflows by default
-.github/workflows/
-
-# Allow only the chunk reassembly workflow (required for Creator publishing)
-!.github/workflows/reassemble-chunks.yml
+# Allow all workflows in Git repository
+# !.github/workflows/
