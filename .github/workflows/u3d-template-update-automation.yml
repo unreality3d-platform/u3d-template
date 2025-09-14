@@ -279,7 +279,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.update-version-and-build.outputs.version_tag }}
-          name: "U3D Template Update - ${{ needs.update-version-and-build.outputs.version_tag }}"
+          name: "${{ needs.update-version-and-build.outputs.version_tag }}"
           body: ${{ steps.release_notes.outputs.notes }}
           files: |
             release-assets/Build/Updates/*.unitypackage
