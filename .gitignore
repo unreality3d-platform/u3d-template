@@ -174,8 +174,13 @@ ProjectSettings/VFXManager.asset
 *.localization
 crashlytics-build.properties
 
-# GitHub Actions (INCLUDED IN TEMPLATE)
+# GitHub Actions (SELECTIVE INCLUSION)
 # -----------------------------------------------------------------
-# The .github/workflows/ directory is included in the template
-# and should be committed to provide chunk reassembly functionality
-# !.github/workflows/reassemble-chunks.yml
+# Include only workflows that Creators need for their publishing pipeline
+# Exclude platform developer workflows (template updates, etc.)
+
+# Ignore all workflows by default
+.github/workflows/
+
+# Allow only the chunk reassembly workflow (required for Creator publishing)
+!.github/workflows/reassemble-chunks.yml
