@@ -273,6 +273,7 @@ namespace U3D.Editor
                 EditorGUILayout.EndHorizontal();
             }
 
+            DrawTemplateVersionInfo();
             EditorGUILayout.Space(8);
         }
 
@@ -316,6 +317,65 @@ namespace U3D.Editor
                 tabs[selectedTab].DrawTab();
                 EditorGUILayout.EndScrollView();
             }
+        }
+
+        /// <summary>
+        /// Displays template version info - call this in DrawHeader() after the logo
+        /// </summary>
+        void DrawTemplateVersionInfo()
+        {
+            string templateVersion = GetTemplateVersion();
+
+            if (!string.IsNullOrEmpty(templateVersion))
+            {
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+
+                // Create a subtle style for version display
+                var versionStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    fontSize = 10,
+                    normal = { textColor = new Color(0.7f, 0.7f, 0.7f) },
+                    alignment = TextAnchor.MiddleCenter
+                };
+
+                EditorGUILayout.LabelField($"Template Version: {templateVersion}", versionStyle);
+
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.Space(3);
+            }
+        }
+
+        /// <summary>
+        /// Gets the current template version from Assets/U3D/Resources/version.txt
+        /// </summary>
+        string GetTemplateVersion()
+        {
+            try
+            {
+                // Try to load the version file from Resources
+                TextAsset versionAsset = Resources.Load<TextAsset>("version");
+                if (versionAsset != null)
+                {
+                    return versionAsset.text.Trim();
+                }
+
+                // Fallback: try to read directly from file system
+                string versionPath = "Assets/U3D/Resources/version.txt";
+                if (System.IO.File.Exists(versionPath))
+                {
+                    return System.IO.File.ReadAllText(versionPath).Trim();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // Silent fail - don't spam console during normal operation
+                Debug.LogWarning($"Could not load U3D template version: {ex.Message}");
+            }
+
+            return null; // Don't show anything if version can't be determined
         }
 
         private Texture2D CreateRoundedTexture(Color color)

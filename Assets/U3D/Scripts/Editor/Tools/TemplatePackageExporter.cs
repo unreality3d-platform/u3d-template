@@ -54,7 +54,7 @@ namespace U3D.Editor.Tools
             try
             {
                 string version = customVersion ?? GetVersionFromCommandLine() ?? GetDefaultVersion();
-                string fileName = $"u3d-template-update-{version}.unitypackage";
+                string fileName = $"{version}.unitypackage";
                 string fullPath = Path.Combine(EXPORT_PATH, fileName);
 
                 // Ensure export directory exists
