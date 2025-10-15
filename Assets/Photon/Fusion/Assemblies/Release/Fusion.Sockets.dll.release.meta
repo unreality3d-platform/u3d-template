@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 6dab2ffc6081f6c438c6562eb9e68304
+guid: 91b068de0c0583d4ab2739a86c07a588
 DefaultImporter:
   externalObjects: {}
   userData: 
@@ -9,6 +9,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 267958
   packageName: Photon Fusion
-  packageVersion: 2.0.6
+  packageVersion: 2.0.7
   assetPath: Assets/Photon/Fusion/Assemblies/Release/Fusion.Sockets.dll.release
-  uploadId: 755233
+  uploadId: 796522

@@ -437,6 +437,16 @@
             Callback for simulation offset deviation profiling.
             </summary>
         </member>
+        <member name="F:Fusion.EngineProfiler.InternalObjectAllocatedCallback">
+            <summary>
+            Callback for simulation offset deviation profiling.
+            </summary>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalObjectFreedCallback">
+            <summary>
+            Callback for simulation offset deviation profiling.
+            </summary>
+        </member>
         <member name="M:Fusion.EngineProfiler.Begin(System.String)">
             <summary>
             Begins a profiling sample with the specified name.
@@ -550,6 +560,45 @@
             </summary>
             <param name="value">The simulation offset deviation value.</param>
         </member>
+        <member name="M:Fusion.EngineProfiler.InternalObjectAllocated(Fusion.EngineProfiler.InternalSimulationType,System.Int32)">
+            <summary>
+            Invokes the simulation offset deviation callback with the specified value.
+            </summary>
+        </member>
+        <member name="M:Fusion.EngineProfiler.InternalObjectFreed(Fusion.EngineProfiler.InternalSimulationType,System.Int32)">
+            <summary>
+            Invokes the simulation offset deviation callback with the specified value.
+            </summary>
+        </member>
+        <member name="T:Fusion.EngineProfiler.InternalSimulationType">
+            <summary>
+            Enum representing internal simulation types. To be used with EngineProfiler callbacks.
+            </summary>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.Object">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.ObjectChanges">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.ObjectSnapshot">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.Message">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.Input">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.PacketEnvelope">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.MessageEnvelope">
+            <summary/>
+        </member>
+        <member name="F:Fusion.EngineProfiler.InternalSimulationType.ObjectPacketData">
+            <summary/>
+        </member>
         <member name="T:Fusion.Protocol.ICommunicator">
             <summary>
             Interface for a Communicator
@@ -617,6 +666,17 @@
             Represents a Protocol Message
             
             Used to tag the Messages in <see cref="T:Fusion.Protocol.ICommunicator"/>.
+            </summary>
+        </member>
+        <member name="T:Fusion.Common.ExceptionConstants">
+            <summary>
+            Hold Exception Key used to attach extra data to exception within the SDK
+            </summary>
+        </member>
+        <member name="F:Fusion.Common.ExceptionConstants.TrackerId">
+            <summary>
+            Used to associate a unique ID to an Exception
+            It must contain a long value
             </summary>
         </member>
         <member name="T:Fusion.ArrayLengthAttribute">
@@ -2177,6 +2237,11 @@
             </summary>
             <param name="ptr">The pointer to the memory block.</param>
             <param name="size">The number of bytes to clear.</param>
+        </member>
+        <member name="M:Fusion.Native.MemClear(System.Span{System.Int32})">
+            <summary>
+            Clears a block of memory by setting it to zero.
+            </summary>
         </member>
         <member name="M:Fusion.Native.MemCmp(System.Void*,System.Void*,System.Int32)">
             <summary>

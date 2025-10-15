@@ -4,6 +4,31 @@
         <name>Fusion.Log</name>
     </assembly>
     <members>
+        <member name="T:Fusion.FilteringLogStream">
+            <summary>
+            A proxy log streams that allows for filtering messages. Note that filtering is applied after the message is formatted,
+            so it is really mostly suitable for Unit tests.
+            </summary>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.#ctor(System.String,Fusion.LogStream)">
+            <param name="filter">If a message contains this, it will not be logged</param>
+            <param name="actualLogStream">The actual log stream that will consume filtered messages</param>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.Log(System.String)">
+            <inheritdoc/>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.Log(System.String,System.Exception)">
+            <inheritdoc/>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.Log(System.Exception)">
+            <inheritdoc/>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.Log(Fusion.ILogSource,System.String)">
+            <inheritdoc/>
+        </member>
+        <member name="M:Fusion.FilteringLogStream.Log(Fusion.ILogSource,System.String,System.Exception)">
+            <inheritdoc/>
+        </member>
         <member name="T:Fusion.FusionEditorLog">
             <summary>
             A logger that writes logs to the Unity console with the purpose of being used in the Unity Editor.

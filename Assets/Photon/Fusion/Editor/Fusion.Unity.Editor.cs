@@ -3887,6 +3887,7 @@ namespace Fusion.Editor {
       _defines = AssetDatabaseUtils.ValidBuildTargetGroups
         .Select(NamedBuildTarget.FromBuildTargetGroup)
         .ToDictionary(x => x, x => PlayerSettings.GetScriptingDefineSymbols(x).Split(';'));
+      _defines[NamedBuildTarget.Server] = PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Server).Split(';');
     }
   }
   
@@ -12022,7 +12023,9 @@ namespace Fusion.Editor {
 namespace Fusion.Editor {
 #if !FUSION_DEV
   using System;
+  using System.Collections.Generic;
   using System.IO;
+  using System.Text.RegularExpressions;
   using UnityEditor;
   using UnityEditor.Build;
   using UnityEditor.PackageManager;
@@ -12033,9 +12036,22 @@ namespace Fusion.Editor {
     // Defines to add
     private const string DEFINE_VERSION = "FUSION2";
     private const string DEFINE_WEAVER = "FUSION_WEAVER";
+
+    // Extended Version Defines 
+    private const string DEFINE_VERSION_EXTENDED_CHECK = @"FUSION(_[\d]+){1,3}(_OR_NEWER)?";
+    private const string DEFINE_VERSION_EXTENDED = "FUSION";
+    private static string DEFINE_VERSION_EXTENDED_MAJOR => DEFINE_VERSION_EXTENDED                         + $"_{Versioning.GetCurrentVersion.Major}";
+    private static string DEFINE_VERSION_EXTENDED_MAJOR_MINOR => DEFINE_VERSION_EXTENDED_MAJOR             + $"_{Versioning.GetCurrentVersion.Minor}";
+    private static string DEFINE_VERSION_EXTENDED_MAJOR_MINOR_PATCH => DEFINE_VERSION_EXTENDED_MAJOR_MINOR + $"_{Versioning.GetCurrentVersion.Build}";
+
+    // Defines for Logs
+    private const string DEFINE_LOG_CHECK = "FUSION_LOGLEVEL_";
+    private const string DEFINE_LOG_DEFAULT = "FUSION_LOGLEVEL_INFO";
+
     // Packages to search for
     private const string PACKAGE_TO_SEARCH = "nuget.mono-cecil";
     private const string PACKAGE_TO_INSTALL = "com.unity.nuget.mono-cecil@1.10.2";
+
     // Constants
     private const string PACKAGES_DIR = "Packages";
     private const string MANIFEST_FILE = "manifest.json";
@@ -12044,7 +12060,8 @@ namespace Fusion.Editor {
       var defines = GetCurrentDefines();
 
       // Check for Defines
-      if (defines.Contains(DEFINE_WEAVER) && defines.Contains(DEFINE_VERSION)) {
+      if (defines.Contains(DEFINE_WEAVER) && defines.Contains(DEFINE_VERSION) && defines.Contains(DEFINE_VERSION_EXTENDED_MAJOR_MINOR_PATCH)) {
+        // check version defines here 
         return;
       }
 
@@ -12057,8 +12074,21 @@ namespace Fusion.Editor {
 
       if (File.ReadAllText(manifest).Contains(PACKAGE_TO_SEARCH)) {
         // append defines
-        TryAddDefine(ref defines, DEFINE_WEAVER, d => d.Contains(DEFINE_WEAVER) == false);
+        TryAddDefine(ref defines, DEFINE_WEAVER, d => d.Contains(DEFINE_WEAVER)   == false);
         TryAddDefine(ref defines, DEFINE_VERSION, d => d.Contains(DEFINE_VERSION) == false);
+
+        // Remove any previous version defines
+        CheckDefineForRemoval(ref defines, d => Regex.IsMatch(d, DEFINE_VERSION_EXTENDED_CHECK)                                         == false);
+        TryAddDefine(ref defines, DEFINE_VERSION_EXTENDED_MAJOR, d => d.Contains(DEFINE_VERSION_EXTENDED_MAJOR)                         == false);
+        TryAddDefine(ref defines, DEFINE_VERSION_EXTENDED_MAJOR_MINOR, d => d.Contains(DEFINE_VERSION_EXTENDED_MAJOR_MINOR)             == false);
+        TryAddDefine(ref defines, DEFINE_VERSION_EXTENDED_MAJOR_MINOR_PATCH, d => d.Contains(DEFINE_VERSION_EXTENDED_MAJOR_MINOR_PATCH) == false);
+
+        foreach (var extraVersion in BuildVersionDefines()) {
+          TryAddDefine(ref defines, extraVersion, d => d.Contains(extraVersion) == false);
+        }
+
+        // Add default Log Level if none is found
+        TryAddDefine(ref defines, DEFINE_LOG_DEFAULT, d => d.Contains(DEFINE_LOG_CHECK) == false);
 
         SetCurrentDefines(defines);
       } else {
@@ -12067,10 +12097,32 @@ namespace Fusion.Editor {
       }
     }
 
+    private static void CheckDefineForRemoval(ref string defines, Func<string, bool> check) {
+      List<string> filteredDefines = new();
+
+      foreach (var define in defines.Split(";")) {
+        if (check(define)) {
+          filteredDefines.Add(define);
+        }
+      }
+
+      defines = string.Join(";", filteredDefines);
+    }
+
     private static void TryAddDefine(ref string defines, string targetDefine, Func<string, bool> check) {
       if (check(defines)) {
-        defines = $"{defines};{targetDefine}"; 
+        defines = $"{defines};{targetDefine}";
         FusionEditorLog.LogInstaller($"Adding Fusion Define Symbol: '{targetDefine}'");
+      }
+    }
+
+    private static IEnumerable<string> BuildVersionDefines() {
+      for (var i = 2; i <= Versioning.GetCurrentVersion.Major; i++) {
+        yield return DEFINE_VERSION_EXTENDED + $"_{i}_OR_NEWER";
+
+        for (var j = 0; j <= Versioning.GetCurrentVersion.Minor; j++) {
+          yield return DEFINE_VERSION_EXTENDED + $"_{i}_{j}_OR_NEWER";
+        }
       }
     }
 
