@@ -12736,16 +12736,10 @@
         </member>
         <member name="T:Fusion.NetworkRunner">
             <summary>
-            Host Migration related code in order to get a copy of the Simulation State
-            </summary>
-            <summary>
-            Host Migration related code in order to get a copy of the Simulation State
-            </summary>
-            <summary>
-            Represents a Server or Client Simulation.
-            </summary>
-            <summary>
-            All Scene related API and fields
+            Represents a Server or Client Simulation. IMPORTANT: You can only use a NetworkRunner once. Once that NetworkRunner 
+            disconnects from a game session or fails to connect it should be destroyed, and a new Network Runner instance should
+            be created to start any new game sessions. For more information see the 
+            <a href="https://doc.photonengine.com/fusion/current/manual/network-runner">Online Manual</a>.
             </summary>
         </member>
         <member name="P:Fusion.NetworkRunner.IsResume">
@@ -13083,6 +13077,18 @@
         <member name="P:Fusion.NetworkRunner.ActivePlayers">
             <summary>
             Returns the collection of <see cref="T:Fusion.PlayerRef"/> objects for this NetworkRunner's <see cref="T:Fusion.Simulation"/>.
+            </summary>
+        </member>
+        <member name="P:Fusion.NetworkRunner.CommittedPlayers">
+            <summary>
+            Returns the collection of <see cref="T:Fusion.PlayerRef"/> objects for this NetworkRunner's <see cref="T:Fusion.Simulation"/>.
+            Unlike <see cref="P:Fusion.NetworkRunner.ActivePlayers"/> it will not contain players that have just left the room and are pending 
+            deletion.
+            </summary>
+        </member>
+        <member name="M:Fusion.NetworkRunner.IsPlayerCommitted(Fusion.PlayerRef)">
+            <summary>
+            Is the Fusion player in the room and not pending deletion?
             </summary>
         </member>
         <member name="P:Fusion.NetworkRunner.ObjectProvider">
@@ -15622,7 +15628,7 @@
         </member>
         <member name="F:Fusion.StartGameArgs.PlayerCount">
             <summary>
-            Number of players allowed to connect to the session.
+            Number of players allowed to connect to the session. Overrides the value set in the NetworkProjectConfig. The 1-255 range is purely a limit in the NetworkProjectConfig inspector the player count can be set to any positive int value via code.
             
             Default: DefaultPlayers from the Global NetworkProjectConfig
             </summary>
@@ -17108,6 +17114,8 @@
         <member name="F:Fusion.SimulationConfig.PlayerCount">
             <summary>
             The default number of players allowed to join a game instance. Can also be changed in code when starting Fusion.
+            The 1-255 range is purely a limit in the inspector the player count can be set to any positive int value via code by changing the value of the <see cref="F:Fusion.NetworkProjectConfig.Simulation"/>
+            or by passing a player count override via <see cref="F:Fusion.StartGameArgs.PlayerCount"/>.
             </summary>
         </member>
         <member name="F:Fusion.SimulationConfig.TickRateSelection">
@@ -17133,6 +17141,13 @@
             </summary>
         </member>
         <member name="F:Fusion.SimulationConfig.EnableExperimentalPacketLossRecovery">
+            <summary>
+            If set to true, makes sure Fusion packets fit into UDP MTU on retries, thus avoiding fragmentation. This can help in poor network conditions, when
+            larger Fusion packets are rejected due to UDP packets arriving out of order or being lost, at a cost of more packets being sent overall, especially
+            when using large state objects. 
+            </summary>
+        </member>
+        <member name="F:Fusion.SimulationConfig.EnableAdaptivePacketFragmentation">
             <summary>
             If set to true, makes sure Fusion packets fit into UDP MTU on retries, thus avoiding fragmentation. This can help in poor network conditions, when
             larger Fusion packets are rejected due to UDP packets arriving out of order or being lost, at a cost of more packets being sent overall, especially

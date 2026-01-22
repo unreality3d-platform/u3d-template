@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 61da253c3bb2a8346835d30b24a61e0f
+guid: ae3899baa1c85214d9a1eda552ec9123
 labels:
 - FusionCodeDoc
 TextScriptImporter:
@@ -11,6 +11,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 267958
   packageName: Photon Fusion
-  packageVersion: 2.0.7
+  packageVersion: 2.0.9
   assetPath: Assets/Photon/Fusion/Assemblies/Fusion.Log.xml
-  uploadId: 796522
+  uploadId: 832254

@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: bd274bea3cc7c05429ff482be94a2d1d
+guid: 26ec4612291dddf4d88ab917ec748479
 DefaultImporter:
   externalObjects: {}
   userData: 
@@ -9,6 +9,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 267958
   packageName: Photon Fusion
-  packageVersion: 2.0.7
+  packageVersion: 2.0.9
   assetPath: Assets/Photon/Fusion/Assemblies/Debug/Fusion.Realtime.dll.debug
-  uploadId: 796522
+  uploadId: 832254

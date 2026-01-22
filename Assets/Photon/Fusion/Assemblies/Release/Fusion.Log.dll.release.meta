@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: f3a70689456e8cd4594718c46f194c24
+guid: 004e386a478ecf944a9be331ff976983
 DefaultImporter:
   externalObjects: {}
   userData: 
@@ -9,6 +9,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 267958
   packageName: Photon Fusion
-  packageVersion: 2.0.7
+  packageVersion: 2.0.9
   assetPath: Assets/Photon/Fusion/Assemblies/Release/Fusion.Log.dll.release
-  uploadId: 796522
+  uploadId: 832254

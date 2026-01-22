@@ -478,7 +478,7 @@ namespace Fusion {
           return "Static: (broken)";
         } else if (Object.isSet) {
 #if UNITY_EDITOR
-          if (UnityEditor.AssetDatabase.TryGetGUIDAndLocalFileIdentifier(Object.instanceID, out var guid, out long fileID)) {
+          if (UnityEditor.AssetDatabase.TryGetGUIDAndLocalFileIdentifier(Object, out var guid, out long fileID)) {
             return $"Static: {guid}, fileID: {fileID}";
           }
 #endif
