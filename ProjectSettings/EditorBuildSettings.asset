@@ -9,6 +9,8 @@ EditorBuildSettings:
     path: Assets/Scenes/_MyScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:
+    WebXR.Settings: {fileID: 11400000, guid: db4bfa86b972cdd4580f1b11de8baa28, type: 2}
     com.unity.input.settings: {fileID: 11400000, guid: c536724e4b95322449d0220bb54e041c, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 556fc4d6ed8046749b65dd6f4aeddb44, type: 2}
   m_UseUCBPForAssetBundles: 0
