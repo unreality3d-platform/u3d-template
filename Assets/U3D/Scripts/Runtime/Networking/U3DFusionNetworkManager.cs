@@ -848,6 +848,8 @@ namespace U3D.Networking
                 data.Buttons.Set(U3DInputButtons.Interact, true);
             if (_zoomPressed)
                 data.Buttons.Set(U3DInputButtons.Zoom, true);
+            if (_teleportPressed)
+                data.Buttons.Set(U3DInputButtons.Teleport, true);
 
             // Advanced AAA-style mouse button states
             data.LeftMouseHeld = _leftMouseHeld;
@@ -876,6 +878,7 @@ namespace U3D.Networking
             _crouchPressed = false;
             _flyPressed = false;
             _interactPressed = false;
+            _teleportPressed = false;
             _perspectiveScrollValue = 0f;
         }
 
