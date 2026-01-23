@@ -1,8 +1,8 @@
-﻿using U3D;
+﻿using Fusion;
+using System.Collections.Generic;
+using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using Fusion;
-using System.Collections.Generic;
 
 [RequireComponent(typeof(CharacterController), typeof(PlayerInput))]
 public class U3DPlayerController : NetworkBehaviour
@@ -133,6 +133,15 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public bool NetworkIsSwimming { get; set; }
     [HideInInspector][Networked] public bool NetworkIsClimbing { get; set; }
 
+    // VR/WebXR Networked Properties (for cross-platform multiplayer)
+    [HideInInspector][Networked] public bool NetworkIsInVR { get; set; }
+    [HideInInspector][Networked] public Vector3 NetworkHeadPosition { get; set; }
+    [HideInInspector][Networked] public Quaternion NetworkHeadRotation { get; set; }
+    [HideInInspector][Networked] public Vector3 NetworkLeftHandPos { get; set; }
+    [HideInInspector][Networked] public Quaternion NetworkLeftHandRot { get; set; }
+    [HideInInspector][Networked] public Vector3 NetworkRightHandPos { get; set; }
+    [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
+
     // Mouse input smoothing (add after existing camera state variables)
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
     private Queue<float> _mouseTimeBuffer = new Queue<float>();
@@ -184,6 +193,18 @@ public class U3DPlayerController : NetworkBehaviour
 
     // CORRECTED: No local input actions - NetworkManager handles all input
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
+
+    // VR/WebXR State
+    private bool _isInVRMode = false;
+    private Transform _leftHandVisual;
+    private Transform _rightHandVisual;
+    private U3D.XR.U3DWebXRManager _webXRManager;
+
+    // VR Movement Settings
+    private const float VR_SNAP_TURN_ANGLE = 45f;
+    private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
+    private float _lastSnapTurnTime = 0f;
+    private const float VR_MOVEMENT_SPEED_MULTIPLIER = 1.0f;
 
     // ENHANCED: Mouse sensitivity calculation methods
     void CalculateRuntimeSensitivity()
@@ -272,6 +293,31 @@ public class U3DPlayerController : NetworkBehaviour
             // Initialize camera yaw with the spawn rotation
             cameraYaw = transform.eulerAngles.y;
         }
+
+        // Register with WebXR Manager for VR mode notifications
+        if (_isLocalPlayer)
+        {
+            _webXRManager = U3D.XR.U3DWebXRManager.Instance;
+            if (_webXRManager != null)
+            {
+                _webXRManager.RegisterLocalPlayer(this);
+            }
+        }
+    }
+
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        base.Despawned(runner, hasState);
+
+        // Unregister from WebXR Manager
+        if (_isLocalPlayer && _webXRManager != null)
+        {
+            _webXRManager.UnregisterLocalPlayer(this);
+        }
+
+        // Cleanup hand visuals
+        if (_leftHandVisual != null) Destroy(_leftHandVisual.gameObject);
+        if (_rightHandVisual != null) Destroy(_rightHandVisual.gameObject);
     }
 
     void InitializeCameraPivot()
@@ -540,12 +586,22 @@ public class U3DPlayerController : NetworkBehaviour
         {
             // Process all input in the fixed network update
             HandleGroundCheck();
-            HandleMovementFusion(input);
 
-            // Only start handling look input after spawn protection period
-            if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
+            // Branch for VR vs flat-screen input handling
+            if (_isInVRMode)
             {
-                HandleLookFusionFixed(input);
+                HandleVRMovement(input);
+                HandleVRPoseSync();
+            }
+            else
+            {
+                HandleMovementFusion(input);
+
+                // Only start handling look input after spawn protection period
+                if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
+                {
+                    HandleLookFusionFixed(input);
+                }
             }
 
             HandleButtonInputsFusion(input);
@@ -562,7 +618,10 @@ public class U3DPlayerController : NetworkBehaviour
         if (_isLocalPlayer)
         {
             // Local player - handle camera rotation in Render for smooth visuals
-            HandleLocalCameraRender();
+            if (!_isInVRMode)
+            {
+                HandleLocalCameraRender();
+            }
             HandleZoom();
 
             // CRITICAL: Clear teleport flag after one Render frame
@@ -612,6 +671,17 @@ public class U3DPlayerController : NetworkBehaviour
             cameraRotation.x = NetworkCameraPitch;
             playerCamera.transform.localEulerAngles = cameraRotation;
         }
+
+        // Update VR hand visuals for remote VR players
+        if (NetworkIsInVR)
+        {
+            UpdateRemoteVRVisuals();
+        }
+        else
+        {
+            // Hide hand visuals when remote player exits VR
+            HideHandVisuals();
+        }
     }
 
     void HandleLocalCameraRender()
@@ -626,6 +696,301 @@ public class U3DPlayerController : NetworkBehaviour
         cameraRotation.x = cameraPitch;
         playerCamera.transform.localEulerAngles = cameraRotation;
     }
+
+    // ==================== VR/WebXR MODE HANDLING ====================
+
+    /// <summary>
+    /// Called by U3DWebXRManager when VR session starts or ends
+    /// </summary>
+    public void SetVRMode(bool enabled)
+    {
+        if (!_isLocalPlayer) return;
+
+        bool wasInVR = _isInVRMode;
+        _isInVRMode = enabled;
+        NetworkIsInVR = enabled;
+
+        if (enabled && !wasInVR)
+        {
+            EnterVRMode();
+        }
+        else if (!enabled && wasInVR)
+        {
+            ExitVRMode();
+        }
+
+        Debug.Log($"[U3DPlayerController] VR Mode: {(enabled ? "ENABLED" : "DISABLED")}");
+    }
+
+    /// <summary>
+    /// Initialize VR mode - WebXR takes over camera, enable hand visuals
+    /// </summary>
+    private void EnterVRMode()
+    {
+        // WebXR Export handles camera takeover automatically via XR subsystems
+        // We just need to:
+        // 1. Create hand visuals if they don't exist
+        // 2. Disable standard camera controls (WebXR manages camera)
+        // 3. Switch to VR input processing
+
+        CreateHandVisuals();
+
+        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(true);
+        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(true);
+
+        // Reset camera pitch since WebXR controls head orientation
+        cameraPitch = 0f;
+        cameraPitchAdvanced = 0f;
+
+        Debug.Log("[U3DPlayerController] Entered VR Mode - hand visuals activated");
+    }
+
+    /// <summary>
+    /// Exit VR mode - restore standard camera control
+    /// </summary>
+    private void ExitVRMode()
+    {
+        // Hide hand visuals
+        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(false);
+        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(false);
+
+        // Restore camera to player forward direction
+        if (playerCamera != null)
+        {
+            cameraYaw = transform.eulerAngles.y;
+            cameraPitch = 0f;
+        }
+
+        Debug.Log("[U3DPlayerController] Exited VR Mode - standard controls restored");
+    }
+
+    /// <summary>
+    /// Create hand visual GameObjects for VR mode
+    /// </summary>
+    private void CreateHandVisuals()
+    {
+        if (_leftHandVisual == null)
+        {
+            if (_webXRManager != null)
+            {
+                var leftHand = _webXRManager.CreateDefaultHandVisual(true, transform);
+                _leftHandVisual = leftHand.transform;
+            }
+            else
+            {
+                // Fallback: create simple sphere
+                var leftHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                leftHandGO.name = "LeftHandVisual";
+                leftHandGO.transform.SetParent(transform);
+                leftHandGO.transform.localScale = Vector3.one * 0.1f;
+                var collider = leftHandGO.GetComponent<Collider>();
+                if (collider != null) Destroy(collider);
+                _leftHandVisual = leftHandGO.transform;
+            }
+        }
+
+        if (_rightHandVisual == null)
+        {
+            if (_webXRManager != null)
+            {
+                var rightHand = _webXRManager.CreateDefaultHandVisual(false, transform);
+                _rightHandVisual = rightHand.transform;
+            }
+            else
+            {
+                // Fallback: create simple sphere
+                var rightHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                rightHandGO.name = "RightHandVisual";
+                rightHandGO.transform.SetParent(transform);
+                rightHandGO.transform.localScale = Vector3.one * 0.1f;
+                var collider = rightHandGO.GetComponent<Collider>();
+                if (collider != null) Destroy(collider);
+                _rightHandVisual = rightHandGO.transform;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Handle VR locomotion using controller thumbsticks
+    /// Left stick = movement, Right stick = snap turn
+    /// </summary>
+    private void HandleVRMovement(U3DNetworkInputData input)
+    {
+        if (!enableMovement || !_isLocalPlayer) return;
+
+        // Get movement from left thumbstick (via WebXR manager or input system)
+        Vector2 vrMoveInput = Vector2.zero;
+        float snapTurnInput = 0f;
+
+        if (_webXRManager != null)
+        {
+            // Get thumbstick input from WebXR controllers
+            vrMoveInput = _webXRManager.GetThumbstick(true); // Left hand = movement
+            Vector2 rightStick = _webXRManager.GetThumbstick(false); // Right hand = turn
+            snapTurnInput = rightStick.x;
+        }
+        else
+        {
+            // Fallback to network input (XR bindings in Input Actions)
+            vrMoveInput = input.MovementInput;
+        }
+
+        // Handle snap turning with right stick
+        if (Mathf.Abs(snapTurnInput) > 0.7f && Time.time - _lastSnapTurnTime > VR_SNAP_TURN_COOLDOWN)
+        {
+            float turnDirection = Mathf.Sign(snapTurnInput);
+            transform.Rotate(Vector3.up, turnDirection * VR_SNAP_TURN_ANGLE);
+            NetworkRotation = transform.rotation;
+            cameraYaw = transform.eulerAngles.y;
+            _lastSnapTurnTime = Time.time;
+        }
+
+        // Calculate movement direction based on head/camera forward
+        Vector3 forward = playerCamera != null ? playerCamera.transform.forward : transform.forward;
+        Vector3 right = playerCamera != null ? playerCamera.transform.right : transform.right;
+
+        // Remove Y component for ground movement (unless flying)
+        if (!isFlying)
+        {
+            forward.y = 0f;
+            right.y = 0f;
+            forward.Normalize();
+            right.Normalize();
+        }
+
+        Vector3 moveDirection = (forward * vrMoveInput.y + right * vrMoveInput.x).normalized;
+
+        // Apply speed based on current state
+        float currentSpeed = GetCurrentSpeed() * VR_MOVEMENT_SPEED_MULTIPLIER;
+
+        // Check for sprint (grip button held)
+        if (_webXRManager != null && _webXRManager.GetGripValue(true) > 0.5f)
+        {
+            isSprinting = true;
+            currentSpeed = runSpeed * VR_MOVEMENT_SPEED_MULTIPLIER;
+        }
+        else
+        {
+            isSprinting = input.Buttons.IsSet(U3DInputButtons.Sprint);
+        }
+
+        Vector3 moveVelocity = moveDirection * currentSpeed;
+
+        // Apply movement
+        if (isFlying)
+        {
+            Vector3 flyDirection = moveDirection;
+
+            // Use triggers for vertical movement in fly mode
+            if (_webXRManager != null)
+            {
+                float rightTrigger = _webXRManager.GetTriggerValue(false);
+                float leftTrigger = _webXRManager.GetTriggerValue(true);
+                if (rightTrigger > 0.5f) flyDirection += Vector3.up;
+                if (leftTrigger > 0.5f) flyDirection += Vector3.down;
+            }
+
+            characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
+        }
+        else
+        {
+            characterController.Move(moveVelocity * Runner.DeltaTime);
+        }
+
+        // Update networked position
+        NetworkPosition = transform.position;
+        NetworkRotation = transform.rotation;
+        NetworkIsMoving = moveVelocity.magnitude > 0.1f;
+        NetworkIsSprinting = isSprinting;
+    }
+
+    /// <summary>
+    /// Sync VR head and hand poses to network for other players to see
+    /// </summary>
+    private void HandleVRPoseSync()
+    {
+        if (!_isLocalPlayer || _webXRManager == null) return;
+
+        // Sync head pose (from camera, which WebXR controls)
+        if (playerCamera != null)
+        {
+            NetworkHeadPosition = playerCamera.transform.localPosition;
+            NetworkHeadRotation = playerCamera.transform.localRotation;
+            NetworkCameraPitch = playerCamera.transform.localEulerAngles.x;
+        }
+
+        // Sync hand poses
+        if (_webXRManager.TryGetControllerPose(true, out Vector3 leftPos, out Quaternion leftRot))
+        {
+            // Convert world space to local space relative to player
+            NetworkLeftHandPos = transform.InverseTransformPoint(leftPos);
+            NetworkLeftHandRot = Quaternion.Inverse(transform.rotation) * leftRot;
+
+            // Update local visual
+            if (_leftHandVisual != null)
+            {
+                _leftHandVisual.position = leftPos;
+                _leftHandVisual.rotation = leftRot;
+            }
+        }
+
+        if (_webXRManager.TryGetControllerPose(false, out Vector3 rightPos, out Quaternion rightRot))
+        {
+            // Convert world space to local space relative to player
+            NetworkRightHandPos = transform.InverseTransformPoint(rightPos);
+            NetworkRightHandRot = Quaternion.Inverse(transform.rotation) * rightRot;
+
+            // Update local visual
+            if (_rightHandVisual != null)
+            {
+                _rightHandVisual.position = rightPos;
+                _rightHandVisual.rotation = rightRot;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Update hand visuals for remote VR players (called in Render for interpolation)
+    /// </summary>
+    private void UpdateRemoteVRVisuals()
+    {
+        // Ensure hand visuals exist for remote VR player
+        if (_leftHandVisual == null || _rightHandVisual == null)
+        {
+            CreateHandVisuals();
+        }
+
+        if (_leftHandVisual != null)
+        {
+            _leftHandVisual.gameObject.SetActive(true);
+            // Convert from local space back to world space
+            Vector3 worldLeftPos = transform.TransformPoint(NetworkLeftHandPos);
+            Quaternion worldLeftRot = transform.rotation * NetworkLeftHandRot;
+            _leftHandVisual.position = Vector3.Lerp(_leftHandVisual.position, worldLeftPos, Time.deltaTime * 15f);
+            _leftHandVisual.rotation = Quaternion.Slerp(_leftHandVisual.rotation, worldLeftRot, Time.deltaTime * 15f);
+        }
+
+        if (_rightHandVisual != null)
+        {
+            _rightHandVisual.gameObject.SetActive(true);
+            // Convert from local space back to world space
+            Vector3 worldRightPos = transform.TransformPoint(NetworkRightHandPos);
+            Quaternion worldRightRot = transform.rotation * NetworkRightHandRot;
+            _rightHandVisual.position = Vector3.Lerp(_rightHandVisual.position, worldRightPos, Time.deltaTime * 15f);
+            _rightHandVisual.rotation = Quaternion.Slerp(_rightHandVisual.rotation, worldRightRot, Time.deltaTime * 15f);
+        }
+    }
+
+    /// <summary>
+    /// Hide hand visuals (when remote player exits VR)
+    /// </summary>
+    private void HideHandVisuals()
+    {
+        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(false);
+        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(false);
+    }
+
+    // ==================== END VR/WebXR MODE HANDLING ====================
 
     void HandleGroundCheck()
     {
@@ -1506,6 +1871,7 @@ public class U3DPlayerController : NetworkBehaviour
     public float CurrentSpeed => GetCurrentSpeed();
     public bool IsLocalPlayer => _isLocalPlayer;
     public bool IsJumping => NetworkIsJumping;
+    public bool IsInVRMode => _isInVRMode;
 
     // UPDATED: Enhanced position setting with proper network sync
     public void SetPosition(Vector3 position)

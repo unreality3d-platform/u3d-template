@@ -100,6 +100,10 @@ namespace U3D.Networking
         private InputAction _autoRunToggleAction;
         private U3DSimpleTouchZones touchZones;
 
+        // VR/WebXR input state
+        private U3D.XR.U3DWebXRManager _webXRManager;
+        private bool _isVRModeActive = false;
+
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
         public static event Action<PlayerRef> OnPlayerJoinedEvent;
@@ -143,6 +147,9 @@ namespace U3D.Networking
                 SetupTouchControls();
             }
 
+            // Subscribe to VR mode changes
+            U3D.XR.U3DWebXRManager.OnVRModeChanged += OnVRModeChanged;
+
             if (autoStartHost)
             {
                 _ = StartNetworking("DefaultRoom");
@@ -152,6 +159,13 @@ namespace U3D.Networking
             {
                 _ = StartNetworking("DefaultRoom");
             }
+        }
+
+        private void OnVRModeChanged(bool isVRActive)
+        {
+            _isVRModeActive = isVRActive;
+            _webXRManager = U3D.XR.U3DWebXRManager.Instance;
+            Debug.Log($"[U3DFusionNetworkManager] VR Mode changed: {isVRActive}");
         }
 
         void SetupTouchControls()
@@ -242,6 +256,13 @@ namespace U3D.Networking
             {
                 // Clear input when UI is active to prevent conflicts
                 ClearInputCache();
+                return;
+            }
+
+            // VR Mode: Get input from WebXR controllers
+            if (_isVRModeActive && _webXRManager != null)
+            {
+                PollVRInput();
                 return;
             }
 
@@ -407,6 +428,57 @@ namespace U3D.Networking
             _interactPressed = false;
             _zoomPressed = false;
             _perspectiveScrollValue = 0f;
+        }
+
+        /// <summary>
+        /// Poll VR controller input from WebXR Manager
+        /// Maps VR controller buttons/axes to the same input cache used by flat-screen
+        /// </summary>
+        private void PollVRInput()
+        {
+            if (_webXRManager == null) return;
+
+            // Movement from left thumbstick
+            _cachedMovementInput = _webXRManager.GetThumbstick(true);
+
+            // Look input not used in VR (head tracking handles orientation)
+            // But we can use right stick X for snap turn signal if needed
+            Vector2 rightStick = _webXRManager.GetThumbstick(false);
+            _cachedLookInput = rightStick; // PlayerController uses this for snap turn
+
+            // Jump = Right controller A button (primary button)
+            if (_webXRManager.GetControllerButtonDown(false, "ButtonA"))
+                _jumpPressed = true;
+
+            // Sprint = Left grip held
+            _sprintPressed = _webXRManager.GetGripValue(true) > 0.5f;
+
+            // Crouch = Left controller X button (or B on right)
+            if (_webXRManager.GetControllerButtonDown(true, "ButtonA")) // Left primary
+                _crouchPressed = true;
+
+            // Fly toggle = Both grips pressed
+            bool bothGrips = _webXRManager.GetGripValue(true) > 0.8f &&
+                            _webXRManager.GetGripValue(false) > 0.8f;
+            if (bothGrips)
+                _flyPressed = true;
+
+            // Interact = Right trigger
+            if (_webXRManager.GetTriggerValue(false) > 0.8f)
+                _interactPressed = true;
+
+            // Teleport = Left trigger (handled separately in PlayerController for VR)
+            if (_webXRManager.GetTriggerValue(true) > 0.8f)
+                _teleportPressed = true;
+
+            // Clear mouse-based inputs in VR mode
+            _leftMouseHeld = false;
+            _rightMouseHeld = false;
+            _bothMouseHeld = false;
+            _strafeLeftPressed = false;
+            _strafeRightPressed = false;
+            _turnLeftPressed = false;
+            _turnRightPressed = false;
         }
 
         public void RegisterUIInputHandler(IUIInputHandler handler)
@@ -837,6 +909,9 @@ namespace U3D.Networking
 
         void OnDestroy()
         {
+            // Unsubscribe from VR mode changes
+            U3D.XR.U3DWebXRManager.OnVRModeChanged -= OnVRModeChanged;
+
             // Clean shutdown
             if (_runner != null)
             {
