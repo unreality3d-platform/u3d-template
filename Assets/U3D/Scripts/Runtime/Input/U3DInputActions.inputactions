@@ -389,7 +389,7 @@
                 {
                     "name": "",
                     "id": "d8bf24bf-3f2f-4160-a97c-38ec1eb520ba",
-                    "path": "<XRController>/trigger",
+                    "path": "<XRController>{LeftHand}/{PrimaryTrigger}",
                     "interactions": "",
                     "processors": "",
                     "groups": "XR",
@@ -542,17 +542,6 @@
                 },
                 {
                     "name": "",
-                    "id": "dbd938a6-f42b-4c74-b4a6-553357ece652",
-                    "path": "<XRController>{LeftHand}/primary2DAxisTouch",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";XR",
-                    "action": "Teleport",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
                     "id": "04ce4b07-ad2b-4406-a241-ea44dda24a9b",
                     "path": "<Keyboard>/f",
                     "interactions": "",
@@ -569,6 +558,17 @@
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",
+                    "action": "Fly",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "39552381-dcf6-4486-a674-c41a1d177639",
+                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
                     "action": "Fly",
                     "isComposite": false,
                     "isPartOfComposite": false
