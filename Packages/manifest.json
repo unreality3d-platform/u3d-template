@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "com.de-panther.webxr": "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr",
-    "com.de-panther.webxr-input-profiles-loader": "https://github.com/De-Panther/webxr-input-profiles-loader.git?path=/Packages/webxr-input-profiles-loader",
-    "com.de-panther.webxr-interactions": "https://github.com/De-Panther/unity-webxr-export.git?path=/Packages/webxr-interactions",
+    "com.de-panther.webxr": "0.22.1",
+    "com.de-panther.webxr-input-profiles-loader": "0.6.2",
+    "com.de-panther.webxr-interactions": "0.22.0",
     "com.unity.ai.navigation": "2.0.9",
     "com.unity.cloud.gltfast": "6.16.0",
     "com.unity.ide.rider": "3.0.39",
@@ -50,5 +50,14 @@
     "com.unity.modules.vr": "1.0.0",
     "com.unity.modules.wind": "1.0.0",
     "com.unity.modules.xr": "1.0.0"
-  }
+  },
+  "scopedRegistries": [
+    {
+      "name": "OpenUPM",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.de-panther"
+      ]
+    }
+  ]
 }
