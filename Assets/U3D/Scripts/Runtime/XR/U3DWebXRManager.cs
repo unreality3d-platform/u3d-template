@@ -1,6 +1,8 @@
 using UnityEngine;
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED
 using WebXR;
+#endif
+#if WEBXR_INTERACTIONS_ENABLED
 using WebXR.Interactions;
 #endif
 
@@ -27,7 +29,7 @@ namespace U3D.XR
         [Header("WebXR Configuration")]
         [SerializeField] private bool autoFindLocalPlayer = true;
         [SerializeField] private bool verboseLogging = false;
-        
+
         [Header("VR Hand Visuals")]
         [SerializeField] private GameObject leftHandPrefab;
         [SerializeField] private GameObject rightHandPrefab;
@@ -42,16 +44,18 @@ namespace U3D.XR
         private bool _isVRSupported = false;
         private U3DPlayerController _localPlayerController;
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED
         private WebXRState _currentXRState = WebXRState.NORMAL;
 #endif
 
         // Events for external systems
         public delegate void VRModeChanged(bool isVRActive);
         public static event VRModeChanged OnVRModeChanged;
-        
+
         public delegate void VRSupportDetected(bool isSupported);
+#pragma warning disable CS0067
         public static event VRSupportDetected OnVRSupportDetected;
+#pragma warning restore CS0067
 
         // Public Properties
         public bool IsVRActive => _isVRActive;
@@ -80,7 +84,7 @@ namespace U3D.XR
 
         void InitializeWebXR()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
             // Subscribe to WebXR state changes
             WebXRManager.OnXRChange += OnXRChange;
             
@@ -89,13 +93,13 @@ namespace U3D.XR
             
             LogVerbose("WebXR event subscription active");
 #else
-            // In Editor or non-WebGL builds, WebXR is not available
+            // In Editor or non-WebGL builds, or when WebXR package not installed
             _isVRSupported = false;
-            LogVerbose("WebXR not available (Editor or non-WebGL build)");
+            LogVerbose("WebXR not available (Editor, non-WebGL build, or package not installed)");
 #endif
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
         private System.Collections.IEnumerator CheckVRSupportDelayed()
         {
             // Wait for WebXRManager to initialize
@@ -138,7 +142,7 @@ namespace U3D.XR
         {
             LogVerbose($"VR Mode Change: {(enteringVR ? "ENTERING" : "EXITING")} VR");
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
             if (enteringVR)
             {
                 // Refresh controller references when entering VR
@@ -168,7 +172,7 @@ namespace U3D.XR
             OnVRModeChanged?.Invoke(enteringVR);
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
         private System.Collections.IEnumerator RefreshControllersDelayed()
         {
             // Wait a frame for WebXRController components to activate
@@ -184,7 +188,7 @@ namespace U3D.XR
         public void FindLocalPlayer()
         {
             var allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
-            
+
             foreach (var player in allPlayers)
             {
                 if (player.IsLocalPlayer)
@@ -194,7 +198,7 @@ namespace U3D.XR
                     return;
                 }
             }
-            
+
             LogVerbose("No local player found in scene");
         }
 
@@ -205,7 +209,7 @@ namespace U3D.XR
         {
             _localPlayerController = player;
             LogVerbose($"Local player registered: {player.gameObject.name}");
-            
+
             // If VR was already active when player spawned, notify immediately
             if (_isVRActive)
             {
@@ -226,10 +230,10 @@ namespace U3D.XR
             }
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_INTERACTIONS_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
         // Cache WebXRController references for performance
-        private WebXR.Interactions.WebXRController _leftController;
-        private WebXR.Interactions.WebXRController _rightController;
+        private WebXRController _leftController;
+        private WebXRController _rightController;
 
         /// <summary>
         /// Find WebXRController components in scene (typically on WebXRCameraSet prefab)
@@ -237,7 +241,7 @@ namespace U3D.XR
         /// </summary>
         public void RefreshControllerReferences()
         {
-            var controllers = FindObjectsByType<WebXR.Interactions.WebXRController>(FindObjectsSortMode.None);
+            var controllers = FindObjectsByType<WebXRController>(FindObjectsSortMode.None);
             foreach (var controller in controllers)
             {
                 if (controller.hand == WebXRControllerHand.LEFT)
@@ -399,9 +403,9 @@ namespace U3D.XR
             return controller != null && controller.isControllerActive;
         }
 #else
-        // Editor/non-WebGL stubs
+        // Editor/non-WebGL/no-WebXR stubs
         public void RefreshControllerReferences() { }
-        
+
         public bool TryGetControllerPose(bool isLeftHand, out Vector3 position, out Quaternion rotation)
         {
             position = Vector3.zero;
@@ -445,7 +449,7 @@ namespace U3D.XR
         {
             return 0f;
         }
-        
+
         public bool IsControllerActive(bool isLeftHand)
         {
             return false;
@@ -458,7 +462,7 @@ namespace U3D.XR
         public GameObject CreateDefaultHandVisual(bool isLeftHand, Transform parent)
         {
             GameObject handVisual;
-            
+
             // Check for assigned prefab first
             var prefab = isLeftHand ? leftHandPrefab : rightHandPrefab;
             if (prefab != null)
@@ -471,7 +475,7 @@ namespace U3D.XR
                 handVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 handVisual.transform.SetParent(parent);
                 handVisual.transform.localScale = Vector3.one * handVisualScale;
-                
+
                 // Remove collider (visual only)
                 var collider = handVisual.GetComponent<Collider>();
                 if (collider != null)
@@ -492,7 +496,7 @@ namespace U3D.XR
 
             handVisual.name = isLeftHand ? "LeftHandVisual" : "RightHandVisual";
             handVisual.SetActive(false); // Start hidden, VR mode enables them
-            
+
             return handVisual;
         }
 
@@ -506,7 +510,7 @@ namespace U3D.XR
 
         void OnDestroy()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
             // Unsubscribe from WebXR events
             WebXRManager.OnXRChange -= OnXRChange;
 #endif
@@ -519,7 +523,7 @@ namespace U3D.XR
 
         void OnDisable()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
             // Also unsubscribe when disabled to prevent stale references
             WebXRManager.OnXRChange -= OnXRChange;
 #endif
@@ -527,7 +531,7 @@ namespace U3D.XR
 
         void OnEnable()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
+#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
             // Re-subscribe when re-enabled
             WebXRManager.OnXRChange -= OnXRChange; // Prevent double subscription
             WebXRManager.OnXRChange += OnXRChange;

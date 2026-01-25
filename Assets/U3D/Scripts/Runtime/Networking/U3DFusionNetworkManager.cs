@@ -154,11 +154,6 @@ namespace U3D.Networking
             {
                 _ = StartNetworking("DefaultRoom");
             }
-
-            if (autoStartHost)
-            {
-                _ = StartNetworking("DefaultRoom");
-            }
         }
 
         private void OnVRModeChanged(bool isVRActive)

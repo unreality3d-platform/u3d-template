@@ -12,11 +12,22 @@
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.de-panther.webxr",
+            "expression": "0.22.0",
+            "define": "WEBXR_ENABLED"
+        },
+        {
+            "name": "com.de-panther.webxr-interactions",
+            "expression": "0.22.0",
+            "define": "WEBXR_INTERACTIONS_ENABLED"
+        }
+    ],
     "noEngineReferences": false
 }
