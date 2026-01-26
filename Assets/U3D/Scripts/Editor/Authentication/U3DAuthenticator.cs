@@ -760,14 +760,17 @@ public static class U3DAuthenticator
 
         try
         {
-            var refreshData = new
+            var formData = new Dictionary<string, string>
             {
-                grant_type = "refresh_token",
-                refresh_token = _refreshToken
+                { "grant_type", "refresh_token" },
+                { "refresh_token", _refreshToken }
             };
 
-            var json = JsonConvert.SerializeObject(refreshData);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var content = new FormUrlEncodedContent(formData);
+
+            // CRITICAL: Remove any existing Authorization header before token refresh
+            // The securetoken.googleapis.com endpoint rejects requests with Bearer tokens
+            _sharedHttpClient.DefaultRequestHeaders.Remove("Authorization");
 
             var response = await _sharedHttpClient.PostAsync(
                 $"https://securetoken.googleapis.com/v1/token?key={FirebaseConfigManager.CurrentConfig.apiKey}",
@@ -801,7 +804,8 @@ public static class U3DAuthenticator
             {
                 Debug.LogError($"Token refresh failed: {response.StatusCode} - {responseText}");
 
-                if (response.StatusCode == HttpStatusCode.BadRequest)
+                if (response.StatusCode == HttpStatusCode.BadRequest ||
+                    response.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     Debug.LogError("❌ Refresh token is invalid or expired - user must log in again");
                     ClearCredentials();
