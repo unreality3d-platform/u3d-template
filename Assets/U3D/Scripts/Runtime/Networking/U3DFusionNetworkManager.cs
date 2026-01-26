@@ -426,47 +426,49 @@ namespace U3D.Networking
         }
 
         /// <summary>
-        /// Poll VR controller input from WebXR Manager
-        /// Maps VR controller buttons/axes to the same input cache used by flat-screen
+        /// Poll VR controller input via Unity Input System
+        /// WebXR Export 0.20+ integrates with Input System - XR bindings handle controller input automatically
         /// </summary>
         private void PollVRInput()
         {
-            if (_webXRManager == null) return;
+            // In VR mode, the Input System XR bindings automatically receive controller input
+            // from WebXR Export's integration with Unity's XR subsystems.
+            // We use the same Input Actions as flat-screen mode - the XR control scheme
+            // bindings in U3DInputActions handle the mapping.
 
-            // Movement from left thumbstick
-            _cachedMovementInput = _webXRManager.GetThumbstick(true);
+            // Movement from left thumbstick (XR binding: <XRController>{LeftHand}/{Primary2DAxis})
+            if (_moveAction != null)
+                _cachedMovementInput = _moveAction.ReadValue<Vector2>();
 
-            // Look input not used in VR (head tracking handles orientation)
-            // But we can use right stick X for snap turn signal if needed
-            Vector2 rightStick = _webXRManager.GetThumbstick(false);
-            _cachedLookInput = rightStick; // PlayerController uses this for snap turn
+            // Look/snap turn from right thumbstick (XR binding: <XRController>{RightHand}/{Secondary2DAxis})
+            if (_lookAction != null)
+                _cachedLookInput = _lookAction.ReadValue<Vector2>();
 
-            // Jump = Right controller A button (primary button)
-            if (_webXRManager.GetControllerButtonDown(false, "ButtonA"))
+            // Jump = XR secondary button (XR binding: <XRController>/secondaryButton)
+            if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
 
-            // Sprint = Left grip held
-            _sprintPressed = _webXRManager.GetGripValue(true) > 0.5f;
+            // Sprint = Left trigger (XR binding: <XRController>{LeftHand}/{PrimaryTrigger})
+            if (_sprintAction != null && _sprintAction.IsPressed())
+                _sprintPressed = true;
 
-            // Crouch = Left controller X button (or B on right)
-            if (_webXRManager.GetControllerButtonDown(true, "ButtonA")) // Left primary
+            // Crouch = Left thumbstick click (XR binding: <XRController>{LeftHand}/primary2DAxisClick)
+            if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
                 _crouchPressed = true;
 
-            // Fly toggle = Both grips pressed
-            bool bothGrips = _webXRManager.GetGripValue(true) > 0.8f &&
-                            _webXRManager.GetGripValue(false) > 0.8f;
-            if (bothGrips)
+            // Fly = Left primary button (XR binding: <XRController>{LeftHand}/{PrimaryButton})
+            if (_flyAction != null && _flyAction.WasPressedThisFrame())
                 _flyPressed = true;
 
-            // Interact = Right trigger
-            if (_webXRManager.GetTriggerValue(false) > 0.8f)
+            // Interact = Right trigger (XR binding: <XRController>{RightHand}/triggerButton)
+            if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
-            // Teleport = Left trigger (handled separately in PlayerController for VR)
-            if (_webXRManager.GetTriggerValue(true) > 0.8f)
+            // Teleport = Left grip or dedicated teleport action
+            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
                 _teleportPressed = true;
 
-            // Clear mouse-based inputs in VR mode
+            // Clear mouse-based inputs in VR mode (not applicable)
             _leftMouseHeld = false;
             _rightMouseHeld = false;
             _bothMouseHeld = false;

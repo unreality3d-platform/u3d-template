@@ -811,29 +811,17 @@ public class U3DPlayerController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Handle VR locomotion using controller thumbsticks
-    /// Left stick = movement, Right stick = snap turn
+    /// Handle VR locomotion using controller thumbsticks.
+    /// Input flows through Input System XR bindings -> U3DFusionNetworkManager -> NetworkInputData.
+    /// Left stick = movement, Right stick = snap turn.
     /// </summary>
     private void HandleVRMovement(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
-        // Get movement from left thumbstick (via WebXR manager or input system)
-        Vector2 vrMoveInput = Vector2.zero;
-        float snapTurnInput = 0f;
-
-        if (_webXRManager != null)
-        {
-            // Get thumbstick input from WebXR controllers
-            vrMoveInput = _webXRManager.GetThumbstick(true); // Left hand = movement
-            Vector2 rightStick = _webXRManager.GetThumbstick(false); // Right hand = turn
-            snapTurnInput = rightStick.x;
-        }
-        else
-        {
-            // Fallback to network input (XR bindings in Input Actions)
-            vrMoveInput = input.MovementInput;
-        }
+        // Get movement from network input (which comes from Input System XR bindings)
+        Vector2 vrMoveInput = input.MovementInput;
+        float snapTurnInput = input.LookInput.x;
 
         // Handle snap turning with right stick
         if (Mathf.Abs(snapTurnInput) > 0.7f && Time.time - _lastSnapTurnTime > VR_SNAP_TURN_COOLDOWN)
@@ -863,15 +851,11 @@ public class U3DPlayerController : NetworkBehaviour
         // Apply speed based on current state
         float currentSpeed = GetCurrentSpeed() * VR_MOVEMENT_SPEED_MULTIPLIER;
 
-        // Check for sprint (grip button held)
-        if (_webXRManager != null && _webXRManager.GetGripValue(true) > 0.5f)
+        // Check for sprint from network input
+        isSprinting = input.Buttons.IsSet(U3DInputButtons.Sprint);
+        if (isSprinting)
         {
-            isSprinting = true;
             currentSpeed = runSpeed * VR_MOVEMENT_SPEED_MULTIPLIER;
-        }
-        else
-        {
-            isSprinting = input.Buttons.IsSet(U3DInputButtons.Sprint);
         }
 
         Vector3 moveVelocity = moveDirection * currentSpeed;
@@ -881,14 +865,11 @@ public class U3DPlayerController : NetworkBehaviour
         {
             Vector3 flyDirection = moveDirection;
 
-            // Use triggers for vertical movement in fly mode
-            if (_webXRManager != null)
-            {
-                float rightTrigger = _webXRManager.GetTriggerValue(false);
-                float leftTrigger = _webXRManager.GetTriggerValue(true);
-                if (rightTrigger > 0.5f) flyDirection += Vector3.up;
-                if (leftTrigger > 0.5f) flyDirection += Vector3.down;
-            }
+            // Use jump/crouch buttons for vertical movement in fly mode
+            if (input.Buttons.IsSet(U3DInputButtons.Jump))
+                flyDirection += Vector3.up;
+            if (input.Buttons.IsSet(U3DInputButtons.Crouch))
+                flyDirection += Vector3.down;
 
             characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
@@ -897,7 +878,7 @@ public class U3DPlayerController : NetworkBehaviour
             characterController.Move(moveVelocity * Runner.DeltaTime);
         }
 
-        // Update networked position
+        // Update networked state
         NetworkPosition = transform.position;
         NetworkRotation = transform.rotation;
         NetworkIsMoving = moveVelocity.magnitude > 0.1f;
@@ -905,11 +886,13 @@ public class U3DPlayerController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Sync VR head and hand poses to network for other players to see
+    /// Sync VR head and hand poses to network for other players to see.
+    /// Head pose comes from camera (controlled by WebXR).
+    /// Hand poses come from XR tracked devices via Input System.
     /// </summary>
     private void HandleVRPoseSync()
     {
-        if (!_isLocalPlayer || _webXRManager == null) return;
+        if (!_isLocalPlayer) return;
 
         // Sync head pose (from camera, which WebXR controls)
         if (playerCamera != null)
@@ -919,33 +902,23 @@ public class U3DPlayerController : NetworkBehaviour
             NetworkCameraPitch = playerCamera.transform.localEulerAngles.x;
         }
 
-        // Sync hand poses
-        if (_webXRManager.TryGetControllerPose(true, out Vector3 leftPos, out Quaternion leftRot))
-        {
-            // Convert world space to local space relative to player
-            NetworkLeftHandPos = transform.InverseTransformPoint(leftPos);
-            NetworkLeftHandRot = Quaternion.Inverse(transform.rotation) * leftRot;
+        // Hand pose syncing via Input System TrackedDevice bindings
+        // The XR control scheme in U3DInputActions has TrackedDevicePosition/Orientation actions
+        // These are automatically populated by WebXR Export's XR subsystem integration
 
-            // Update local visual
-            if (_leftHandVisual != null)
-            {
-                _leftHandVisual.position = leftPos;
-                _leftHandVisual.rotation = leftRot;
-            }
+        // For now, update local hand visuals based on XR tracked device transforms
+        // The actual tracking data flows through Unity's XR subsystems
+        if (_leftHandVisual != null && _leftHandVisual.gameObject.activeSelf)
+        {
+            // Hand visuals are parented to player, WebXR updates their transforms
+            NetworkLeftHandPos = _leftHandVisual.localPosition;
+            NetworkLeftHandRot = _leftHandVisual.localRotation;
         }
 
-        if (_webXRManager.TryGetControllerPose(false, out Vector3 rightPos, out Quaternion rightRot))
+        if (_rightHandVisual != null && _rightHandVisual.gameObject.activeSelf)
         {
-            // Convert world space to local space relative to player
-            NetworkRightHandPos = transform.InverseTransformPoint(rightPos);
-            NetworkRightHandRot = Quaternion.Inverse(transform.rotation) * rightRot;
-
-            // Update local visual
-            if (_rightHandVisual != null)
-            {
-                _rightHandVisual.position = rightPos;
-                _rightHandVisual.rotation = rightRot;
-            }
+            NetworkRightHandPos = _rightHandVisual.localPosition;
+            NetworkRightHandRot = _rightHandVisual.localRotation;
         }
     }
 

@@ -2,9 +2,6 @@ using UnityEngine;
 #if WEBXR_ENABLED
 using WebXR;
 #endif
-#if WEBXR_INTERACTIONS_ENABLED
-using WebXR.Interactions;
-#endif
 
 namespace U3D.XR
 {
@@ -13,16 +10,19 @@ namespace U3D.XR
     /// Handles VR session start/end and notifies U3DPlayerController of mode changes.
     /// 
     /// ARCHITECTURE NOTES:
-    /// - WebXR Export (De-Panther 0.22.x) uses native Unity XR SDK subsystems
+    /// - WebXR Export (De-Panther 0.20+) uses native Unity XR SDK subsystems
     /// - VR sessions are initiated by user clicking "Enter VR" button in WebGL template
     /// - This manager subscribes to WebXRManager.OnXRChange events
     /// - When VR activates, it finds the local player and calls SetVRMode(true)
     /// - WebXR takes over camera rendering automatically via XR subsystems
+    /// - Controller input flows through Unity's Input System with XR bindings (U3DInputActions)
     /// 
     /// REQUIREMENTS:
-    /// - WebXR Export 0.22.x package installed
+    /// - WebXR Export 0.20+ package installed
+    /// - WebXR Interactions package installed
     /// - WebXRFullView2020 template selected in Player Settings
     /// - XR Plug-in Management > WebGL > WebXR Export enabled
+    /// - Input System configured with XR control scheme bindings
     /// </summary>
     public class U3DWebXRManager : MonoBehaviour
     {
@@ -53,9 +53,7 @@ namespace U3D.XR
         public static event VRModeChanged OnVRModeChanged;
 
         public delegate void VRSupportDetected(bool isSupported);
-#pragma warning disable CS0067
         public static event VRSupportDetected OnVRSupportDetected;
-#pragma warning restore CS0067
 
         // Public Properties
         public bool IsVRActive => _isVRActive;
@@ -121,7 +119,7 @@ namespace U3D.XR
 
         /// <summary>
         /// Called by WebXR Export when XR state changes (user enters/exits VR)
-        /// Signature matches WebXRManager.OnXRChange delegate in 0.22.x
+        /// Signature matches WebXRManager.OnXRChange delegate in 0.20+
         /// </summary>
         private void OnXRChange(WebXRState state, int viewsCount, Rect leftRect, Rect rightRect)
         {
@@ -142,15 +140,6 @@ namespace U3D.XR
         {
             LogVerbose($"VR Mode Change: {(enteringVR ? "ENTERING" : "EXITING")} VR");
 
-#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-            if (enteringVR)
-            {
-                // Refresh controller references when entering VR
-                // Small delay to allow WebXRController components to initialize
-                StartCoroutine(RefreshControllersDelayed());
-            }
-#endif
-
             // Find local player if needed
             if (_localPlayerController == null && autoFindLocalPlayer)
             {
@@ -165,22 +154,12 @@ namespace U3D.XR
             }
             else
             {
-                Debug.LogWarning("U3DWebXRManager: No local player found to notify of VR mode change");
+                Debug.LogWarning("[U3DWebXRManager] No local player found to notify of VR mode change");
             }
 
             // Fire event for other systems (UI, analytics, etc.)
             OnVRModeChanged?.Invoke(enteringVR);
         }
-
-#if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-        private System.Collections.IEnumerator RefreshControllersDelayed()
-        {
-            // Wait a frame for WebXRController components to activate
-            yield return null;
-            yield return new WaitForSeconds(0.1f);
-            RefreshControllerReferences();
-        }
-#endif
 
         /// <summary>
         /// Find the local player controller in the scene
@@ -229,232 +208,6 @@ namespace U3D.XR
                 LogVerbose("Local player unregistered");
             }
         }
-
-#if WEBXR_INTERACTIONS_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-        // Cache WebXRController references for performance
-        private WebXRController _leftController;
-        private WebXRController _rightController;
-
-        /// <summary>
-        /// Find WebXRController components in scene (typically on WebXRCameraSet prefab)
-        /// Call this after VR mode activates or when controllers need refreshing
-        /// </summary>
-        public void RefreshControllerReferences()
-        {
-            var controllers = FindObjectsByType<WebXRController>(FindObjectsSortMode.None);
-            foreach (var controller in controllers)
-            {
-                if (controller.hand == WebXRControllerHand.LEFT)
-                    _leftController = controller;
-                else if (controller.hand == WebXRControllerHand.RIGHT)
-                    _rightController = controller;
-            }
-            LogVerbose($"Controller references refreshed: Left={_leftController != null}, Right={_rightController != null}");
-        }
-
-        /// <summary>
-        /// Get controller data from WebXR (for hand pose syncing)
-        /// In WebXR Export 0.20+, use WebXRController component which handles pose tracking
-        /// </summary>
-        public bool TryGetControllerPose(bool isLeftHand, out Vector3 position, out Quaternion rotation)
-        {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
-
-            if (!_isVRActive) 
-                return false;
-
-            var controller = isLeftHand ? _leftController : _rightController;
-            
-            if (controller != null && controller.isControllerActive)
-            {
-                // WebXRController transforms are already in world space
-                position = controller.transform.position;
-                rotation = controller.transform.rotation;
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Get head pose from WebXR (for avatar head tracking)
-        /// In WebXR Export 0.20+, head pose comes from Unity's XR subsystem
-        /// The camera is automatically positioned by the WebXR Display subsystem
-        /// </summary>
-        public bool TryGetHeadPose(out Vector3 position, out Quaternion rotation)
-        {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
-
-            if (!_isVRActive) 
-                return false;
-
-            var mainCam = Camera.main;
-            if (mainCam != null)
-            {
-                position = mainCam.transform.localPosition;
-                rotation = mainCam.transform.localRotation;
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Get controller button state using string-based action names
-        /// WebXRController uses string identifiers: "Trigger", "Grip", "Thumbstick", "ButtonA", "ButtonB"
-        /// </summary>
-        public bool GetControllerButton(bool isLeftHand, string buttonName)
-        {
-            if (!_isVRActive)
-                return false;
-
-            var controller = isLeftHand ? _leftController : _rightController;
-            
-            if (controller != null && controller.isControllerActive)
-            {
-                return controller.GetButton(buttonName);
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Get controller button down (pressed this frame)
-        /// </summary>
-        public bool GetControllerButtonDown(bool isLeftHand, string buttonName)
-        {
-            if (!_isVRActive)
-                return false;
-
-            var controller = isLeftHand ? _leftController : _rightController;
-            
-            if (controller != null && controller.isControllerActive)
-            {
-                return controller.GetButtonDown(buttonName);
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Get controller axis value
-        /// Axis names: "Trigger", "Grip", "ThumbstickX", "ThumbstickY"
-        /// </summary>
-        public float GetControllerAxis(bool isLeftHand, string axisName)
-        {
-            if (!_isVRActive)
-                return 0f;
-
-            var controller = isLeftHand ? _leftController : _rightController;
-            
-            if (controller != null && controller.isControllerActive)
-            {
-                return controller.GetAxis(axisName);
-            }
-
-            return 0f;
-        }
-
-        /// <summary>
-        /// Get thumbstick as Vector2
-        /// </summary>
-        public Vector2 GetThumbstick(bool isLeftHand)
-        {
-            if (!_isVRActive)
-                return Vector2.zero;
-
-            var controller = isLeftHand ? _leftController : _rightController;
-            
-            if (controller != null && controller.isControllerActive)
-            {
-                return new Vector2(
-                    controller.GetAxis("ThumbstickX"),
-                    controller.GetAxis("ThumbstickY")
-                );
-            }
-
-            return Vector2.zero;
-        }
-        
-        /// <summary>
-        /// Get trigger value (0-1)
-        /// </summary>
-        public float GetTriggerValue(bool isLeftHand)
-        {
-            return GetControllerAxis(isLeftHand, "Trigger");
-        }
-
-        /// <summary>
-        /// Get grip value (0-1)
-        /// </summary>
-        public float GetGripValue(bool isLeftHand)
-        {
-            return GetControllerAxis(isLeftHand, "Grip");
-        }
-        
-        /// <summary>
-        /// Check if controller is currently active/tracked
-        /// </summary>
-        public bool IsControllerActive(bool isLeftHand)
-        {
-            var controller = isLeftHand ? _leftController : _rightController;
-            return controller != null && controller.isControllerActive;
-        }
-#else
-        // Editor/non-WebGL/no-WebXR stubs
-        public void RefreshControllerReferences() { }
-
-        public bool TryGetControllerPose(bool isLeftHand, out Vector3 position, out Quaternion rotation)
-        {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
-            return false;
-        }
-
-        public bool TryGetHeadPose(out Vector3 position, out Quaternion rotation)
-        {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
-            return false;
-        }
-
-        public bool GetControllerButton(bool isLeftHand, string buttonName)
-        {
-            return false;
-        }
-
-        public bool GetControllerButtonDown(bool isLeftHand, string buttonName)
-        {
-            return false;
-        }
-
-        public float GetControllerAxis(bool isLeftHand, string axisName)
-        {
-            return 0f;
-        }
-
-        public Vector2 GetThumbstick(bool isLeftHand)
-        {
-            return Vector2.zero;
-        }
-
-        public float GetTriggerValue(bool isLeftHand)
-        {
-            return 0f;
-        }
-
-        public float GetGripValue(bool isLeftHand)
-        {
-            return 0f;
-        }
-
-        public bool IsControllerActive(bool isLeftHand)
-        {
-            return false;
-        }
-#endif
 
         /// <summary>
         /// Create simple hand visuals (spheres) if no prefabs assigned
@@ -511,7 +264,6 @@ namespace U3D.XR
         void OnDestroy()
         {
 #if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-            // Unsubscribe from WebXR events
             WebXRManager.OnXRChange -= OnXRChange;
 #endif
 
@@ -524,7 +276,6 @@ namespace U3D.XR
         void OnDisable()
         {
 #if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-            // Also unsubscribe when disabled to prevent stale references
             WebXRManager.OnXRChange -= OnXRChange;
 #endif
         }
@@ -532,7 +283,6 @@ namespace U3D.XR
         void OnEnable()
         {
 #if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-            // Re-subscribe when re-enabled
             WebXRManager.OnXRChange -= OnXRChange; // Prevent double subscription
             WebXRManager.OnXRChange += OnXRChange;
 #endif
