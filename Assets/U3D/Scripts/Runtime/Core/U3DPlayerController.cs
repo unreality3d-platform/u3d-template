@@ -554,6 +554,9 @@ public class U3DPlayerController : NetworkBehaviour
 
     bool IsCursorLocked()
     {
+        // In VR mode, cursor lock is irrelevant - always return true so input code proceeds
+        if (_isInVRMode) return true;
+
         // Check cursor manager first (WebGL)
         if (_cursorManager != null)
         {
@@ -732,6 +735,13 @@ public class U3DPlayerController : NetworkBehaviour
         // 1. Create hand visuals if they don't exist
         // 2. Disable standard camera controls (WebXR manages camera)
         // 3. Switch to VR input processing
+        // 4. Notify cursor manager to disable cursor lock (browser rejects it in VR)
+
+        // Notify cursor manager to disable cursor lock during VR
+        if (_cursorManager != null)
+        {
+            _cursorManager.SetVRMode(true);
+        }
 
         CreateHandVisuals();
 
@@ -742,7 +752,7 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
-        Debug.Log("[U3DPlayerController] Entered VR Mode - hand visuals activated");
+        Debug.Log("[U3DPlayerController] Entered VR Mode - hand visuals activated, cursor lock disabled");
     }
 
     /// <summary>
@@ -761,7 +771,13 @@ public class U3DPlayerController : NetworkBehaviour
             cameraPitch = 0f;
         }
 
-        Debug.Log("[U3DPlayerController] Exited VR Mode - standard controls restored");
+        // Notify cursor manager to restore cursor lock for flat-screen FPS controls
+        if (_cursorManager != null)
+        {
+            _cursorManager.SetVRMode(false);
+        }
+
+        Debug.Log("[U3DPlayerController] Exited VR Mode - standard controls restored, cursor lock re-enabled");
     }
 
     /// <summary>
