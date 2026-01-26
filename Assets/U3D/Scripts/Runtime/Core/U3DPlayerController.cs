@@ -843,9 +843,10 @@ public class U3DPlayerController : NetworkBehaviour
         if (Mathf.Abs(snapTurnInput) > 0.7f && Time.time - _lastSnapTurnTime > VR_SNAP_TURN_COOLDOWN)
         {
             float turnDirection = Mathf.Sign(snapTurnInput);
-            transform.Rotate(Vector3.up, turnDirection * VR_SNAP_TURN_ANGLE);
+            float turnDelta = turnDirection * VR_SNAP_TURN_ANGLE;
+            transform.Rotate(Vector3.up, turnDelta);
             NetworkRotation = transform.rotation;
-            cameraYaw = transform.eulerAngles.y;
+            cameraYaw += turnDelta; // Use delta to avoid gimbal lock issues with eulerAngles
             _lastSnapTurnTime = Time.time;
         }
 
@@ -1111,24 +1112,26 @@ public class U3DPlayerController : NetworkBehaviour
             {
                 if (input.TurnLeft)
                 {
-                    transform.Rotate(Vector3.up, -characterTurnSpeed * Runner.DeltaTime);
+                    float turnDelta = -characterTurnSpeed * Runner.DeltaTime;
+                    transform.Rotate(Vector3.up, turnDelta);
                     NetworkRotation = transform.rotation;
 
-                    // Update camera yaw to follow character turning
+                    // Update camera yaw by delta to avoid gimbal lock issues with eulerAngles
                     if (cameraPivot != null)
                     {
-                        cameraYaw = transform.eulerAngles.y;
+                        cameraYaw += turnDelta;
                     }
                 }
                 if (input.TurnRight)
                 {
-                    transform.Rotate(Vector3.up, characterTurnSpeed * Runner.DeltaTime);
+                    float turnDelta = characterTurnSpeed * Runner.DeltaTime;
+                    transform.Rotate(Vector3.up, turnDelta);
                     NetworkRotation = transform.rotation;
 
-                    // Update camera yaw to follow character turning
+                    // Update camera yaw by delta to avoid gimbal lock issues with eulerAngles
                     if (cameraPivot != null)
                     {
-                        cameraYaw = transform.eulerAngles.y;
+                        cameraYaw += turnDelta;
                     }
                 }
             }
