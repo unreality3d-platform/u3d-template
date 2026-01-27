@@ -9,6 +9,7 @@ namespace U3D
     /// FIXED: Reliable authority management for Shared Mode grab/throw system
     /// Prevents race conditions and ensures deterministic state synchronization
     /// Enhanced with remappable interaction keys using Unity Input System
+    /// Input handling delegated to U3DInteractionManager to prevent double-input
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
@@ -28,7 +29,7 @@ namespace U3D
         [SerializeField] private float maxGrabDistance = 2f;
 
         [Header("Interaction Settings")]
-        [Tooltip("Key to trigger grab (remappable)")]
+        [Tooltip("Key to trigger grab (remappable) - shown in UI prompt")]
         [SerializeField] private KeyCode grabKey = KeyCode.R;
 
         [Header("Hand Attachment")]
@@ -146,75 +147,15 @@ namespace U3D
                 CheckIfAimedAt();
             }
 
-            // Handle grab input using Input System
-            if (WasGrabKeyPressed() && CanAttemptGrab())
-            {
-                Grab();
-            }
-            else if (WasGrabKeyPressed() && IsCurrentlyGrabbed())
-            {
-                Release();
-            }
+            // NOTE: Direct input handling removed - U3DInteractionManager handles input
+            // via IU3DInteractable.OnInteract() to prevent double-input issues
 
-            // FIXED: Timeout authority requests to prevent hanging
+            // Timeout authority requests to prevent hanging
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
                 Debug.LogWarning($"Authority request timeout for {name}");
                 isRequestingAuthority = false;
                 OnGrabFailed?.Invoke();
-            }
-        }
-
-        /// <summary>
-        /// Check if grab key was pressed using Input System (following established pattern)
-        /// </summary>
-        private bool WasGrabKeyPressed()
-        {
-            if (UnityEngine.InputSystem.Keyboard.current == null) return false;
-
-            switch (grabKey)
-            {
-                case KeyCode.E:
-                    return UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame;
-                case KeyCode.F:
-                    return UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame;
-                case KeyCode.R:
-                    return UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame;
-                case KeyCode.T:
-                    return UnityEngine.InputSystem.Keyboard.current.tKey.wasPressedThisFrame;
-                case KeyCode.G:
-                    return UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
-                case KeyCode.Q:
-                    return UnityEngine.InputSystem.Keyboard.current.qKey.wasPressedThisFrame;
-                case KeyCode.X:
-                    return UnityEngine.InputSystem.Keyboard.current.xKey.wasPressedThisFrame;
-                case KeyCode.Z:
-                    return UnityEngine.InputSystem.Keyboard.current.zKey.wasPressedThisFrame;
-                case KeyCode.V:
-                    return UnityEngine.InputSystem.Keyboard.current.vKey.wasPressedThisFrame;
-                case KeyCode.B:
-                    return UnityEngine.InputSystem.Keyboard.current.bKey.wasPressedThisFrame;
-                case KeyCode.C:
-                    return UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
-                case KeyCode.Space:
-                    return UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
-                case KeyCode.LeftShift:
-                    return UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame;
-                case KeyCode.Tab:
-                    return UnityEngine.InputSystem.Keyboard.current.tabKey.wasPressedThisFrame;
-                case KeyCode.Alpha1:
-                    return UnityEngine.InputSystem.Keyboard.current.digit1Key.wasPressedThisFrame;
-                case KeyCode.Alpha2:
-                    return UnityEngine.InputSystem.Keyboard.current.digit2Key.wasPressedThisFrame;
-                case KeyCode.Alpha3:
-                    return UnityEngine.InputSystem.Keyboard.current.digit3Key.wasPressedThisFrame;
-                case KeyCode.Alpha4:
-                    return UnityEngine.InputSystem.Keyboard.current.digit4Key.wasPressedThisFrame;
-                case KeyCode.Alpha5:
-                    return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
-                default:
-                    // Fallback for other keys - can be expanded as needed
-                    return false;
             }
         }
 

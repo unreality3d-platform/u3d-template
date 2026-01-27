@@ -172,11 +172,8 @@ namespace U3D
         {
             UpdatePlayerProximity();
 
-            // Handle kick input using Input System pattern
-            if (WasKickKeyPressed() && CanAttemptKick())
-            {
-                Kick();
-            }
+            // NOTE: Direct input handling removed - U3DInteractionManager handles input
+            // via IU3DInteractable.OnInteract() to prevent double-input issues
         }
 
         /// <summary>

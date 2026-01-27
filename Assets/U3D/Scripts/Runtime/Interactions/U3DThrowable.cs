@@ -161,12 +161,9 @@ namespace U3D
 
         private void Update()
         {
-            // Handle direct throw input (when not grabbed)
-            if (grabbable != null && !grabbable.IsGrabbed && WasThrowKeyPressed())
-            {
-                // Direct throw when not grabbed
-                ThrowInCameraDirection();
-            }
+            // NOTE: Direct input handling removed - throwing is triggered via:
+            // 1. U3DGrabbable release -> OnObjectReleased callback (for throw-on-release)
+            // 2. U3DInteractionManager could be extended to support direct throw if needed
         }
 
         /// <summary>
