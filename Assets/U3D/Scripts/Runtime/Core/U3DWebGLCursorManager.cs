@@ -22,10 +22,11 @@ namespace U3D
         [SerializeField] private Canvas gameUI;
 
         // Cursor state management
-        private bool _isCursorLocked = true;
+        private bool _isCursorLocked = false; // Start unlocked until user gesture
         private bool _isUIMode = false; // Tab mode - cursor free but WebGL has focus
         private bool _isEscapedMode = false; // Esc mode - cursor free and WebGL lost focus
         private bool _isInVRMode = false; // VR mode - cursor lock disabled entirely
+        private bool _hasReceivedUserGesture = false; // Track if we've had a valid user gesture
 
         // Network manager reference (auto-found)
         private U3D.Networking.U3DFusionNetworkManager _networkManager;
@@ -65,14 +66,12 @@ namespace U3D
                 return;
             }
 
-            // Setup initial cursor state
-            if (startWithLockedCursor)
-            {
-                SetCursorLocked(true);
-            }
+            // DON'T lock cursor on Awake - wait for user gesture
+            // Browser will reject pointer lock without user interaction
+            _isCursorLocked = false;
 
             string platform = Application.platform == RuntimePlatform.WebGLPlayer ? "WebGL" : "Editor";
-            Debug.Log($"✅ U3DWebGLCursorManager: Initialized for {platform} testing and integrated with NetworkManager");
+            Debug.Log($"✅ U3DWebGLCursorManager: Initialized for {platform} - awaiting user gesture for cursor lock");
         }
 
         void Update()
@@ -94,7 +93,7 @@ namespace U3D
                 OnEscapePressed();
             }
 
-            // Monitor mouse clicks for returning to game mode
+            // Monitor mouse clicks for returning to game mode or initial lock
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
                 OnClickPressed();
@@ -103,18 +102,25 @@ namespace U3D
 
         void OnTabPressed()
         {
+            _hasReceivedUserGesture = true;
             if (_isEscapedMode) return; // Can't toggle while escaped
             ToggleUIMode();
         }
 
         void OnEscapePressed()
         {
+            _hasReceivedUserGesture = true;
             // Esc key - release cursor and lose WebGL focus
             SetEscapedMode(true);
         }
 
         void OnClickPressed()
         {
+            _hasReceivedUserGesture = true;
+
+            // Skip if in VR mode
+            if (_isInVRMode) return;
+
             if (_isEscapedMode)
             {
                 // Click detected - WebGL regaining focus
@@ -130,6 +136,11 @@ namespace U3D
                     // Clicked on game area - return to game mode
                     SetUIMode(false);
                 }
+            }
+            else if (!_isCursorLocked && startWithLockedCursor)
+            {
+                // First click - lock cursor for FPS controls (deferred from Awake)
+                TrySetCursorLocked(true);
             }
         }
 
@@ -148,7 +159,7 @@ namespace U3D
             if (_isUIMode)
             {
                 // Entering UI mode - unlock cursor but keep WebGL focus
-                SetCursorLocked(false);
+                TrySetCursorLocked(false);
 
                 // Show pause menu
                 if (pauseMenu != null)
@@ -159,7 +170,7 @@ namespace U3D
             else
             {
                 // Exiting UI mode - lock cursor
-                SetCursorLocked(true);
+                TrySetCursorLocked(true);
 
                 // Hide pause menu
                 if (pauseMenu != null)
@@ -179,7 +190,7 @@ namespace U3D
             {
                 // Esc pressed - release cursor completely
                 _isUIMode = false; // Clear UI mode
-                SetCursorLocked(false);
+                TrySetCursorLocked(false);
 
                 // Hide all game UI
                 if (pauseMenu != null)
@@ -211,22 +222,21 @@ namespace U3D
 
             if (enabled && !wasInVR)
             {
-                // Entering VR - release cursor lock (browser will reject lock requests anyway)
-                // Don't actually call Cursor.lockState as it will throw errors
+                // Entering VR - just update internal state
+                // Don't touch Cursor.lockState at all - browser handles VR input exclusively
                 _isCursorLocked = false;
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = false; // Hide cursor in VR even though not locked
 
                 // Clear UI/escape modes
                 _isUIMode = false;
                 _isEscapedMode = false;
 
-                Debug.Log("🥽 U3DWebGLCursorManager: VR mode enabled - cursor lock disabled");
+                Debug.Log("🥽 U3DWebGLCursorManager: VR mode enabled - cursor lock management suspended");
             }
             else if (!enabled && wasInVR)
             {
                 // Exiting VR - restore cursor lock for FPS controls
-                SetCursorLocked(true);
+                // Use try-catch as browser state may be unpredictable after VR session
+                TrySetCursorLocked(true);
 
                 Debug.Log("🖱️ U3DWebGLCursorManager: VR mode disabled - cursor lock restored");
             }
@@ -238,34 +248,51 @@ namespace U3D
             {
                 // Player clicked back into WebGL window
                 SetEscapedMode(false);
-                SetCursorLocked(true); // Resume FPS mode
+                TrySetCursorLocked(true); // Resume FPS mode
                 Debug.Log("🎯 WebGL Window Regained Focus - Resuming FPS controls");
             }
         }
 
-        void SetCursorLocked(bool locked)
+        /// <summary>
+        /// Safely attempt to set cursor lock state with error handling.
+        /// Browsers may reject pointer lock requests in various situations.
+        /// </summary>
+        void TrySetCursorLocked(bool locked)
         {
-            // Skip actual cursor lock calls during VR - browser will reject them
+            // Skip during VR - browser will reject and we don't need cursor lock anyway
             if (_isInVRMode)
             {
-                _isCursorLocked = false; // Track as unlocked internally
+                _isCursorLocked = false;
                 return;
             }
 
-            _isCursorLocked = locked;
-
-            if (locked)
+            try
             {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
-            else
-            {
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
+                if (locked)
+                {
+                    Cursor.lockState = CursorLockMode.Locked;
+                    Cursor.visible = false;
+                    _isCursorLocked = true;
+                }
+                else
+                {
+                    Cursor.lockState = CursorLockMode.None;
+                    Cursor.visible = true;
+                    _isCursorLocked = false;
+                }
 
-            OnCursorLockStateChanged?.Invoke(locked);
+                OnCursorLockStateChanged?.Invoke(_isCursorLocked);
+            }
+            catch (System.Exception e)
+            {
+                // Browser rejected pointer lock request - this is expected in many situations:
+                // - No user gesture yet
+                // - VR session active
+                // - Page not focused
+                // - Permission denied
+                Debug.LogWarning($"🖱️ Cursor lock request rejected: {e.Message}");
+                _isCursorLocked = false;
+            }
         }
 
         bool IsPointerOverUI()
