@@ -74,6 +74,7 @@ namespace U3D
         private NetworkObject networkObject;
         private NetworkRigidbody3D networkRigidbody;
         private bool hasNetworkRb3D = false;
+        private U3DPlayerController playerController;
 
         // State tracking
         private bool isNetworked = false;
@@ -387,7 +388,7 @@ namespace U3D
 
         private void FindPlayerComponents()
         {
-            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
+            playerController = FindAnyObjectByType<U3DPlayerController>();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -457,9 +458,9 @@ namespace U3D
             // - Any network parent sync flip completes
             yield return null;
 
-            // Build throw vector from camera forward + upward boost
+            // Build throw vector based on camera mode
             float useForce = throwForce;
-            Vector3 throwDirection = playerCamera.transform.forward;
+            Vector3 throwDirection = GetThrowDirection();
             throwDirection.y += upwardThrowBoost / Mathf.Max(0.01f, useForce);
             throwDirection.Normalize();
 
@@ -505,6 +506,32 @@ namespace U3D
             else
             {
                 SetPhysicsState(PhysicsState.Sleeping);
+            }
+        }
+
+        /// <summary>
+        /// Gets the appropriate throw direction based on camera mode.
+        /// First person: Use camera forward (precise aiming)
+        /// Third person: Use avatar forward (throw where character is facing)
+        /// </summary>
+        private Vector3 GetThrowDirection()
+        {
+            bool isThirdPerson = playerController != null && !playerController.IsFirstPerson;
+
+            if (isThirdPerson && playerTransform != null)
+            {
+                // Third person: throw in the direction the avatar is facing
+                return playerTransform.forward;
+            }
+            else if (playerCamera != null)
+            {
+                // First person: throw where camera is looking
+                return playerCamera.transform.forward;
+            }
+            else
+            {
+                // Fallback: forward
+                return Vector3.forward;
             }
         }
 
@@ -675,21 +702,21 @@ namespace U3D
             OnThrown?.Invoke();
         }
 
-        // Public method to throw in camera direction with custom force
+        // Public method to throw in camera/avatar direction with custom force
         public void ThrowInCameraDirection(float customForce = -1f)
         {
-            if (playerCamera == null)
+            if (playerCamera == null || playerTransform == null)
             {
                 FindPlayerComponents();
-                if (playerCamera == null)
+                if (playerCamera == null && playerTransform == null)
                 {
-                    Debug.LogWarning("U3DThrowable: No camera found for ThrowInCameraDirection");
+                    Debug.LogWarning("U3DThrowable: No player found for ThrowInCameraDirection");
                     return;
                 }
             }
 
             float useForce = customForce > 0f ? customForce : throwForce;
-            Vector3 throwDirection = playerCamera.transform.forward;
+            Vector3 throwDirection = GetThrowDirection();
             throwDirection.y += upwardThrowBoost / useForce;
             throwDirection.Normalize();
 

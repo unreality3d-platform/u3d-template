@@ -73,6 +73,7 @@ namespace U3D
         private Transform playerTransform;
         private Camera playerCamera;
         private NetworkObject networkObject;
+        private U3DPlayerController playerController;
 
         // Deterministic state management
         private GrabState localGrabState = GrabState.Free;
@@ -482,7 +483,7 @@ namespace U3D
         private void FindPlayer()
         {
             // Just grab the first available U3DPlayerController in the scene
-            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
+            playerController = FindAnyObjectByType<U3DPlayerController>();
 
             if (playerController != null)
             {
@@ -583,30 +584,56 @@ namespace U3D
                 return false;
             }
 
-            if (useRadiusDetection)
+            // Check if we're in third person mode
+            bool isThirdPerson = playerController != null && !playerController.IsFirstPerson;
+
+            if (isThirdPerson)
             {
-                Vector3 cameraToObject = transform.position - playerCamera.transform.position;
-                float distanceToObject = cameraToObject.magnitude;
+                // Third person: Check if object is in front of the avatar
+                // Use avatar's forward direction, not camera (which is behind the player)
+                Vector3 avatarToObject = transform.position - playerTransform.position;
+                avatarToObject.y = 0f; // Flatten to horizontal plane
 
-                if (distanceToObject <= maxGrabDistance)
+                Vector3 avatarForward = playerTransform.forward;
+                avatarForward.y = 0f;
+                avatarForward.Normalize();
+
+                if (avatarToObject.magnitude > 0.1f)
                 {
-                    Vector3 cameraForward = playerCamera.transform.forward;
-                    Vector3 directionToObject = cameraToObject.normalized;
-                    float angle = Vector3.Angle(cameraForward, directionToObject);
-                    float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
-
-                    return angle <= maxAllowedAngle;
+                    float angle = Vector3.Angle(avatarForward, avatarToObject.normalized);
+                    // Allow ~120 degree cone in front of avatar for third person
+                    return angle <= 60f;
                 }
+                return true; // Very close, allow grab
             }
             else
             {
-                Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
-                Vector3 rayDirection = playerCamera.transform.forward;
-                Ray ray = new Ray(avatarEyeLevel, rayDirection);
-
-                if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance))
+                // First person: Use precise camera-based detection
+                if (useRadiusDetection)
                 {
-                    return hit.collider == col;
+                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
+                    float distanceToObject = cameraToObject.magnitude;
+
+                    if (distanceToObject <= maxGrabDistance)
+                    {
+                        Vector3 cameraForward = playerCamera.transform.forward;
+                        Vector3 directionToObject = cameraToObject.normalized;
+                        float angle = Vector3.Angle(cameraForward, directionToObject);
+                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
+
+                        return angle <= maxAllowedAngle;
+                    }
+                }
+                else
+                {
+                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
+                    Vector3 rayDirection = playerCamera.transform.forward;
+                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
+
+                    if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance))
+                    {
+                        return hit.collider == col;
+                    }
                 }
             }
 
@@ -647,6 +674,7 @@ namespace U3D
         private void ClearPlayerReferences()
         {
             playerTransform = null;
+            playerController = null;
             handTransform = null;
             playerCamera = null;
         }
