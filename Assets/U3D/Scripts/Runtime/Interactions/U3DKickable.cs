@@ -650,8 +650,17 @@ namespace U3D
             SetPhysicsState(PhysicsState.Resetting);
 
             // Reset position and rotation to spawn point
-            transform.position = originalPosition;
-            transform.rotation = originalRotation;
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                // For networked objects, use Teleport() to properly update Fusion's state
+                networkRigidbody.Teleport(originalPosition, originalRotation);
+            }
+            else
+            {
+                // Non-networked: direct transform manipulation
+                transform.position = originalPosition;
+                transform.rotation = originalRotation;
+            }
 
             // Return to kickable sleep state
             SetPhysicsState(PhysicsState.Sleeping);
