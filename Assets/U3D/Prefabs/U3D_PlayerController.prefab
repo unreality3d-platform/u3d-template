@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 3321024275304622891}
   - component: {fileID: 1254594525101098963}
   - component: {fileID: 8509422918869359246}
+  - component: {fileID: 8781097870478435458}
   m_Layer: 0
   m_Name: PlayerCamera
   m_TagString: MainCamera
@@ -232,6 +233,31 @@ MonoBehaviour:
     m_Interactions: 
     m_SingletonActionBindings: []
     m_Flags: 0
+--- !u!114 &8781097870478435458
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 236812779529922581}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f6b70cf8d6f4f94f931699457ea09a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: WebXR::WebXR.WebXRCamera
+  cameraMain: {fileID: 8808042253181438801}
+  cameraL: {fileID: 8808042253181438801}
+  cameraR: {fileID: 8808042253181438801}
+  cameraARL: {fileID: 8808042253181438801}
+  cameraARR: {fileID: 8808042253181438801}
+  m_updateNormalFieldOfView: 1
+  m_useNormalFieldOfViewFromAwake: 1
+  m_normalFieldOfView: 90
+  m_updateNormalLocalPose: 1
+  m_useNormalPoseFromAwake: 1
+  m_normalLocalPosition: {x: 0, y: 0, z: 0}
+  m_normalLocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  updateCameraTag: 0
 --- !u!1 &8488662624428376917
 GameObject:
   m_ObjectHideFlags: 0

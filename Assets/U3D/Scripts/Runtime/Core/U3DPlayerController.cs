@@ -803,42 +803,25 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (_leftHandVisual == null)
         {
-            if (_webXRManager != null)
-            {
-                var leftHand = _webXRManager.CreateDefaultHandVisual(true, transform);
-                _leftHandVisual = leftHand.transform;
-            }
-            else
-            {
-                // Fallback: create simple sphere
-                var leftHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                leftHandGO.name = "LeftHandVisual";
-                leftHandGO.transform.SetParent(transform);
-                leftHandGO.transform.localScale = Vector3.one * 0.1f;
-                var collider = leftHandGO.GetComponent<Collider>();
-                if (collider != null) Destroy(collider);
-                _leftHandVisual = leftHandGO.transform;
-            }
+            var leftHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            leftHandGO.name = "LeftHandVisual";
+            leftHandGO.transform.SetParent(transform);
+            leftHandGO.transform.localScale = Vector3.one * 0.1f;
+            var collider = leftHandGO.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            leftHandGO.SetActive(false);
+            _leftHandVisual = leftHandGO.transform;
         }
-
         if (_rightHandVisual == null)
         {
-            if (_webXRManager != null)
-            {
-                var rightHand = _webXRManager.CreateDefaultHandVisual(false, transform);
-                _rightHandVisual = rightHand.transform;
-            }
-            else
-            {
-                // Fallback: create simple sphere
-                var rightHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                rightHandGO.name = "RightHandVisual";
-                rightHandGO.transform.SetParent(transform);
-                rightHandGO.transform.localScale = Vector3.one * 0.1f;
-                var collider = rightHandGO.GetComponent<Collider>();
-                if (collider != null) Destroy(collider);
-                _rightHandVisual = rightHandGO.transform;
-            }
+            var rightHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            rightHandGO.name = "RightHandVisual";
+            rightHandGO.transform.SetParent(transform);
+            rightHandGO.transform.localScale = Vector3.one * 0.1f;
+            var collider = rightHandGO.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            rightHandGO.SetActive(false);
+            _rightHandVisual = rightHandGO.transform;
         }
     }
 
