@@ -752,6 +752,15 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
+        // Disable camera pivot system so TrackedPoseDriver takes over
+        if (cameraPivot != null && playerCamera != null)
+        {
+            // Unparent camera from pivot so TrackedPoseDriver can control it directly
+            playerCamera.transform.SetParent(transform);
+            playerCamera.transform.localPosition = firstPersonPosition;
+            playerCamera.transform.localRotation = Quaternion.identity;
+        }
+
         Debug.Log("[U3DPlayerController] Entered VR Mode - hand visuals activated, cursor lock disabled");
     }
 
@@ -763,6 +772,13 @@ public class U3DPlayerController : NetworkBehaviour
         // Hide hand visuals
         if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(false);
         if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(false);
+
+        // === NEW: Restore camera to pivot system for flat-screen control ===
+        if (cameraPivot != null && playerCamera != null)
+        {
+            playerCamera.transform.SetParent(cameraPivot);
+            UpdateCameraTransitionPosition();
+        }
 
         // Restore camera to player forward direction
         if (playerCamera != null)
@@ -777,7 +793,7 @@ public class U3DPlayerController : NetworkBehaviour
             _cursorManager.SetVRMode(false);
         }
 
-        Debug.Log("[U3DPlayerController] Exited VR Mode - standard controls restored, cursor lock re-enabled");
+        Debug.Log("[U3DPlayerController] Exited VR Mode - standard controls restored");
     }
 
     /// <summary>
@@ -1604,6 +1620,9 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleCameraPositioning()
     {
         if (!_isLocalPlayer) return;
+
+        // Skip camera positioning in VR - TrackedPoseDriver handles it
+        if (_isInVRMode) return;
 
         // Handle perspective mode transitions
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
