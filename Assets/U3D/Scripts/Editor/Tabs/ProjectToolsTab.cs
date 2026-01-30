@@ -93,7 +93,7 @@ namespace U3D.Editor
         {
             InitializeStyles();
 
-            // ✅ FIX: Ensure navigation callbacks are always set
+            // Ensure navigation callbacks are always set
             foreach (var category in categories)
             {
                 category.OnRequestTabSwitch = OnRequestTabSwitch;

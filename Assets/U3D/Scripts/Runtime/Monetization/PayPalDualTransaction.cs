@@ -501,12 +501,12 @@ namespace U3D
         {
             if (success == "true")
             {
-                SetStatus("✅ Direct PayPal connection successful!");
+                SetStatus("Direct PayPal connection successful!");
                 Debug.Log("Direct PayPal connection test passed");
             }
             else
             {
-                SetStatus("❌ Direct PayPal connection failed");
+                SetStatus("Direct PayPal connection failed");
                 Debug.LogWarning("Direct PayPal connection test failed");
             }
         }
