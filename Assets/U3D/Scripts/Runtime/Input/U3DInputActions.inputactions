@@ -565,7 +565,7 @@
                 {
                     "name": "",
                     "id": "39552381-dcf6-4486-a674-c41a1d177639",
-                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
+                    "path": "<XRController>{LeftHand}/{GripButton}",
                     "interactions": "",
                     "processors": "",
                     "groups": ";XR",
@@ -756,6 +756,17 @@
                     "interactions": "",
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
+                    "action": "AutoRunToggle",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "1b1dc087-cd3e-4159-922e-86054a0f0115",
+                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
                     "action": "AutoRunToggle",
                     "isComposite": false,
                     "isPartOfComposite": false
