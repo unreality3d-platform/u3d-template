@@ -45,45 +45,28 @@ namespace U3D.Editor
         [InitializeOnLoadMethod]
         static void OpenOnStartup()
         {
-            // CRITICAL: Skip initialization during actual builds
-            if (ShouldSkipDuringBuild())
-            {
-                Debug.Log("🚫 U3DCreatorWindow: Skipping startup during build process");
+            // Single-shot registration - no recursion
+            EditorApplication.delayCall += OnEditorReady;
+        }
+
+        static void OnEditorReady()
+        {
+            // Skip if build is in progress
+            if (BuildPipeline.isBuildingPlayer || EditorApplication.isCompiling)
                 return;
-            }
 
-            // Wait for editor to finish initializing
-            if (IsEditorInitializing())
-            {
-                EditorApplication.delayCall += OpenOnStartup;
+            // Skip during play mode transitions
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
                 return;
+
+            bool hasOpenedBefore = EditorPrefs.GetBool("U3D_HasOpenedBefore", false);
+            bool showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
+
+            if (!hasOpenedBefore || showOnStartup)
+            {
+                ShowWindow();
+                EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
             }
-
-            EditorApplication.delayCall += () => {
-                // NEVER open during Play mode changes
-                if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-
-                bool hasOpenedBefore = false;
-                bool showOnStartup = true;
-
-                if (!ShouldSkipDuringBuild())
-                {
-                    hasOpenedBefore = EditorPrefs.GetBool("U3D_HasOpenedBefore", false);
-                    showOnStartup = EditorPrefs.GetBool("U3D_ShowOnStartup", true);
-                }
-
-                // Always show the first time, then respect user preference
-                if (!hasOpenedBefore || showOnStartup)
-                {
-                    ShowWindow();
-
-                    // CRITICAL: Mark as opened AFTER showing window to coordinate with scene loading
-                    if (!ShouldSkipDuringBuild())
-                    {
-                        EditorPrefs.SetBool("U3D_HasOpenedBefore", true);
-                    }
-                }
-            };
         }
 
         void OnEnable()
