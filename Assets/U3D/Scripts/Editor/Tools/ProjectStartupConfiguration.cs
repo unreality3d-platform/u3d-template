@@ -8,57 +8,25 @@ public class ProjectStartupConfiguration
     private const string BUILD_TARGET_KEY = "HasSetWebGLTarget";
     private const string TEMPLATE_WEBGL_CHECK_KEY = "U3D_TemplateWebGLCheck";
 
-    // Project-specific keys to avoid cross-template conflicts
     private static string BUILD_TARGET_SPECIFIC_KEY => $"{BUILD_TARGET_KEY}_{Application.dataPath.GetHashCode()}";
     private static string TEMPLATE_CHECK_KEY => $"{TEMPLATE_WEBGL_CHECK_KEY}_{Application.dataPath.GetHashCode()}";
 
-    /// <summary>
-    /// CRITICAL: Check if we should skip operations during builds
-    /// </summary>
-    private static bool ShouldSkipDuringBuild()
-    {
-        return BuildPipeline.isBuildingPlayer ||
-               EditorApplication.isCompiling ||
-               EditorApplication.isUpdating;
-    }
-
     static ProjectStartupConfiguration()
     {
-        // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
-        if (ShouldSkipDuringBuild())
-        {
-            Debug.Log("🚫 ProjectStartupConfiguration: Skipping initialization during build process");
-            return;
-        }
-
-        // Enhanced initialization with project-specific tracking
-        EditorApplication.delayCall += () => {
-            EditorApplication.delayCall += () => {
-                EditorApplication.delayCall += ConfigureProjectStartup;
-            };
-        };
+        // Single-shot registration - delayCall already waits for editor readiness
+        EditorApplication.delayCall += ConfigureProjectStartup;
     }
 
     private static void ConfigureProjectStartup()
     {
-        // Enhanced safety checks
-        if (ShouldSkipDuringBuild())
-        {
-            // Retry later if editor is busy
-            EditorApplication.delayCall += ConfigureProjectStartup;
+        // Skip if build is in progress - but do NOT retry
+        if (BuildPipeline.isBuildingPlayer || EditorApplication.isCompiling)
             return;
-        }
 
-        // Check if this is first time opening template
-        bool hasCheckedTemplate = false;
-        if (!ShouldSkipDuringBuild())
-        {
-            hasCheckedTemplate = EditorPrefs.GetBool(TEMPLATE_CHECK_KEY, false);
-        }
+        bool hasCheckedTemplate = EditorPrefs.GetBool(TEMPLATE_CHECK_KEY, false);
 
         try
         {
-            // NEW: Always verify WebGL is available and provide clear feedback
             bool webglSupported = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL);
 
             if (!webglSupported)
@@ -80,15 +48,10 @@ public class ProjectStartupConfiguration
                     "OK"
                 );
 
-                // Mark as checked to avoid repeated warnings
-                if (!ShouldSkipDuringBuild())
-                {
-                    EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
-                }
+                EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
                 return;
             }
 
-            // Check current build target
             if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.WebGL)
             {
                 if (!hasCheckedTemplate)
@@ -124,26 +87,11 @@ public class ProjectStartupConfiguration
                 }
             }
 
-            // Mark template as checked
-            if (!ShouldSkipDuringBuild())
-            {
-                EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
-            }
+            EditorPrefs.SetBool(TEMPLATE_CHECK_KEY, true);
 
-            // FIXED: Project-specific first-time scene loading
-            // Use a project-specific key that tracks whether THIS project has ever loaded the startup scene
             string PROJECT_STARTUP_LOADED_KEY = $"U3D_ProjectStartupLoaded_{Application.dataPath.GetHashCode()}";
-            bool hasLoadedStartupForThisProject = false;
+            bool hasLoadedStartupForThisProject = EditorPrefs.GetBool(PROJECT_STARTUP_LOADED_KEY, false);
 
-            if (!ShouldSkipDuringBuild())
-            {
-                hasLoadedStartupForThisProject = EditorPrefs.GetBool(PROJECT_STARTUP_LOADED_KEY, false);
-            }
-
-            // Only load startup scene if:
-            // 1. This specific project has never loaded the startup scene before
-            // 2. The startup scene file exists
-            // 3. The current scene is "Untitled" (indicating fresh project open, not user-created blank scene)
             var currentScene = EditorSceneManager.GetActiveScene();
             bool isUntitledOnProjectOpen = currentScene.name == "Untitled" && string.IsNullOrEmpty(currentScene.path);
 
@@ -153,12 +101,7 @@ public class ProjectStartupConfiguration
             {
                 Debug.Log("🎯 U3D SDK: Loading startup scene for first-time project setup");
                 EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
-
-                // Mark this project as having loaded the startup scene
-                if (!ShouldSkipDuringBuild())
-                {
-                    EditorPrefs.SetBool(PROJECT_STARTUP_LOADED_KEY, true);
-                }
+                EditorPrefs.SetBool(PROJECT_STARTUP_LOADED_KEY, true);
             }
         }
         catch (System.Exception ex)
@@ -167,9 +110,6 @@ public class ProjectStartupConfiguration
         }
     }
 
-    /// <summary>
-    /// Reset template configuration (called from Creator Dashboard)
-    /// </summary>
     public static void ResetTemplateConfiguration()
     {
         string PROJECT_STARTUP_LOADED_KEY = $"U3D_ProjectStartupLoaded_{Application.dataPath.GetHashCode()}";
