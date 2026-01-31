@@ -1,8 +1,8 @@
 # .github/workflows/reassemble-chunks.yml
 # Unity WebGL Large File Chunk Reassembly Workflow with Direct GitHub Pages Deployment
 # 
-# FIXED: Deploys reassembled files directly to GitHub Pages instead of committing to Git
-# COMPATIBLE: Works with existing professional URL system
+# UPDATED: Cleans ALL existing Build files before reassembly to prevent stale file issues
+# This ensures old hash-based files don't persist across deployments
 
 name: Reassemble Unity Chunks
 
@@ -35,6 +35,44 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # NEW: Clean ALL existing non-chunk Build files before reassembly
+      # This prevents stale files from previous builds persisting
+      - name: Clean stale Build files
+        run: |
+          echo "🧹 Cleaning stale Build files to prevent mismatched deployments..."
+          
+          if [ -d "Build" ]; then
+            echo "📁 Current Build folder contents BEFORE cleanup:"
+            ls -la Build/ || true
+            echo ""
+            
+            # Count files before cleanup
+            total_before=$(find Build/ -type f | wc -l)
+            chunk_count=$(find Build/ -type f -name "*.part*" | wc -l)
+            non_chunk_count=$((total_before - chunk_count))
+            
+            echo "📊 Found $total_before total files:"
+            echo "   - $chunk_count chunk files (*.part*) - KEEP for reassembly"
+            echo "   - $non_chunk_count non-chunk files - DELETE (stale from previous builds)"
+            echo ""
+            
+            # Delete all non-chunk files in Build folder
+            # These are stale files from previous deployments with different hashes
+            if [ $non_chunk_count -gt 0 ]; then
+              echo "🗑️ Removing $non_chunk_count stale non-chunk files..."
+              find Build/ -type f ! -name "*.part*" -print -delete 2>/dev/null || true
+              echo "✅ Stale files removed"
+            else
+              echo "✅ No stale files to remove"
+            fi
+            
+            echo ""
+            echo "📁 Build folder contents AFTER cleanup (chunks only):"
+            ls -la Build/ || true
+          else
+            echo "📭 No Build folder found - nothing to clean"
+          fi
           
       - name: Check for chunk files
         id: check_chunks
@@ -79,8 +117,10 @@ jobs:
             echo ""
             echo "📦 Processing: $basefile"
             
-            # Find all parts for this EXACT file path (not just basename)
-            parts=$(find . -type f -name "$(basename "$basefile").part*" | sort -V)
+            # Find all parts for this file in the same directory
+            dir=$(dirname "$basefile")
+            filename=$(basename "$basefile")
+            parts=$(find "$dir" -maxdepth 1 -type f -name "${filename}.part*" | sort -V)
             part_count=$(echo "$parts" | wc -w)
             
             if [ $part_count -eq 0 ]; then
@@ -88,9 +128,10 @@ jobs:
               continue
             fi
             
-            echo "🔍 Found $part_count parts for $(basename "$basefile"):"
+            echo "🔍 Found $part_count parts for $filename:"
             for part in $parts; do
-              echo "  - $part"
+              part_size=$(stat -c%s "$part" 2>/dev/null || echo "0")
+              echo "  - $(basename "$part") ($(echo $part_size | awk '{printf "%.2f MB", $1/1024/1024}'))"
             done
             
             # Verify all parts exist and are readable
@@ -163,50 +204,96 @@ jobs:
           fi
           
       - name: Verify Unity WebGL structure
-        if: steps.check_chunks.outputs.chunks_found == 'true' || steps.check_chunks.outputs.chunks_found == 'false'
         run: |
           echo "🔍 Verifying Unity WebGL file structure..."
+          echo ""
           
           unity_files_found=0
           
-          if find . -name "*.data" -type f | head -1 > /dev/null; then
-            data_files=$(find . -name "*.data" -type f | wc -l)
-            echo "✅ Found $data_files .data file(s)"
+          # Check for .data files
+          if find . -name "*.data" -type f 2>/dev/null | head -1 | grep -q .; then
+            data_files=$(find . -name "*.data" -type f 2>/dev/null)
+            data_count=$(echo "$data_files" | wc -l)
+            echo "✅ Found $data_count .data file(s):"
+            echo "$data_files" | while read f; do
+              size=$(stat -c%s "$f" 2>/dev/null || echo "0")
+              echo "   📄 $f ($(echo $size | awk '{printf "%.2f MB", $1/1024/1024}'))"
+            done
             unity_files_found=$((unity_files_found + 1))
           else
             echo "❌ No .data files found"
           fi
           
-          if find . -name "*.wasm" -type f | head -1 > /dev/null; then
-            wasm_files=$(find . -name "*.wasm" -type f | wc -l)
-            echo "✅ Found $wasm_files .wasm file(s)"
+          echo ""
+          
+          # Check for .wasm files
+          if find . -name "*.wasm" -type f 2>/dev/null | head -1 | grep -q .; then
+            wasm_files=$(find . -name "*.wasm" -type f 2>/dev/null)
+            wasm_count=$(echo "$wasm_files" | wc -l)
+            echo "✅ Found $wasm_count .wasm file(s):"
+            echo "$wasm_files" | while read f; do
+              size=$(stat -c%s "$f" 2>/dev/null || echo "0")
+              echo "   📄 $f ($(echo $size | awk '{printf "%.2f MB", $1/1024/1024}'))"
+            done
             unity_files_found=$((unity_files_found + 1))
           else
             echo "❌ No .wasm files found"
           fi
           
-          if find . -name "*.framework.js" -type f | head -1 > /dev/null; then
-            echo "✅ .framework.js file found"
-            unity_files_found=$((unity_files_found + 1))
-          fi
+          echo ""
           
-          if find . -name "*.loader.js" -type f | head -1 > /dev/null; then
-            echo "✅ .loader.js file found"
+          # Check for .framework.js files
+          if find . -name "*.framework.js" -type f 2>/dev/null | head -1 | grep -q .; then
+            echo "✅ .framework.js file found:"
+            find . -name "*.framework.js" -type f -exec ls -lh {} \;
             unity_files_found=$((unity_files_found + 1))
-          fi
-          
-          if [ -f "index.html" ]; then
-            echo "✅ index.html file found"
-            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "❌ No .framework.js files found"
           fi
           
           echo ""
+          
+          # Check for .loader.js files
+          if find . -name "*.loader.js" -type f 2>/dev/null | head -1 | grep -q .; then
+            echo "✅ .loader.js file found:"
+            find . -name "*.loader.js" -type f -exec ls -lh {} \;
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "⚠️ No .loader.js files found"
+          fi
+          
+          echo ""
+          
+          # Check for index.html
+          if [ -f "index.html" ]; then
+            echo "✅ index.html file found"
+            unity_files_found=$((unity_files_found + 1))
+          else
+            echo "⚠️ No index.html found"
+          fi
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📊 Unity WebGL files found: $unity_files_found/5"
           
-          if [ $unity_files_found -ge 3 ]; then
-            echo "✅ Unity WebGL structure appears complete"
+          # Check for any remaining chunk files (should be none)
+          remaining_chunks=$(find . -name "*.part*" -type f 2>/dev/null | wc -l)
+          if [ $remaining_chunks -gt 0 ]; then
+            echo ""
+            echo "⚠️ WARNING: $remaining_chunks chunk files still remain:"
+            find . -name "*.part*" -type f
           else
-            echo "⚠️ Unity WebGL structure may be incomplete"
+            echo "✅ No orphaned chunk files remaining"
+          fi
+          
+          echo ""
+          if [ $unity_files_found -ge 4 ]; then
+            echo "✅ Unity WebGL structure appears COMPLETE"
+          elif [ $unity_files_found -ge 2 ]; then
+            echo "⚠️ Unity WebGL structure may be INCOMPLETE"
+          else
+            echo "❌ Unity WebGL structure appears BROKEN"
+            exit 1
           fi
 
       - name: Setup Pages
@@ -217,7 +304,7 @@ jobs:
         with:
           path: '.'
 
-  # NEW: Separate deploy job for GitHub Pages
+  # Separate deploy job for GitHub Pages
   deploy:
     environment:
       name: github-pages
@@ -232,13 +319,17 @@ jobs:
       - name: Final status report
         run: |
           echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📋 GitHub Pages Deployment Complete"
-          echo "================================="
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
           echo "🌐 Site URL: ${{ steps.deployment.outputs.page_url }}"
           echo "📦 Deployment ID: ${{ steps.deployment.outputs.deployment_id }}"
           echo ""
           echo "🎮 Unity WebGL build is now live!"
-          echo "🔗 Professional URL will be available at:"
-          echo "https://$(echo ${{ github.repository }} | cut -d'/' -f1).unreality3d.com/$(echo ${{ github.repository }} | cut -d'/' -f2)/"
           echo ""
-          echo "✅ Large files deployed successfully without Git storage"
+          echo "🔗 Professional URL:"
+          echo "   https://$(echo ${{ github.repository }} | cut -d'/' -f1 | tr '[:upper:]' '[:lower:]').unreality3d.com/$(echo ${{ github.repository }} | cut -d'/' -f2)/"
+          echo ""
+          echo "✅ Deployment completed successfully"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
