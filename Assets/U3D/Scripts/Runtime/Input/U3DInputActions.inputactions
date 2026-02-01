@@ -311,11 +311,11 @@
                 },
                 {
                     "name": "",
-                    "id": "43204d98-10ac-4325-a4cb-6b02c5054174",
-                    "path": "<XRController>{LeftHand}/{Primary2DAxisTouch}",
+                    "id": "cbfe7ec7-7f07-465b-94ac-2ba9cef73368",
+                    "path": "<XRController>{LeftHand}/{Primary2DAxis}",
                     "interactions": "",
                     "processors": "",
-                    "groups": "XR",
+                    "groups": ";XR",
                     "action": "Move",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -355,11 +355,11 @@
                 },
                 {
                     "name": "",
-                    "id": "bf712f8d-c15c-4a58-9f5f-9b40066464d1",
-                    "path": "<XRController>{RightHand}/{Secondary2DAxisTouch}",
+                    "id": "f45941aa-9c54-450b-86ab-5a6e590f0765",
+                    "path": "<XRController>{RightHand}/{Primary2DAxis}",
                     "interactions": "",
                     "processors": "",
-                    "groups": "XR",
+                    "groups": ";XR",
                     "action": "Look",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -388,11 +388,11 @@
                 },
                 {
                     "name": "",
-                    "id": "d8bf24bf-3f2f-4160-a97c-38ec1eb520ba",
-                    "path": "<XRController>{LeftHand}/{PrimaryTrigger}",
+                    "id": "30cdaa43-ecbd-4b99-8139-c86106df04be",
+                    "path": "<XRController>{LeftHand}/{TriggerButton}",
                     "interactions": "",
                     "processors": "",
-                    "groups": "XR",
+                    "groups": ";XR",
                     "action": "Sprint",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -421,7 +421,7 @@
                 },
                 {
                     "name": "",
-                    "id": "603f3daf-40bd-4854-8724-93e8017f59e3",
+                    "id": "641ef419-b101-4bb3-a7c8-37b91c374712",
                     "path": "<XRController>{RightHand}/{PrimaryButton}",
                     "interactions": "",
                     "processors": "",
@@ -487,8 +487,19 @@
                 },
                 {
                     "name": "",
-                    "id": "4a9476c4-9124-48c5-8e71-1b348b4d4451",
-                    "path": "<XRController>{LeftHand}/primary2DAxisClick",
+                    "id": "c4d24907-cca0-4d1c-8e27-830a38b5022f",
+                    "path": "<XRController>{LeftHand}/{Primary2DAxisClick}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
+                    "action": "Crouch",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "79ee5980-bb40-49fe-aba3-857179eb228d",
+                    "path": "<WebXRTrackedDisplay>/isTracked",
                     "interactions": "",
                     "processors": "",
                     "groups": ";XR",
@@ -591,6 +602,17 @@
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",
+                    "action": "AutoRun",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "e3dcd727-7d7c-411d-9be2-c03ea2ef8c2a",
+                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
                     "action": "AutoRun",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -762,7 +784,7 @@
                 },
                 {
                     "name": "",
-                    "id": "1b1dc087-cd3e-4159-922e-86054a0f0115",
+                    "id": "269178b9-2378-4a23-801c-47301c304149",
                     "path": "<XRController>{LeftHand}/{PrimaryButton}",
                     "interactions": "",
                     "processors": "",
@@ -835,7 +857,7 @@
                     "name": "Submit",
                     "type": "Button",
                     "id": "7607c7b6-cd76-4816-beef-bd0341cfe950",
-                    "expectedControlType": "",
+                    "expectedControlType": "Button",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
@@ -844,7 +866,7 @@
                     "name": "Cancel",
                     "type": "Button",
                     "id": "15cef263-9014-4fd5-94d9-4e4a6234a6ef",
-                    "expectedControlType": "",
+                    "expectedControlType": "Button",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
@@ -1135,22 +1157,22 @@
                 },
                 {
                     "name": "",
-                    "id": "b0e8096d-4e6c-487f-ae95-ae6379f31467",
-                    "path": "<Keyboard>/enter",
+                    "id": "9e92bb26-7e3b-4ec4-b06b-3c8f8e498ddc",
+                    "path": "<Keyboard>/numpadEnter",
                     "interactions": "",
                     "processors": "",
-                    "groups": ";Keyboard&Mouse",
+                    "groups": "Keyboard&Mouse",
                     "action": "Submit",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
                 {
                     "name": "",
-                    "id": "9e92bb26-7e3b-4ec4-b06b-3c8f8e498ddc",
-                    "path": "<Keyboard>/numpadEnter",
+                    "id": "a96ed045-7543-4723-833b-d7cf39e6b3c3",
+                    "path": "<Keyboard>/enter",
                     "interactions": "",
                     "processors": "",
-                    "groups": "Keyboard&Mouse",
+                    "groups": ";Keyboard&Mouse",
                     "action": "Submit",
                     "isComposite": false,
                     "isPartOfComposite": false

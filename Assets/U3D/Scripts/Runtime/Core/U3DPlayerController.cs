@@ -838,15 +838,14 @@ public class U3DPlayerController : NetworkBehaviour
         Vector2 vrMoveInput = input.MovementInput;
         float snapTurnInput = input.LookInput.x;
 
-        // Handle snap turning with right stick
-        if (Mathf.Abs(snapTurnInput) > 0.7f && Time.time - _lastSnapTurnTime > VR_SNAP_TURN_COOLDOWN)
+        // Smooth rotation with right stick (matches browser mouse-drag feel)
+        if (Mathf.Abs(snapTurnInput) > 0.1f)
         {
-            float turnDirection = Mathf.Sign(snapTurnInput);
-            float turnDelta = turnDirection * VR_SNAP_TURN_ANGLE;
+            float turnSpeed = 90f; // Degrees per second - adjust to taste
+            float turnDelta = snapTurnInput * turnSpeed * Runner.DeltaTime;
             transform.Rotate(Vector3.up, turnDelta);
             NetworkRotation = transform.rotation;
-            cameraYaw += turnDelta; // Use delta to avoid gimbal lock issues with eulerAngles
-            _lastSnapTurnTime = Time.time;
+            cameraYaw += turnDelta;
         }
 
         // Calculate movement direction based on head/camera forward
