@@ -35,45 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      # NEW: Clean ALL existing non-chunk Build files before reassembly
-      # This prevents stale files from previous builds persisting
-      - name: Clean stale Build files
-        run: |
-          echo "🧹 Cleaning stale Build files to prevent mismatched deployments..."
-          
-          if [ -d "Build" ]; then
-            echo "📁 Current Build folder contents BEFORE cleanup:"
-            ls -la Build/ || true
-            echo ""
-            
-            # Count files before cleanup
-            total_before=$(find Build/ -type f | wc -l)
-            chunk_count=$(find Build/ -type f -name "*.part*" | wc -l)
-            non_chunk_count=$((total_before - chunk_count))
-            
-            echo "📊 Found $total_before total files:"
-            echo "   - $chunk_count chunk files (*.part*) - KEEP for reassembly"
-            echo "   - $non_chunk_count non-chunk files - DELETE (stale from previous builds)"
-            echo ""
-            
-            # Delete all non-chunk files in Build folder
-            # These are stale files from previous deployments with different hashes
-            if [ $non_chunk_count -gt 0 ]; then
-              echo "🗑️ Removing $non_chunk_count stale non-chunk files..."
-              find Build/ -type f ! -name "*.part*" -print -delete 2>/dev/null || true
-              echo "✅ Stale files removed"
-            else
-              echo "✅ No stale files to remove"
-            fi
-            
-            echo ""
-            echo "📁 Build folder contents AFTER cleanup (chunks only):"
-            ls -la Build/ || true
-          else
-            echo "📭 No Build folder found - nothing to clean"
-          fi
-          
+                
       - name: Check for chunk files
         id: check_chunks
         run: |

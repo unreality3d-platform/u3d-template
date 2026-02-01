@@ -96,6 +96,9 @@ public class FirebaseStorageUploader
         {
             Debug.Log($"🔄 Starting Firebase Storage upload for {baseProjectName} with intent: {deploymentIntent}...");
 
+            // NEW: Clear existing Build folder before uploading new files
+            await ClearExistingBuildFolder(creatorUsername, baseProjectName);
+
             var buildFiles = CollectBuildFiles(buildPath);
             Debug.Log($"📦 Found {buildFiles.Count} files to upload");
 
@@ -186,6 +189,68 @@ public class FirebaseStorageUploader
         {
             Debug.LogError($"❌ GitHub deployment trigger failed: {ex.Message}");
             return new DeploymentResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    private async Task ClearExistingBuildFolder(string creatorUsername, string projectName)
+    {
+        try
+        {
+            Debug.Log($"🧹 Clearing existing Build folder from Firebase Storage...");
+
+            // List files in the Build folder
+            var listUrl = $"https://firebasestorage.googleapis.com/v0/b/{_storageBucket}/o?" +
+                          $"prefix=creators/{creatorUsername}/builds/{projectName}/Build/";
+
+            using var listRequest = new HttpRequestMessage(HttpMethod.Get, listUrl);
+            listRequest.Headers.Add("Authorization", $"Bearer {_idToken}");
+
+            var listResponse = await _httpClient.SendAsync(listRequest);
+
+            if (!listResponse.IsSuccessStatusCode)
+            {
+                Debug.Log($"📭 No existing Build folder found or unable to list (this is fine for new projects)");
+                return;
+            }
+
+            var listContent = await listResponse.Content.ReadAsStringAsync();
+            var listData = JsonConvert.DeserializeObject<Dictionary<string, object>>(listContent);
+
+            if (!listData.ContainsKey("items"))
+            {
+                Debug.Log($"📭 No existing files in Build folder");
+                return;
+            }
+
+            var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(listData["items"].ToString());
+            Debug.Log($"🗑️ Found {items.Count} existing Build files to delete");
+
+            foreach (var item in items)
+            {
+                var fileName = item["name"].ToString();
+                var encodedFileName = Uri.EscapeDataString(fileName);
+                var deleteUrl = $"https://firebasestorage.googleapis.com/v0/b/{_storageBucket}/o/{encodedFileName}";
+
+                using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, deleteUrl);
+                deleteRequest.Headers.Add("Authorization", $"Bearer {_idToken}");
+
+                var deleteResponse = await _httpClient.SendAsync(deleteRequest);
+
+                if (deleteResponse.IsSuccessStatusCode)
+                {
+                    Debug.Log($"   🗑️ Deleted: {fileName}");
+                }
+                else
+                {
+                    Debug.LogWarning($"   ⚠️ Failed to delete: {fileName}");
+                }
+            }
+
+            Debug.Log($"✅ Cleared existing Build folder from Firebase Storage");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"⚠️ Could not clear existing Build folder (non-fatal): {ex.Message}");
         }
     }
 
