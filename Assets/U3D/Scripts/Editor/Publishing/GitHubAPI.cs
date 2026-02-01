@@ -44,7 +44,7 @@ namespace U3D.Editor
 
                             Debug.LogWarning($"GitHub API rate limit low: {remaining} requests remaining. Reset in {waitTime} seconds.");
 
-                            if (waitTime > 300) // Don't wait more than 5 minutes
+                            if (waitTime > 300)
                             {
                                 return false;
                             }
@@ -59,7 +59,7 @@ namespace U3D.Editor
                 Debug.LogWarning($"Rate limit check failed: {ex.Message}");
             }
 
-            return true; // Assume OK if check fails
+            return true;
         }
 
         public static async Task<GitHubRepositoryResult> CopyFromTemplate(string newRepositoryName, string description = "")
@@ -73,7 +73,6 @@ namespace U3D.Editor
                 };
             }
 
-            // Check rate limit before making API call
             if (!await CheckRateLimit())
             {
                 return new GitHubRepositoryResult
@@ -87,7 +86,6 @@ namespace U3D.Editor
             {
                 using (var client = CreateAuthenticatedClient())
                 {
-                    // Add timeout for long operations
                     client.Timeout = TimeSpan.FromMinutes(2);
 
                     var templateData = new
@@ -109,7 +107,6 @@ namespace U3D.Editor
                     {
                         var result = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
 
-                        // Wait a moment for GitHub to finish repository setup
                         await Task.Delay(2000);
 
                         return new GitHubRepositoryResult
@@ -254,7 +251,7 @@ namespace U3D.Editor
                 uniqueName = $"{safeName}-{counter}";
                 counter++;
 
-                if (counter > 100) // Prevent infinite loop
+                if (counter > 100)
                 {
                     uniqueName = $"{safeName}-{DateTime.Now.Ticks}";
                     break;
@@ -271,13 +268,11 @@ namespace U3D.Editor
                 return "unity-project";
             }
 
-            // Convert to lowercase and replace spaces/special chars with hyphens
             var sanitized = name.ToLower()
                 .Replace(" ", "-")
                 .Replace("_", "-")
                 .Replace(".", "-");
 
-            // Remove invalid characters
             var validChars = "abcdefghijklmnopqrstuvwxyz0123456789-";
             var result = new StringBuilder();
 
@@ -291,19 +286,16 @@ namespace U3D.Editor
 
             var finalName = result.ToString().Trim('-');
 
-            // Ensure it starts with a letter or number
             if (finalName.Length > 0 && finalName[0] == '-')
             {
                 finalName = finalName.Substring(1);
             }
 
-            // Ensure minimum length
             if (finalName.Length < 3)
             {
                 finalName = "unity-project";
             }
 
-            // Ensure maximum length (GitHub limit is 100 chars)
             if (finalName.Length > 80)
             {
                 finalName = finalName.Substring(0, 80).TrimEnd('-');
@@ -323,7 +315,6 @@ namespace U3D.Editor
                 };
             }
 
-            // Check rate limit before making API call
             if (!await CheckRateLimit())
             {
                 return new GitHubRepositoryResult
@@ -341,8 +332,8 @@ namespace U3D.Editor
                     {
                         name = repositoryName,
                         description = string.IsNullOrEmpty(description) ? $"Unity WebGL project created with Unreality3D SDK" : description,
-                        @private = false, // Public repository for GitHub Pages
-                        auto_init = false, // We'll upload files ourselves
+                        @private = false,
+                        auto_init = false,
                         has_issues = true,
                         has_projects = false,
                         has_wiki = false
@@ -483,7 +474,6 @@ namespace U3D.Editor
 
                     if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Conflict)
                     {
-                        // Success or already exists (409 Conflict is normal if Pages already enabled)
                         return new GitOperationResult
                         {
                             Success = true,
@@ -512,9 +502,6 @@ namespace U3D.Editor
             }
         }
 
-        /// <summary>
-        /// Gets all repositories for the authenticated user, with optional filtering
-        /// </summary>
         public static async Task<GitHubRepositoryListResult> GetUserRepositories(string nameFilter = null, int maxResults = 100)
         {
             if (!GitHubTokenManager.HasValidToken)
@@ -532,7 +519,7 @@ namespace U3D.Editor
                 {
                     var repositories = new List<GitHubRepository>();
                     var page = 1;
-                    var perPage = Math.Min(maxResults, 100); // GitHub max is 100 per page
+                    var perPage = Math.Min(maxResults, 100);
 
                     while (repositories.Count < maxResults)
                     {
@@ -554,7 +541,6 @@ namespace U3D.Editor
 
                         if (repoArray.Length == 0)
                         {
-                            // No more repositories
                             break;
                         }
 
@@ -563,7 +549,6 @@ namespace U3D.Editor
                             var repoData = JsonConvert.DeserializeObject<Dictionary<string, object>>(repoObj.ToString());
                             var repoName = repoData["name"].ToString();
 
-                            // Apply name filter if specified
                             if (!string.IsNullOrEmpty(nameFilter) && !repoName.ToLower().Contains(nameFilter.ToLower()))
                             {
                                 continue;
@@ -612,11 +597,11 @@ namespace U3D.Editor
             }
         }
 
-        // ===== 1. GitHubAPI.cs - Method Rename and Implementation =====
-
         /// <summary>
-        /// Checks if a repository was created with the Unreality3D platform
-        /// Uses flexible keyword detection that works with both old and new README formats
+        /// Checks if a repository was created with the Unreality3D platform.
+        /// Uses multiple detection methods for reliability:
+        /// 1. Unreality3D-specific workflow file
+        /// 2. README content containing "Unreality3D"
         /// </summary>
         public static async Task<bool> WasCreatedWithUnreality3D(string repositoryName)
         {
@@ -629,12 +614,23 @@ namespace U3D.Editor
             {
                 using (var client = CreateAuthenticatedClient())
                 {
-                    var url = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/README.md";
-                    var response = await client.GetAsync(url);
+                    // METHOD 1: Check for Unreality3D workflow file (definitive marker)
+                    var workflowUrl = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/.github/workflows/reassemble-chunks.yml";
+                    var workflowResponse = await client.GetAsync(workflowUrl);
 
-                    if (response.IsSuccessStatusCode)
+                    if (workflowResponse.IsSuccessStatusCode)
                     {
-                        var content = await response.Content.ReadAsStringAsync();
+                        Debug.Log($"✅ '{repositoryName}' detected via Unreality3D workflow");
+                        return true;
+                    }
+
+                    // METHOD 2: Check README for "Unreality3D" (simple and reliable)
+                    var readmeUrl = $"{GITHUB_API_BASE}/repos/{GitHubTokenManager.GitHubUsername}/{repositoryName}/contents/README.md";
+                    var readmeResponse = await client.GetAsync(readmeUrl);
+
+                    if (readmeResponse.IsSuccessStatusCode)
+                    {
+                        var content = await readmeResponse.Content.ReadAsStringAsync();
                         var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
 
                         if (data.ContainsKey("content"))
@@ -643,44 +639,11 @@ namespace U3D.Editor
                             var decodedBytes = Convert.FromBase64String(encodedContent.Replace("\n", ""));
                             var fileContent = System.Text.Encoding.UTF8.GetString(decodedBytes);
 
-                            // 🆕 FLEXIBLE DETECTION: Check for unique Unreality3D indicators
-                            // These keywords are unlikely to appear together in non-Unreality3D projects
-
-                            bool hasUnreality3DReference = fileContent.Contains("Unreality3D") ||
-                                                           fileContent.Contains("unreality3d.com");
-
-                            bool hasUnityWebGLIndicator = fileContent.Contains("Unity WebGL") ||
-                                                          fileContent.Contains("Unity 6 WebGL");
-
-                            bool hasCreatorUsername = fileContent.Contains(".unreality3d.com/") &&
-                                                      fileContent.Contains("Experience by");
-
-                            bool hasPlatformSpecificContent = fileContent.Contains("Creator Dashboard") ||
-                                                              fileContent.Contains("Unity Menu > U3D") ||
-                                                              fileContent.Contains("Unreality3D Platform") ||
-                                                              fileContent.Contains("unreality3d.com/download-template");
-
-                            // 🎯 ROBUST LOGIC: Repository is Unreality3D if it has:
-                            // 1. Unreality3D reference AND Unity WebGL indicator
-                            // 2. Plus at least one platform-specific indicator
-
-                            if (hasUnreality3DReference && hasUnityWebGLIndicator)
+                            if (fileContent.Contains("Unreality3D"))
                             {
-                                if (hasCreatorUsername || hasPlatformSpecificContent)
-                                {
-                                    Debug.Log($"✅ Repository '{repositoryName}' detected as Unreality3D project");
-                                    return true;
-                                }
+                                Debug.Log($"✅ '{repositoryName}' detected via README content");
+                                return true;
                             }
-
-                            // 🔍 DEBUG: Log why detection failed for troubleshooting
-                            //Debug.Log($"❌ Repository '{repositoryName}' not detected as Unreality3D:");
-                            Debug.Log($"   - hasUnreality3DReference: {hasUnreality3DReference}");
-                            Debug.Log($"   - hasUnityWebGLIndicator: {hasUnityWebGLIndicator}");
-                            Debug.Log($"   - hasCreatorUsername: {hasCreatorUsername}");
-                            Debug.Log($"   - hasPlatformSpecificContent: {hasPlatformSpecificContent}");
-
-                            return false;
                         }
                     }
 
@@ -751,7 +714,6 @@ namespace U3D.Editor
                 {
                     var message = errorData["message"].ToString();
 
-                    // Handle common GitHub error messages
                     if (message.Contains("name already exists"))
                     {
                         return "Repository name already exists. Please try a different name.";
@@ -783,14 +745,12 @@ namespace U3D.Editor
             }
             catch
             {
-                // If we can't parse the error, return the raw response
             }
 
             return $"GitHub API error: {responseText}";
         }
     }
 
-    // NEW CLASSES FOR REPOSITORY DISCOVERY
     [System.Serializable]
     public class GitHubRepositoryListResult
     {
@@ -812,8 +772,8 @@ namespace U3D.Editor
         public DateTime UpdatedAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public bool HasPages { get; set; }
-        public bool IsUnreality3DProject { get; set; } // Will be set by analysis
-        public string GitHubPagesUrl { get; set; } // Will be set by analysis
+        public bool IsUnreality3DProject { get; set; }
+        public string GitHubPagesUrl { get; set; }
     }
 
     [System.Serializable]
