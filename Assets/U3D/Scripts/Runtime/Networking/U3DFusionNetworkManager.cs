@@ -431,25 +431,39 @@ namespace U3D.Networking
         /// </summary>
         private void PollVRInput()
         {
-            // In VR mode, the Input System XR bindings automatically receive controller input
-            // from WebXR Export's integration with Unity's XR subsystems.
-            // We use the same Input Actions as flat-screen mode - the XR control scheme
-            // bindings in U3DInputActions handle the mapping.
+            // Read both axes first to prevent one from zeroing out the other
+            Vector2 moveValue = Vector2.zero;
+            Vector2 lookValue = Vector2.zero;
 
-            // Movement from left thumbstick (XR binding: <XRController>{LeftHand}/{Primary2DAxis})
             if (_moveAction != null)
-                _cachedMovementInput = _moveAction.ReadValue<Vector2>();
+                moveValue = _moveAction.ReadValue<Vector2>();
 
-            // Look/snap turn from right thumbstick (XR binding: <XRController>{RightHand}/{Secondary2DAxis})
             if (_lookAction != null)
-                _cachedLookInput = _lookAction.ReadValue<Vector2>();
+                lookValue = _lookAction.ReadValue<Vector2>();
+
+            // Update movement input with decay to prevent snap-to-zero issues
+            if (moveValue.magnitude > 0.1f)
+                _cachedMovementInput = moveValue;
+            else if (_cachedMovementInput.magnitude > 0.1f)
+                _cachedMovementInput = Vector2.Lerp(_cachedMovementInput, Vector2.zero, 0.3f);
+            else
+                _cachedMovementInput = Vector2.zero;
+
+            // Update look input with decay to prevent snap-to-zero issues
+            if (lookValue.magnitude > 0.1f)
+                _cachedLookInput = lookValue;
+            else if (_cachedLookInput.magnitude > 0.1f)
+                _cachedLookInput = Vector2.Lerp(_cachedLookInput, Vector2.zero, 0.3f);
+            else
+                _cachedLookInput = Vector2.zero;
 
             // Jump = XR secondary button (XR binding: <XRController>/secondaryButton)
             if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
 
             // Sprint = Left trigger (XR binding: <XRController>{LeftHand}/{PrimaryTrigger})
-            if (_sprintAction != null && _sprintAction.IsPressed())
+            // Use WasPressedThisFrame for toggle compatibility (matches browser behavior)
+            if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
                 _sprintPressed = true;
 
             // Crouch = Left thumbstick click (XR binding: <XRController>{LeftHand}/primary2DAxisClick)
@@ -460,7 +474,7 @@ namespace U3D.Networking
             if (_flyAction != null && _flyAction.WasPressedThisFrame())
                 _flyPressed = true;
 
-            // Interact = Right trigger (XR binding: <XRController>{RightHand}/triggerButton)
+            // Interact = Right grip (XR binding: <XRController>{RightHand}/{GripButton})
             if (_interactAction != null && _interactAction.WasPressedThisFrame())
                 _interactPressed = true;
 
