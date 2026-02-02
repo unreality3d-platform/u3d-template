@@ -103,6 +103,8 @@ namespace U3D.Networking
         // VR/WebXR input state
         private U3D.XR.U3DWebXRManager _webXRManager;
         private bool _isVRModeActive = false;
+        // VR trigger state tracking for toggle detection
+        private bool _vrSprintTriggerWasDown = false;
 
         // Events for UI integration
         public static event Action<bool> OnNetworkStatusChanged;
@@ -461,10 +463,19 @@ namespace U3D.Networking
             if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
 
-            // Sprint = Left trigger (XR binding: <XRController>{LeftHand}/{PrimaryTrigger})
-            // Use WasPressedThisFrame for toggle compatibility (matches browser behavior)
-            if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
-                _sprintPressed = true;
+            // Sprint = Left trigger with threshold-based toggle detection
+            // Mimics keyboard Shift behavior: press once to toggle on, press again to toggle off
+            if (_sprintAction != null)
+            {
+                float triggerValue = _sprintAction.ReadValue<float>();
+                bool triggerDown = triggerValue > 0.5f;
+
+                // Detect rising edge (trigger just pressed)
+                if (triggerDown && !_vrSprintTriggerWasDown)
+                    _sprintPressed = true;
+
+                _vrSprintTriggerWasDown = triggerDown;
+            }
 
             // Crouch = Left thumbstick click (XR binding: <XRController>{LeftHand}/primary2DAxisClick)
             if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
