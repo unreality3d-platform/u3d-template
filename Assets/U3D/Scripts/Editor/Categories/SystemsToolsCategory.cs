@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEditor;
 
 namespace U3D.Editor
@@ -35,6 +36,7 @@ namespace U3D.Editor
                 new CreatorTool("🚧 Add Guestbook", "Adds a screen space UI panel with built-in interactivity, instructing visitors to 'Press E to leave '[Your Name] was here!' note.' that gets the user's name and adds the message to the displayed text", () => Debug.Log("Applied Guestbook")),
                 
                 // UI & Navigation Systems
+                new CreatorTool("🟢 Add Billboard UI Panel", "World space canvas that faces camera with proximity fade", CreateBillboardUIPanel),
                 new CreatorTool("🚧 Add Worldspace Interaction UI", "3D world canvas for object interactions", () => Debug.Log("Applied Worldspace Interaction UI"), true),
                 new CreatorTool("🚧 Add Screenspace Interaction UI", "Screen overlay canvas for user interfaces", () => Debug.Log("Applied Screen Interaction UI")),
                 
@@ -57,6 +59,44 @@ namespace U3D.Editor
             {
                 ProjectToolsTab.DrawCategoryTool(tool);
             }
+        }
+
+        private static void CreateBillboardUIPanel()
+        {
+            GameObject canvasObj = new GameObject("Billboard UI Canvas");
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+
+            CanvasGroup canvasGroup = canvasObj.AddComponent<CanvasGroup>();
+
+            canvasObj.AddComponent<GraphicRaycaster>();
+
+            U3DBillboardUI billboard = canvasObj.AddComponent<U3DBillboardUI>();
+
+            RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(400, 300);
+            canvasRect.localScale = Vector3.one * 0.01f;
+
+            GameObject panelObj = new GameObject("Panel");
+            panelObj.transform.SetParent(canvasObj.transform, false);
+            panelObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform panelRect = panelObj.AddComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+
+            if (SceneView.lastActiveSceneView != null)
+            {
+                canvasObj.transform.position = SceneView.lastActiveSceneView.pivot;
+            }
+
+            Selection.activeGameObject = canvasObj;
+            EditorGUIUtility.PingObject(canvasObj);
+
+            Debug.Log("✅ Billboard UI Panel created! Add UI elements as children of the Panel. Adjust hideDistance and showDistance in the Inspector.");
         }
     }
 }
