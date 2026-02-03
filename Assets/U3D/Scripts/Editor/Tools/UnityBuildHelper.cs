@@ -29,9 +29,6 @@ namespace U3D.Editor
 
             try
             {
-                // Ensure we're on the main thread for Unity operations
-                await Awaitable.MainThreadAsync();
-
                 onProgress?.Invoke("🔍 Validating build requirements...");
 
                 // Enhanced build validation
@@ -47,7 +44,6 @@ namespace U3D.Editor
 
                 onProgress?.Invoke("🧹 Preparing build directory...");
 
-                // CRITICAL FIX: Validate output path before processing
                 if (string.IsNullOrEmpty(outputPath))
                 {
                     return new UnityBuildResult
@@ -59,9 +55,8 @@ namespace U3D.Editor
 
                 try
                 {
-                    // Ensure the output path is valid and rooted
                     var fullPath = Path.GetFullPath(outputPath);
-                    outputPath = fullPath; // Use the validated full path
+                    outputPath = fullPath;
                 }
                 catch (Exception pathEx)
                 {
@@ -91,15 +86,12 @@ namespace U3D.Editor
                 }
 
                 onProgress?.Invoke($"🎬 Found {scenes.Length} scene(s) to build");
-
-                // Apply Unity 6+ optimal WebGL settings
                 onProgress?.Invoke("⚙️ Applying Unity 6+ WebGL optimizations...");
-                //SetOptimalWebGLSettingsUnity6();
 
                 var buildPlayerOptions = new BuildPlayerOptions
                 {
-                    scenes = scenes, // Use enabled scenes from Build Settings
-                    locationPathName = outputPath,     
+                    scenes = scenes,
+                    locationPathName = outputPath,
                     target = BuildTarget.WebGL,
                     options = BuildOptions.None,
                     targetGroup = BuildTargetGroup.WebGL
@@ -111,27 +103,27 @@ namespace U3D.Editor
                 // Start build with enhanced progress tracking
                 StartBuildProgressTracking(onProgress);
 
-                // Build the player - this must run on main thread
-                var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
-                var summary = report.summary;
+                // CRITICAL FIX: Execute BuildPlayer via delayCall to escape the player loop.
+                // BuildPipeline.BuildPlayer throws "cannot be executed while inside the player loop"
+                // when called from an async continuation that resumes during the loop.
+                // EditorApplication.delayCall runs between loop iterations, which is safe.
+                var report = await BuildPlayerOutsidePlayerLoop(buildPlayerOptions);
 
                 // Stop progress tracking
                 StopBuildProgressTracking();
 
                 var buildTime = DateTime.Now - buildStartTime;
 
-                if (summary.result == BuildResult.Succeeded)
+                if (report.summary.result == BuildResult.Succeeded)
                 {
                     onProgress?.Invoke("✅ Build completed successfully!");
 
-                    // Validate build output for GitHub Pages compatibility
                     var validationMessage = await ValidateGitHubPagesCompatibility(outputPath);
                     if (!string.IsNullOrEmpty(validationMessage))
                     {
                         onProgress?.Invoke($"⚠️ {validationMessage}");
                     }
 
-                    // Generate build report
                     var buildReport = GenerateBuildReport(report, outputPath, buildTime);
                     onProgress?.Invoke(buildReport);
 
@@ -139,17 +131,15 @@ namespace U3D.Editor
                     {
                         Success = true,
                         BuildPath = outputPath,
-                        BuildSize = (long)summary.totalSize,
+                        BuildSize = (long)report.summary.totalSize,
                         BuildTime = buildTime,
                         Message = $"Build completed successfully in {buildTime.TotalMinutes:F1} minutes"
                     };
                 }
                 else
                 {
-                    var errorMessage = GetDetailedBuildErrorMessage(summary, report);
-
-                    // Attempt to provide helpful troubleshooting info
-                    var troubleshootingInfo = GetBuildTroubleshootingInfo(summary.result);
+                    var errorMessage = GetDetailedBuildErrorMessage(report.summary, report);
+                    var troubleshootingInfo = GetBuildTroubleshootingInfo(report.summary.result);
 
                     return new UnityBuildResult
                     {
@@ -176,6 +166,50 @@ namespace U3D.Editor
             }
         }
 
+        /// <summary>
+        /// Schedules BuildPipeline.BuildPlayer via EditorApplication.delayCall so it executes
+        /// between player loop iterations, avoiding the "cannot be executed while inside the
+        /// player loop" error that occurs when BuildPlayer is called from async continuations.
+        /// </summary>
+        private static Task<BuildReport> BuildPlayerOutsidePlayerLoop(BuildPlayerOptions options)
+        {
+            var tcs = new TaskCompletionSource<BuildReport>();
+
+            EditorApplication.delayCall += () =>
+            {
+                try
+                {
+                    // Additional safety: wait for compilation/play mode transitions
+                    if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+                    {
+                        // Re-schedule if editor is busy
+                        EditorApplication.delayCall += () =>
+                        {
+                            try
+                            {
+                                var report = BuildPipeline.BuildPlayer(options);
+                                tcs.TrySetResult(report);
+                            }
+                            catch (Exception ex)
+                            {
+                                tcs.TrySetException(ex);
+                            }
+                        };
+                        return;
+                    }
+
+                    var report = BuildPipeline.BuildPlayer(options);
+                    tcs.TrySetResult(report);
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            };
+
+            return tcs.Task;
+        }
+
         private static async Task PrepareOutputDirectory(string outputPath)
         {
             await Task.Run(() =>
@@ -184,7 +218,6 @@ namespace U3D.Editor
                 {
                     if (Directory.Exists(outputPath))
                     {
-                        // More robust directory cleanup
                         var directory = new DirectoryInfo(outputPath);
                         foreach (var file in directory.GetFiles())
                         {
@@ -219,13 +252,11 @@ namespace U3D.Editor
                 {
                     Debug.LogWarning($"Could not fully clean output directory: {ex.Message}");
 
-                    // FIXED: Generate timestamp on main thread context, with better error handling
                     try
                     {
                         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                         var fallbackPath = Path.Combine(outputPath, timestamp);
 
-                        // Ensure parent directory exists before creating subdirectory
                         var parentDir = Path.GetDirectoryName(fallbackPath);
                         if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
                         {
@@ -238,7 +269,6 @@ namespace U3D.Editor
                     catch (Exception fallbackEx)
                     {
                         Debug.LogError($"Failed to create fallback directory: {fallbackEx.Message}");
-                        // Re-throw to fail the build rather than continue with undefined state
                         throw new Exception($"Cannot prepare build directory: {ex.Message}", ex);
                     }
                 }
@@ -247,7 +277,6 @@ namespace U3D.Editor
 
         private static BuildValidationResult ValidateExtendedBuildRequirements()
         {
-            // Check WebGL support
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
             {
                 return new BuildValidationResult
@@ -257,7 +286,6 @@ namespace U3D.Editor
                 };
             }
 
-            // Check scenes
             var enabledScenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).ToArray();
             if (enabledScenes.Length == 0)
             {
@@ -268,13 +296,11 @@ namespace U3D.Editor
                 };
             }
 
-            // Check for common Unity 6 WebGL issues
             if (PlayerSettings.WebGL.memorySize < 128)
             {
                 Debug.LogWarning("WebGL memory size is very low. Consider increasing to at least 256MB for better performance.");
             }
 
-            // Check if we're using URP with excessive features
             if (QualitySettings.renderPipeline != null)
             {
                 Debug.Log("Universal Render Pipeline detected. Build size may be larger than Built-in Render Pipeline.");
@@ -322,7 +348,6 @@ namespace U3D.Editor
                     var elapsed = DateTime.Now - startTime;
                     var timeSinceLastUpdate = DateTime.Now - lastProgressUpdate;
 
-                    // Update progress message every 30 seconds
                     if (timeSinceLastUpdate.TotalSeconds >= 30)
                     {
                         var currentMessage = progressMessages[messageIndex % progressMessages.Length];
@@ -332,7 +357,6 @@ namespace U3D.Editor
                         lastProgressUpdate = DateTime.Now;
                     }
 
-                    // Provide time estimates based on Unity 6 build times
                     if (elapsed.TotalMinutes >= 10 && elapsed.TotalMinutes < 20)
                     {
                         onProgress?.Invoke("⏱️ Build progressing normally (Unity 6 builds typically take 30-40 minutes)");
@@ -353,31 +377,22 @@ namespace U3D.Editor
 
         public static void SetOptimalWebGLSettingsUnity6()
         {
-            // PRESERVE YOUR PROVEN WORKING CONFIGURATION
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled; // CRITICAL: GitHub Pages compatibility
+            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
-            // RESTORE: Unity 6+ automatic WebAssembly memory management (your working approach)
-            // REMOVED: CalculateOptimalMemorySize() - this was accessing mesh.triangles arrays during build
-            // Note: Unity 6+ has both memorySize (legacy) and maximumMemorySize (new) - using automatic management
             Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management (no manual sizing needed)");
 
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
 
-            // Your proven critical settings for deployment success
             PlayerSettings.stripEngineCode = true;
             PlayerSettings.WebGL.debugSymbolMode = WebGLDebugSymbolMode.Off;
             PlayerSettings.WebGL.threadsSupport = false;
 
-            // Unity 6+ specific optimizations (non-conflicting)
             PlayerSettings.WebGL.showDiagnostics = false;
             PlayerSettings.WebGL.analyzeBuildSize = false;
 
-            // UNITY 6 INDEXOUTOFRANGEEXCEPTION WORKAROUNDS
             PlayerSettings.WebGL.webAssemblyTable = false;
-            // Note: wasmArithmeticExceptions enum values vary by Unity version - check Player Settings UI for correct value
 
-            // Ensure proper build settings (preserve existing values when appropriate)
             PlayerSettings.productName = Application.productName;
             PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ?
                 PlayerSettings.companyName : "Unity Creator";
@@ -391,7 +406,6 @@ namespace U3D.Editor
             {
                 try
                 {
-                    // Light validation only - your CheckFixTab handles comprehensive validation
                     var requiredFiles = new[]
                     {
                         "index.html",
@@ -407,7 +421,7 @@ namespace U3D.Editor
                         return $"Missing required files: {string.Join(", ", missingFiles)}";
                     }
 
-                    return string.Empty; // All good - defer to CheckFixTab for comprehensive analysis
+                    return string.Empty;
                 }
                 catch (Exception ex)
                 {
@@ -453,7 +467,6 @@ namespace U3D.Editor
                 _ => "Build did not succeed"
             };
 
-            // Try to get more specific error information
             try
             {
                 var steps = report.steps;
@@ -463,7 +476,7 @@ namespace U3D.Editor
                 {
                     var errorMessages = failedSteps
                         .SelectMany(step => step.messages.Where(msg => msg.type == LogType.Error))
-                        .Take(3) // Limit to first 3 errors
+                        .Take(3)
                         .Select(msg => msg.content)
                         .ToArray();
 
@@ -512,7 +525,6 @@ namespace U3D.Editor
                         return false;
                     }
 
-                    // Copy all build files to repository root
                     CopyDirectoryRecursively(sourceDirectory, targetDirectory);
 
                     Debug.Log($"Build files copied from {buildPath} to {repositoryPath}");
