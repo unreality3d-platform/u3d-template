@@ -569,15 +569,10 @@ namespace U3D.Editor
 
                 EditorGUILayout.BeginHorizontal();
 
-                // Radio button with selection change detection
-                var newSelected = EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
-                if (newSelected && !isSelected)
-                {
-                    selectedOptionIndex = i;
-
-                    // NEW: Handle Product Name sync when selection changes
-                    HandleRepositorySelectionChange(i);
-                }
+                // Visual-only checkbox indicator (not the click target)
+                EditorGUI.BeginDisabledGroup(true);
+                EditorGUILayout.Toggle(isSelected, GUILayout.Width(20));
+                EditorGUI.EndDisabledGroup();
 
                 // Option details
                 EditorGUILayout.BeginVertical();
@@ -808,6 +803,21 @@ namespace U3D.Editor
                 EditorGUILayout.EndVertical();
                 EditorGUILayout.EndHorizontal();
                 EditorGUILayout.EndVertical();
+
+                // Make entire row clickable for selection
+                var rowRect = GUILayoutUtility.GetLastRect();
+                if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
+                {
+                    if (selectedOptionIndex != i)
+                    {
+                        selectedOptionIndex = i;
+                        HandleRepositorySelectionChange(i);
+                    }
+                    Event.current.Use();
+                }
+
+                // Show pointer cursor on hover to indicate clickability
+                EditorGUIUtility.AddCursorRect(rowRect, MouseCursor.Link);
 
                 EditorGUILayout.Space(3);
             }
