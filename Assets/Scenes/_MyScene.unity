@@ -6477,6 +6477,10 @@ PrefabInstance:
       propertyPath: editorPreview
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 719238061302485260, guid: fcdfaaacad6ade54ebb39139b439c21d, type: 3}
+      propertyPath: occlusionMode
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 5216413771154961266, guid: fcdfaaacad6ade54ebb39139b439c21d, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
