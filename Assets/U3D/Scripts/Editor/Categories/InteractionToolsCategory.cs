@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using Fusion;
@@ -30,8 +30,8 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
+                new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
-                new CreatorTool("🚧 Make Climbable", "Surfaces players can climb on", () => Debug.Log("Applied Climbable"), true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),
                 new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => Debug.Log("Applied Rideable"), true),
                 new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => Debug.Log("Applied Steerable"), true),
@@ -424,6 +424,81 @@ namespace U3D.Editor
             so.ApplyModifiedProperties();
 
             Debug.Log("Configured NetworkRigidbody3D via reflection for Shared Mode");
+        }
+
+        /// <summary>
+        /// Ensures the "Climbable" layer exists at index 6 in the project's TagManager.
+        /// Called automatically when applying climbable to an object.
+        /// </summary>
+        private static void EnsureClimbableLayerExists()
+        {
+            SerializedObject tagManager = new SerializedObject(
+                AssetDatabase.LoadMainAssetAtPath("ProjectSettings/TagManager.asset")
+            );
+            SerializedProperty layers = tagManager.FindProperty("layers");
+
+            if (layers == null || layers.arraySize <= U3DClimbable.CLIMBABLE_LAYER) return;
+
+            SerializedProperty layerProp = layers.GetArrayElementAtIndex(U3DClimbable.CLIMBABLE_LAYER);
+
+            if (string.IsNullOrEmpty(layerProp.stringValue))
+            {
+                layerProp.stringValue = U3DClimbable.CLIMBABLE_LAYER_NAME;
+                tagManager.ApplyModifiedProperties();
+                Debug.Log($"Registered layer {U3DClimbable.CLIMBABLE_LAYER}: '{U3DClimbable.CLIMBABLE_LAYER_NAME}'");
+            }
+            else if (layerProp.stringValue != U3DClimbable.CLIMBABLE_LAYER_NAME)
+            {
+                Debug.LogWarning(
+                    $"Layer {U3DClimbable.CLIMBABLE_LAYER} is already named '{layerProp.stringValue}'. " +
+                    $"U3DClimbingController expects it to be '{U3DClimbable.CLIMBABLE_LAYER_NAME}'. " +
+                    $"Update climbableLayerMask on the player prefab if using a different layer."
+                );
+            }
+        }
+
+        /// <summary>
+        /// Recursively sets the layer on a GameObject and all its children.
+        /// </summary>
+        private static void SetLayerRecursive(GameObject obj, int layer)
+        {
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+            {
+                SetLayerRecursive(child.gameObject, layer);
+            }
+        }
+
+        private static void ApplyClimbable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Ensure the Climbable layer is registered in project settings
+            EnsureClimbableLayerExists();
+
+            // Ensure object has a collider (non-trigger; players need to collide with it)
+            if (!selected.GetComponent<Collider>())
+            {
+                selected.AddComponent<BoxCollider>();
+            }
+
+            // Set the object and all children to the Climbable layer
+            SetLayerRecursive(selected, U3DClimbable.CLIMBABLE_LAYER);
+
+            // Add the climbable marker component
+            U3DClimbable climbable = selected.GetComponent<U3DClimbable>();
+            if (climbable == null)
+            {
+                climbable = selected.AddComponent<U3DClimbable>();
+            }
+
+            EditorUtility.SetDirty(selected);
+            Debug.Log($"Applied Climbable to {selected.name} (layer set to {U3DClimbable.CLIMBABLE_LAYER_NAME})");
         }
 
         private static void ApplyEnterTrigger()

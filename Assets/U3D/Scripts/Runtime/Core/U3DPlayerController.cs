@@ -1,4 +1,4 @@
-﻿using Fusion;
+using Fusion;
 using System.Collections.Generic;
 using U3D;
 using UnityEngine;
@@ -1002,6 +1002,9 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
+        // Climbing controller owns movement while climbing
+        if (NetworkIsClimbing) return;
+
         // Get base movement input
         moveInput = input.MovementInput;
 
@@ -1369,7 +1372,7 @@ public class U3DPlayerController : NetworkBehaviour
         var pressed = input.Buttons.GetPressed(_buttonsPrevious);
         var released = input.Buttons.GetReleased(_buttonsPrevious);
 
-        // Jump
+        // Jump (also handles climb detach via U3DClimbingController reading jump state)
         if (enableJumping && pressed.IsSet(U3DInputButtons.Jump))
         {
             HandleJumpFusionFixed();
@@ -1473,6 +1476,9 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleJumpFusionFixed()
     {
+        // Skip normal jump while climbing (ClimbingController handles detach)
+        if (NetworkIsClimbing) return;
+
         if (isFlying)
         {
             return;
@@ -1714,7 +1720,8 @@ public class U3DPlayerController : NetworkBehaviour
 
     void ApplyGravityFixed()
     {
-        if (isFlying || isGrounded || !_isLocalPlayer) return;
+        // Suppress gravity while climbing (ClimbingController handles surface adhesion)
+        if (isFlying || isGrounded || NetworkIsClimbing || !_isLocalPlayer) return;
 
         // Unity 6 optimized gravity application
         velocity.y += gravity * Runner.DeltaTime;
@@ -1951,11 +1958,26 @@ public class U3DPlayerController : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called by U3DClimbingTrigger when entering/exiting climbable surfaces
+    /// Called by U3DClimbingController when attaching/detaching from climbable surfaces
     /// </summary>
     public void SetClimbingState(bool isClimbing)
     {
         if (!_isLocalPlayer) return;
         NetworkIsClimbing = isClimbing;
+
+        // Reset vertical velocity when starting to climb to prevent gravity accumulation
+        if (isClimbing)
+        {
+            velocity = Vector3.zero;
+        }
+    }
+
+    /// <summary>
+    /// Called by U3DClimbingController when player detaches from surface via jump.
+    /// Applies a velocity impulse so the player pushes away from the wall.
+    /// </summary>
+    public void SetClimbDetachVelocity(Vector3 detachVelocity)
+    {
+        velocity = detachVelocity;
     }
 }

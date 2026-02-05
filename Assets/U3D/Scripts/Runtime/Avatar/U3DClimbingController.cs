@@ -1,216 +1,263 @@
-﻿// ===== CLIMBING COMPONENT =====
 using UnityEngine;
 using Fusion;
 
-
 /// <summary>
-/// Climbing detection and state management for U3D Player Controller
-/// Integrates with the 8-core animation system
+/// Climbing detection and movement for U3D Player Controller.
+/// Integrates with the 8-core animation system (IsClimbing state).
+///
+/// When the player faces a surface on the Climbable layer and moves forward,
+/// climbing begins automatically. Movement remaps to surface traversal:
+///   W = climb up, S = climb down, A/D = lateral movement along surface.
+/// Jump (Space) detaches from the surface.
+///
+/// This component lives on the player prefab alongside U3DPlayerController.
+/// Climbable surfaces use the U3DClimbable component (added via Creator Dashboard).
 /// </summary>
 public class U3DClimbingController : NetworkBehaviour
 {
     [Header("Climbing Detection")]
-    [SerializeField] private LayerMask climbableLayerMask = 1 << 6; // Climbable layer
-    [SerializeField] private float climbCheckDistance = 1f;
-    [SerializeField] private float climbCheckRadius = 0.3f;
-    [SerializeField] private Vector3 climbCheckOffset = new Vector3(0, 0.5f, 0);
+    [Tooltip("Layer mask for climbable surfaces (must match U3DClimbable.CLIMBABLE_LAYER)")]
+    [SerializeField] private LayerMask climbableLayerMask = 1 << 6;
 
-    [Header("Climbing Physics")]
-    [SerializeField] private float climbSpeed = 2f;
+    [Tooltip("How far forward to check for climbable surfaces")]
+    [SerializeField] private float climbCheckDistance = 0.8f;
+
+    [Tooltip("Radius of the detection sphere cast")]
+    [SerializeField] private float climbCheckRadius = 0.4f;
+
+    [Tooltip("Height offset for the detection origin (chest height works best)")]
+    [SerializeField] private Vector3 climbCheckOffset = new Vector3(0, 0.8f, 0);
+
+    [Header("Climbing Movement")]
+    [Tooltip("Vertical climb speed (up)")]
     [SerializeField] private float climbUpSpeed = 3f;
-    [SerializeField] private float climbDownSpeed = 4f;
-    [SerializeField] private float climbStamina = 100f;
-    [SerializeField] private float staminaDrainRate = 10f;
 
-    [Header("Climbing Controls")]
-    [SerializeField] private KeyCode climbKey = KeyCode.LeftControl;
-    [SerializeField] private bool autoClimb = true; // Auto-climb when touching climbable surface
+    [Tooltip("Vertical climb speed (down)")]
+    [SerializeField] private float climbDownSpeed = 3f;
+
+    [Tooltip("Lateral movement speed along the surface")]
+    [SerializeField] private float climbLateralSpeed = 2.5f;
+
+    [Tooltip("How close the player stays to the climbable surface")]
+    [SerializeField] private float surfaceStickDistance = 0.05f;
+
+    [Tooltip("Brief cooldown after detaching before re-attach is allowed")]
+    [SerializeField] private float reattachCooldown = 0.3f;
 
     // Networked state
     [Networked] public bool NetworkIsClimbing { get; set; }
-    [Networked] public bool NetworkCanClimb { get; set; }
-    [Networked] public Vector3 NetworkClimbDirection { get; set; }
 
-    // Components
+    // Components (cached)
     private U3DPlayerController playerController;
     private CharacterController characterController;
 
-    // State
-    private bool isClimbing = false;
-    private bool canClimb = false;
-    private Vector3 climbSurfaceNormal = Vector3.zero;
-    private Vector3 climbDirection = Vector3.zero;
-    private float currentStamina = 100f;
+    // Climbing state
+    private bool isClimbing;
+    private bool canClimb;
+    private Vector3 climbSurfaceNormal;
+    private Vector3 lastSurfacePoint;
+    private float detachTime;
+    private float surfaceSpeedMultiplier = 1f;
+
+    // Cached input (set each tick from PlayerController's network input)
+    private Vector2 currentMoveInput;
+    private bool jumpPressed;
 
     public bool IsClimbing => isClimbing;
     public bool CanClimb => canClimb;
-    public float StaminaPercentage => currentStamina / climbStamina;
 
     void Awake()
     {
         playerController = GetComponent<U3DPlayerController>();
         characterController = GetComponent<CharacterController>();
-        currentStamina = climbStamina;
     }
 
     public override void FixedUpdateNetwork()
     {
         if (!Object.HasStateAuthority) return;
 
-        CheckClimbableState();
-        HandleClimbingInput();
-        HandleClimbingPhysics();
-        UpdateStamina();
+        // Read input from the same Fusion input pipeline the PlayerController uses
+        if (GetInput<U3DNetworkInputData>(out var input))
+        {
+            currentMoveInput = input.MovementInput;
+            jumpPressed = input.Buttons.GetPressed(default).IsSet(U3DInputButtons.Jump);
+
+            // We need proper press detection using previous buttons
+            // Since PlayerController handles button tracking, check the raw state
+            // and use a simpler approach: jump is pressed this tick if the button is set
+            jumpPressed = input.Buttons.IsSet(U3DInputButtons.Jump);
+        }
+
+        DetectClimbableSurface();
+
+        if (isClimbing)
+        {
+            HandleClimbingMovement();
+            CheckDetach();
+        }
+        else
+        {
+            CheckAttach();
+        }
+
         UpdateNetworkState();
     }
 
-    void CheckClimbableState()
+    /// <summary>
+    /// SphereCast forward from chest height to find climbable surfaces.
+    /// </summary>
+    void DetectClimbableSurface()
     {
-        Vector3 checkPosition = transform.position + climbCheckOffset;
-        Vector3 forwardDirection = transform.forward;
+        Vector3 origin = transform.position + climbCheckOffset;
+        Vector3 direction = transform.forward;
 
-        // Raycast forward to detect climbable surfaces
-        RaycastHit hit;
-        bool hitClimbable = Physics.SphereCast(
-            checkPosition,
+        bool hitSurface = Physics.SphereCast(
+            origin,
             climbCheckRadius,
-            forwardDirection,
-            out hit,
+            direction,
+            out RaycastHit hit,
             climbCheckDistance,
             climbableLayerMask
         );
 
-        bool wasCanClimb = canClimb;
-        canClimb = hitClimbable && currentStamina > 0;
+        bool wasCan = canClimb;
+        canClimb = hitSurface;
 
         if (canClimb)
         {
             climbSurfaceNormal = hit.normal;
+            lastSurfacePoint = hit.point;
+
+            // Check for per-surface speed multiplier
+            var climbable = hit.collider.GetComponent<U3D.U3DClimbable>();
+            surfaceSpeedMultiplier = climbable != null ? climbable.SpeedMultiplier : 1f;
         }
 
-        // Auto-stop climbing if no longer touching climbable surface
+        // If climbing and surface lost, detach
         if (isClimbing && !canClimb)
         {
-            StopClimbing();
-        }
-
-        // Log state changes
-        if (wasCanClimb != canClimb)
-        {
-            Debug.Log($"🧗 Climb state changed: CanClimb={canClimb}");
+            Detach();
         }
     }
 
-    void HandleClimbingInput()
+    /// <summary>
+    /// Start climbing when player walks into a climbable surface.
+    /// Auto-attach: moving forward into the surface triggers climbing.
+    /// </summary>
+    void CheckAttach()
     {
-        // Manual climbing toggle (if not auto-climb)
-        if (!autoClimb && Input.GetKeyDown(climbKey) && canClimb && !isClimbing)
+        if (!canClimb) return;
+        if (Time.time - detachTime < reattachCooldown) return;
+
+        // Attach when moving forward into the surface
+        if (currentMoveInput.y > 0.1f)
         {
-            StartClimbing();
-        }
-        else if (!autoClimb && Input.GetKeyUp(climbKey) && isClimbing)
-        {
-            StopClimbing();
-        }
-        // Auto-climb when touching climbable surface
-        else if (autoClimb && canClimb && !isClimbing && playerController.NetworkIsMoving)
-        {
-            StartClimbing();
-        }
-        else if (autoClimb && isClimbing && (!canClimb || !playerController.NetworkIsMoving))
-        {
-            StopClimbing();
+            Attach();
         }
     }
 
-    void HandleClimbingPhysics()
+    /// <summary>
+    /// Detach conditions: jump, or move backward when near ground.
+    /// </summary>
+    void CheckDetach()
     {
-        if (!isClimbing || playerController == null) return;
-
-        // Calculate climb direction based on input
-        Vector2 moveInput = Vector2.zero; // Get from input system
-
-        if (moveInput.magnitude > 0.1f)
+        // Jump always detaches
+        if (jumpPressed)
         {
-            // Calculate climb direction along the surface
-            Vector3 right = Vector3.Cross(Vector3.up, climbSurfaceNormal).normalized;
-            Vector3 up = Vector3.Cross(climbSurfaceNormal, right).normalized;
-
-            climbDirection = (right * moveInput.x + up * moveInput.y).normalized;
+            Detach();
+            // Give a small upward boost so the player doesn't immediately re-attach
+            playerController.SetClimbDetachVelocity(new Vector3(0, 2f, 0));
+            return;
         }
-        else
+
+        // Moving backward (S key) while near the ground detaches
+        if (currentMoveInput.y < -0.1f && characterController.isGrounded)
         {
-            climbDirection = Vector3.zero;
+            Detach();
         }
     }
 
-    void UpdateStamina()
+    /// <summary>
+    /// Core climbing movement. Remaps WASD to surface-relative directions:
+    ///   W (forward input) = climb up along the surface
+    ///   S (backward input) = climb down along the surface
+    ///   A/D (lateral input) = move left/right along the surface
+    /// Gravity is suppressed by the PlayerController when NetworkIsClimbing is true.
+    /// </summary>
+    void HandleClimbingMovement()
     {
-        if (isClimbing)
-        {
-            // Drain stamina while climbing
-            currentStamina -= staminaDrainRate * Runner.DeltaTime;
-            currentStamina = Mathf.Max(0, currentStamina);
+        if (characterController == null) return;
 
-            // Stop climbing if out of stamina
-            if (currentStamina <= 0)
-            {
-                StopClimbing();
-            }
-        }
-        else
+        // Build a coordinate frame on the climbable surface
+        // "up" along the surface = perpendicular to the surface normal, biased toward world up
+        Vector3 surfaceUp = Vector3.Cross(climbSurfaceNormal, Vector3.Cross(Vector3.up, climbSurfaceNormal)).normalized;
+
+        // If surface is perfectly horizontal (a ceiling), fall back
+        if (surfaceUp.sqrMagnitude < 0.01f)
         {
-            // Regenerate stamina when not climbing
-            currentStamina += (staminaDrainRate * 0.5f) * Runner.DeltaTime;
-            currentStamina = Mathf.Min(climbStamina, currentStamina);
+            surfaceUp = Vector3.up;
         }
+
+        // "right" along the surface = perpendicular to both surface normal and surface up
+        Vector3 surfaceRight = Vector3.Cross(surfaceUp, climbSurfaceNormal).normalized;
+
+        // Calculate climb velocity from input
+        float verticalSpeed = 0f;
+        if (currentMoveInput.y > 0.1f)
+            verticalSpeed = climbUpSpeed;
+        else if (currentMoveInput.y < -0.1f)
+            verticalSpeed = -climbDownSpeed;
+
+        float lateralSpeed = currentMoveInput.x * climbLateralSpeed;
+
+        Vector3 climbVelocity = (surfaceUp * verticalSpeed + surfaceRight * lateralSpeed) * surfaceSpeedMultiplier;
+
+        // Stick to surface: nudge toward the surface so the player doesn't drift away
+        Vector3 toSurface = -climbSurfaceNormal * surfaceStickDistance;
+
+        Vector3 totalMovement = (climbVelocity + toSurface) * Runner.DeltaTime;
+
+        characterController.Move(totalMovement);
+
+        // Update network position so remote players see the climb
+        playerController.NetworkPosition = transform.position;
+        playerController.NetworkIsMoving = climbVelocity.sqrMagnitude > 0.01f;
+    }
+
+    void Attach()
+    {
+        if (isClimbing) return;
+
+        isClimbing = true;
+        playerController.SetClimbingState(true);
+    }
+
+    void Detach()
+    {
+        if (!isClimbing) return;
+
+        isClimbing = false;
+        detachTime = Time.time;
+        playerController.SetClimbingState(false);
     }
 
     void UpdateNetworkState()
     {
         NetworkIsClimbing = isClimbing;
-        NetworkCanClimb = canClimb;
-        NetworkClimbDirection = climbDirection;
     }
-
-    public void StartClimbing()
-    {
-        if (!canClimb || isClimbing) return;
-
-        isClimbing = true;
-        Debug.Log("🧗 Started climbing");
-    }
-
-    public void StopClimbing()
-    {
-        if (!isClimbing) return;
-
-        isClimbing = false;
-        climbDirection = Vector3.zero;
-        Debug.Log("🧗 Stopped climbing");
-    }
-
-    // Public methods for PlayerController integration
-    public float GetClimbSpeed() => climbSpeed;
-    public float GetClimbUpSpeed() => climbUpSpeed;
-    public float GetClimbDownSpeed() => climbDownSpeed;
-    public Vector3 GetClimbDirection() => climbDirection;
-    public Vector3 GetClimbSurfaceNormal() => climbSurfaceNormal;
 
     void OnDrawGizmosSelected()
     {
-        // Draw climb check sphere
         Gizmos.color = canClimb ? Color.green : Color.yellow;
-        Vector3 checkPos = transform.position + climbCheckOffset;
-        Gizmos.DrawWireSphere(checkPos, climbCheckRadius);
+        Vector3 origin = transform.position + climbCheckOffset;
+        Gizmos.DrawWireSphere(origin, climbCheckRadius);
+        Gizmos.DrawRay(origin, transform.forward * climbCheckDistance);
 
-        // Draw forward check ray
-        Gizmos.DrawRay(checkPos, transform.forward * climbCheckDistance);
-
-        if (isClimbing && climbDirection != Vector3.zero)
+        if (isClimbing)
         {
-            Gizmos.color = Color.red;
-            Gizmos.DrawRay(transform.position, climbDirection * 2f);
+            // Show surface normal
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawRay(lastSurfacePoint, climbSurfaceNormal);
         }
     }
 }
