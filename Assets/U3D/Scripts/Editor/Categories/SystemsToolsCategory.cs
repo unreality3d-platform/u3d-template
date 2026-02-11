@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using UnityEditor;
 
 namespace U3D.Editor
@@ -78,15 +79,44 @@ namespace U3D.Editor
             canvasRect.sizeDelta = new Vector2(400, 300);
             canvasRect.localScale = Vector3.one * 0.01f;
 
-            GameObject panelObj = new GameObject("Panel");
+            var uiResources = new DefaultControls.Resources();
+            GameObject panelObj = DefaultControls.CreatePanel(uiResources);
+            panelObj.name = "Panel";
             panelObj.transform.SetParent(canvasObj.transform, false);
             panelObj.layer = LayerMask.NameToLayer("UI");
 
-            RectTransform panelRect = panelObj.AddComponent<RectTransform>();
+            RectTransform panelRect = panelObj.GetComponent<RectTransform>();
             panelRect.anchorMin = Vector2.zero;
             panelRect.anchorMax = Vector2.one;
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
+
+            Image panelImage = panelObj.GetComponent<Image>();
+            if (panelImage != null)
+            {
+                panelImage.color = new Color(1f, 1f, 1f, 0.5f);
+            }
+
+            var tmpResources = new TMP_DefaultControls.Resources();
+            GameObject textObj = TMP_DefaultControls.CreateText(tmpResources);
+            textObj.name = "Text (TMP)";
+            textObj.transform.SetParent(panelObj.transform, false);
+            textObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.5f, 0.5f);
+            textRect.anchorMax = new Vector2(0.5f, 0.5f);
+            textRect.sizeDelta = new Vector2(350, 250);
+            textRect.anchoredPosition = Vector2.zero;
+
+            TextMeshProUGUI tmpText = textObj.GetComponent<TextMeshProUGUI>();
+            if (tmpText != null)
+            {
+                tmpText.text = "Billboard Text";
+                tmpText.fontSize = 18;
+                tmpText.color = Color.white;
+                tmpText.alignment = TextAlignmentOptions.Center;
+            }
 
             if (SceneView.lastActiveSceneView != null)
             {
@@ -96,7 +126,7 @@ namespace U3D.Editor
             Selection.activeGameObject = canvasObj;
             EditorGUIUtility.PingObject(canvasObj);
 
-            Debug.Log("✅ Billboard UI Panel created! Add UI elements as children of the Panel. Adjust hideDistance and showDistance in the Inspector.");
+            Debug.Log("✅ Billboard UI Panel created! Customize text and styling in the Inspector. Adjust hideDistance and showDistance for proximity fade.");
         }
     }
 }
