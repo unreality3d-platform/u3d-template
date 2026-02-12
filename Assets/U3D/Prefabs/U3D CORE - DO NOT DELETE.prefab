@@ -267,10 +267,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: U3D.Runtime::U3D.XR.U3DWebXRManager
   autoFindLocalPlayer: 1
   verboseLogging: 0
-  leftHandPrefab: {fileID: 0}
-  rightHandPrefab: {fileID: 0}
-  handVisualScale: 0.1
-  handVisualColor: {r: 0.3, g: 0.6, b: 1, a: 0.8}
 --- !u!1 &6125413902285780708
 GameObject:
   m_ObjectHideFlags: 0

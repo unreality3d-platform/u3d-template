@@ -6582,10 +6582,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 703688350}
     m_Modifications:
-    - target: {fileID: 187838408196399197, guid: fdebd6405b28bab4598075246157ecec, type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 2100000, guid: 96a4e61f6a4f2794681a2c41aadd7497, type: 2}
     - target: {fileID: 550202770149811092, guid: fdebd6405b28bab4598075246157ecec, type: 3}
       propertyPath: m_Name
       value: Floor
@@ -6648,10 +6644,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 458390831314864990, guid: 25e61ee988930b94ba1f73d19751de67, type: 3}
-      propertyPath: verboseLogging
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 4448262304063912280, guid: 25e61ee988930b94ba1f73d19751de67, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
