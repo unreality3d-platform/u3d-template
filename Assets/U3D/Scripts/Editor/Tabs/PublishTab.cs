@@ -61,16 +61,13 @@ namespace U3D.Editor
 
         public void Initialize()
         {
-            // CRITICAL: Skip initialization during compilation (same pattern as existing classes)
             if (ShouldSkipDuringBuild())
             {
                 return;
             }
 
-            // Cache product name on main thread to avoid threading issues
             cachedProductName = Application.productName;
 
-            // Clear any stale "just published" flag on tab initialization (using build guards)
             if (!ShouldSkipDuringBuild())
             {
                 var justPublished = EditorPrefs.GetBool("U3D_JustPublished", false);
@@ -80,16 +77,22 @@ namespace U3D.Editor
                 }
             }
 
-            // Always start in Ready state to show repository options
             currentStep = PublishStep.Ready;
             IsComplete = false;
             publishUrl = "";
 
-            // Reset all states to show fresh options
             githubConnected = false;
             projectBuilt = false;
             deploymentComplete = false;
             isPublishing = false;
+
+            // FIX: Force repository options to reload on initialization
+            optionsLoaded = false;
+            loadingOptions = false;
+            availableOptions.Clear();
+            selectedOptionIndex = -1;
+            previousSelectedOptionIndex = -1;
+            currentStatus = "";
         }
 
         private void MarkPublishSuccess(string successUrl, string repositoryName)
@@ -522,15 +525,42 @@ namespace U3D.Editor
             {
                 EditorGUILayout.HelpBox("No GitHub repositories found. A new repository will be created.", MessageType.Info);
 
+                EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
                 {
                     shouldCreateNewRepository = true;
                     _ = StartFirebasePublishProcess();
                 }
+                if (GUILayout.Button("🔄 Refresh", GUILayout.Height(50), GUILayout.Width(80)))
+                {
+                    optionsLoaded = false;
+                    loadingOptions = false;
+                    availableOptions.Clear();
+                    selectedOptionIndex = -1;
+                    thumbnailCheckCache.Clear();
+                    lastSelectedRepositoryForThumbnailCheck = "";
+                }
+                EditorGUILayout.EndHorizontal();
                 return;
             }
 
             EditorGUILayout.LabelField("Choose your publishing option:", EditorStyles.boldLabel);
+
+            // Refresh button for repository list
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("🔄 Refresh Repositories", EditorStyles.miniButton, GUILayout.Width(140)))
+            {
+                optionsLoaded = false;
+                loadingOptions = false;
+                availableOptions.Clear();
+                selectedOptionIndex = -1;
+                previousSelectedOptionIndex = -1;
+                thumbnailCheckCache.Clear();
+                lastSelectedRepositoryForThumbnailCheck = "";
+            }
+            EditorGUILayout.EndHorizontal();
+
             EditorGUILayout.Space(5);
 
             // Check if current Product Name would create a repository that conflicts with existing ones
