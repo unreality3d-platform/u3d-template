@@ -1,46 +1,45 @@
 # Unreality3D Creator Template
 
-Creator community platform with free template Unity project and platform-hosted tools.
+Free template Unity project with platform-hosted tools for creating interactive 3D multiplayer web experiences.
 
-## 🚀 Quick Start - Live in Under 20 Minutes
+## Getting Started
 
-1. **Grab this template** and open in Unity 6.1+
-2. **Create your interactive experience** in the beautifully pre-configured scene or your own
-3. **Publish with one click** - get your professional Unreality3D.com URL instantly
+**Head to the [Quick Start Guide](https://unreality3d.com/quickstart.html)** and follow the steps there. The Get U3D Template button on that page downloads the same zip as this repo, but the guide walks you through the full setup, publishing, and monetization workflow.
 
-Your **interactive multiplayer 3D web experience** goes live at: `https://unreality3d.com/yourname/productname/`
+Your published experience goes live at: `https://unreality3d.com/yourname/productname/`
 
-## ⚙️ Requirements
+## About This Repo
 
-### Unity Installation
-- **Unity 6.0+** (Unity 6.1+ recommended)
-- **WebGL Build Support module** - Required for web publishing
-  - Install via: Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support
+This repository contains the complete Unity 6+ template project that powers the Unreality3D creator pipeline. You can clone or download it directly if you prefer working with Git, but the quickstart page is the recommended starting point for most users.
 
-### For Publishing
-- **Git** and **GitHub account** - Automated deployment included
-- **New to GitHub? No problem!** - Just create a free account, we walk you through the rest during setup
-- **PayPal email** (optional) - To enable platform-hosted transaction tools
+**[GitHub Releases](https://github.com/unreality3d-platform/u3d-template/releases)** are available for update packages when new features ship.
 
-## 🎯 What's Included - Everything You Need
+## Requirements
 
-### Complete Pre-Configuration
-- ✅ **Unity 6+ WebGL optimization** - Instant web deployment
-- ✅ **Professional character controls** - AAA game style movement and interaction
-- ✅ **PayPal monetization** - 95% creator share, industry-leading creator-first split
-- ✅ **Zero effort Firebase backend** - Authentication and data management
-- ✅ **GitHub Pages** - Creator-controlled, professional showcase publishing 
-- ✅ **Creator Dashboard** - Built in, with instant interactivity tools
+**Unity 6+** with the **WebGL Build Support** module installed (Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support).
 
-### Need Help?
+For publishing, you need **Git** and a **GitHub account** (free). New to GitHub? The in-editor setup walks you through it. A **PayPal email** is optional for enabling platform-hosted transaction tools.
+
+## What's Included
+
+- **Unity 6+ WebGL project** pre-configured for instant web deployment
+- **AAA-quality character controller** with remappable inputs
+- **Photon Fusion 2 multiplayer networking** across desktop and VR browsers
+- **WebXR/VR support** for Meta Quest and compatible headsets
+- **Interactive Quest System** for guided player experiences
+- **Drop-in avatar visuals and animation**
+- **PayPal monetization** with 95% creator share
+- **Automated GitHub Pages deployment** with professional Unreality3D.com URLs
+- **In-editor and online Creator Dashboards** with publishing, interactivity, and management tools
+- **Settings UI** integrated with Audio Mixer
+- **Firebase authentication and backend** handled for you
+
+## Need Help?
+
 - **Quick Start Guide:** [unreality3d.com/quickstart.html](https://unreality3d.com/quickstart.html)
-- **Documentation:** [unreality3d.com/docs](https://unreality3d.com/docs)
+- **Documentation:** [unreality3d.com/docs](https://unreality3d.com/docs/index.html)
 - **Support:** admin@unreality3d.com
 
-## 📝 License
+## License
 
 This free template is provided for creating content to be shared via the Unreality3D platform. By using this template, you agree to the [Unreality3D Creator Terms](https://unreality3d.com/legal/terms.html).
-
----
-
-**Creator community platform with free template Unity project and platform-hosted tools.** 🌟
