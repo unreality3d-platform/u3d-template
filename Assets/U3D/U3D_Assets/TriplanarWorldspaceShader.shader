@@ -1,4 +1,4 @@
-Shader "Custom/TriplanarURP_WebGL_Optimized"
+Shader "U3D/TriplanarURP_WebGL_Optimized"
 {
     Properties
     {
