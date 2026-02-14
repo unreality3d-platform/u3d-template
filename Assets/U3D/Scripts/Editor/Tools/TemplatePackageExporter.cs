@@ -254,8 +254,18 @@ namespace U3D.Editor.Tools
 
         private static string GetDefaultVersion()
         {
-            // Generate version: YYYY.MM.DD format
-            return DateTime.Now.ToString("yyyy.MM.dd");
+            string versionFilePath = "Assets/U3D/Resources/version.txt";
+            if (File.Exists(versionFilePath))
+            {
+                string version = File.ReadAllText(versionFilePath).Trim();
+                if (!string.IsNullOrEmpty(version))
+                {
+                    return $"u3d-update-{version}";
+                }
+            }
+
+            // Fallback if version.txt is missing
+            return $"u3d-update-{DateTime.Now:MM-dd-yy-HH-mm-ss}";
         }
 
         private static string GetFileSizeString(long bytes)
