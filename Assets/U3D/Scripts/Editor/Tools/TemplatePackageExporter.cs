@@ -1,6 +1,6 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -38,6 +38,11 @@ namespace U3D.Editor.Tools
             "Assets/StreamingAssets/Video", // User streaming video
         };
 
+        // CREATOR-SPECIFIC FILES - Exclude from updates (contains per-creator data)
+        private static readonly string[] EXCLUDE_FROM_UPDATES = {
+            "Assets/U3D/Resources/U3DCreatorData.asset",
+        };
+
         /// <summary>
         /// Main export method - can be called from command line automation
         /// </summary>
@@ -60,7 +65,7 @@ namespace U3D.Editor.Tools
                 var assetsToExport = new List<string>();
                 int coreAssets = 0;
 
-                // 1. Include all core U3D systems
+                // Include all core U3D systems
                 foreach (string corePath in CORE_UPDATE_PATHS)
                 {
                     if (AssetDatabase.IsValidFolder(corePath) || File.Exists(corePath))
@@ -75,7 +80,7 @@ namespace U3D.Editor.Tools
                     }
                 }
 
-                // 3. Validate we have assets to export
+                // Validate we have assets to export
                 if (assetsToExport.Count == 0)
                 {
                     Debug.LogError("❌ No valid assets found to export!");
@@ -84,14 +89,39 @@ namespace U3D.Editor.Tools
 
                 Debug.Log($"📊 Export Summary: {coreAssets} core systems");
 
-                // 4. Export the update package
+                // Filter out creator-specific files
+                var excludeSet = new HashSet<string>(EXCLUDE_FROM_UPDATES, StringComparer.OrdinalIgnoreCase);
+
+                // Expand folders into individual asset paths so we can filter
+                var expandedAssets = new List<string>();
+                foreach (string path in assetsToExport)
+                {
+                    if (AssetDatabase.IsValidFolder(path))
+                    {
+                        string[] guids = AssetDatabase.FindAssets("", new[] { path });
+                        foreach (string guid in guids)
+                        {
+                            string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                            if (!excludeSet.Contains(assetPath))
+                            {
+                                expandedAssets.Add(assetPath);
+                            }
+                        }
+                    }
+                    else if (!excludeSet.Contains(path))
+                    {
+                        expandedAssets.Add(path);
+                    }
+                }
+
+                // Export the update package
                 AssetDatabase.ExportPackage(
-                    assetsToExport.ToArray(),
+                    expandedAssets.ToArray(),
                     fullPath,
-                    ExportPackageOptions.Recurse | ExportPackageOptions.IncludeDependencies
+                    ExportPackageOptions.Default
                 );
 
-                // 5. Verify and report success
+                // Verify and report success
                 if (File.Exists(fullPath))
                 {
                     var fileInfo = new FileInfo(fullPath);
