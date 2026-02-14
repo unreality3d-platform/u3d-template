@@ -23,14 +23,6 @@ namespace U3D.Editor.Tools
             ".github/workflows/reassemble-chunks.yml"  // Critical: Chunking system workflow
         };
 
-        // PROJECT SETTINGS - Selectively include critical settings
-        private static readonly string[] SETTINGS_TO_UPDATE = {
-            "ProjectSettings/ProjectSettings.asset",   // WebGL build settings
-            "ProjectSettings/QualitySettings.asset",   // Performance optimizations
-            "ProjectSettings/GraphicsSettings.asset",  // Rendering pipeline
-            "ProjectSettings/XRSettings.asset"         // XR compatibility
-        };
-
         // USER CONTENT - NEVER include in updates (preserve user work)
         private static readonly string[] PRESERVE_USER_CONTENT = {
             "Assets/Scenes",           // User scenes
@@ -66,7 +58,7 @@ namespace U3D.Editor.Tools
 
                 // Build comprehensive asset list for update
                 var assetsToExport = new List<string>();
-                int coreAssets = 0, settingsAssets = 0;
+                int coreAssets = 0;
 
                 // 1. Include all core U3D systems
                 foreach (string corePath in CORE_UPDATE_PATHS)
@@ -83,21 +75,6 @@ namespace U3D.Editor.Tools
                     }
                 }
 
-                // 2. Include critical project settings
-                foreach (string settingPath in SETTINGS_TO_UPDATE)
-                {
-                    if (File.Exists(settingPath))
-                    {
-                        assetsToExport.Add(settingPath);
-                        settingsAssets++;
-                        Debug.Log($"✅ Setting: {settingPath}");
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"⚠️ Setting missing: {settingPath}");
-                    }
-                }
-
                 // 3. Validate we have assets to export
                 if (assetsToExport.Count == 0)
                 {
@@ -105,7 +82,7 @@ namespace U3D.Editor.Tools
                     return;
                 }
 
-                Debug.Log($"📊 Export Summary: {coreAssets} core systems, {settingsAssets} settings");
+                Debug.Log($"📊 Export Summary: {coreAssets} core systems");
 
                 // 4. Export the update package
                 AssetDatabase.ExportPackage(
@@ -179,7 +156,7 @@ namespace U3D.Editor.Tools
             Debug.Log("🔍 Validating U3D Template structure for updates...");
 
             bool isValid = true;
-            int coreFound = 0, settingsFound = 0, userContentProtected = 0;
+            int coreFound = 0, userContentProtected = 0;
 
             // Check core systems
             Debug.Log("=== Core Systems ===");
@@ -197,21 +174,6 @@ namespace U3D.Editor.Tools
                 }
             }
 
-            // Check project settings
-            Debug.Log("=== Project Settings ===");
-            foreach (string path in SETTINGS_TO_UPDATE)
-            {
-                if (File.Exists(path))
-                {
-                    Debug.Log($"✅ {path}");
-                    settingsFound++;
-                }
-                else
-                {
-                    Debug.LogWarning($"⚠️ Missing setting: {path}");
-                }
-            }
-
             // Verify user content protection
             Debug.Log("=== User Content Protection ===");
             foreach (string path in PRESERVE_USER_CONTENT)
@@ -226,7 +188,6 @@ namespace U3D.Editor.Tools
             // Summary
             Debug.Log($"📊 Validation Summary:");
             Debug.Log($"   Core systems: {coreFound}/{CORE_UPDATE_PATHS.Length}");
-            Debug.Log($"   Settings: {settingsFound}/{SETTINGS_TO_UPDATE.Length}");
             Debug.Log($"   Protected paths: {userContentProtected}");
 
             if (isValid && coreFound >= CORE_UPDATE_PATHS.Length - 1) // Allow 1 missing for flexibility
