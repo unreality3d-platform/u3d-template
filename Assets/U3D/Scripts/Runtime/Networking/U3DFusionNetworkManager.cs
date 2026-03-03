@@ -742,8 +742,15 @@ namespace U3D.Networking
 
             Debug.Log($"🎯 Spawning player {player} at: {spawnPosition} facing: {spawnRotation.eulerAngles.y}°");
 
-            // Spawn with both position AND rotation
-            var playerObject = runner.Spawn(playerPrefab, spawnPosition, spawnRotation, player);
+            // Spawn with OnBeforeSpawned to guarantee position in Shared Mode
+            Vector3 pos = spawnPosition;
+            Quaternion rot = spawnRotation;
+            var playerObject = runner.Spawn(playerPrefab, spawnPosition, spawnRotation, player,
+                (runner, obj) =>
+                {
+                    obj.transform.position = pos;
+                    obj.transform.rotation = rot;
+                });
 
             if (playerObject != null)
             {

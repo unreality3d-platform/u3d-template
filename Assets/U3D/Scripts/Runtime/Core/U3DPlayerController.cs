@@ -274,6 +274,13 @@ public class U3DPlayerController : NetworkBehaviour
         // In Shared Mode, each client has authority over their own player
         _isLocalPlayer = Object.HasStateAuthority;
 
+        // Ensure networked position matches actual spawn position immediately
+        if (_isLocalPlayer)
+        {
+            NetworkPosition = transform.position;
+            NetworkRotation = transform.rotation;
+        }
+
         // Initialize components
         InitializeComponents();
 
@@ -578,6 +585,23 @@ public class U3DPlayerController : NetworkBehaviour
     // FUSION 2 REQUIRED: Replace Update with FixedUpdateNetwork
     public override void FixedUpdateNetwork()
     {
+        // Force spawn position on first tick to override Fusion state sync
+        if (_spawnFrameCount == 0 && _isLocalPlayer)
+        {
+            Vector3 spawnPos = NetworkPosition;
+            if (spawnPos != Vector3.zero)
+            {
+                characterController.enabled = false;
+                transform.position = spawnPos;
+                characterController.enabled = true;
+            }
+        }
+
+        if (_spawnFrameCount < 3)
+        {
+            Debug.LogError($"DEBUG FUN tick {_spawnFrameCount}: pos={transform.position} grounded={characterController.isGrounded}");
+        }
+
         // Only process for local player (StateAuthority in Shared Mode)
         if (!_isLocalPlayer) return;
 
