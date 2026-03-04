@@ -61,7 +61,6 @@ namespace U3D.Editor
             if (_configs.ContainsKey(environment))
             {
                 _currentConfig = _configs[environment];
-                Debug.Log($"Firebase configured for: {environment} (Project: {_currentConfig.projectId})");
             }
             else
             {
@@ -133,7 +132,7 @@ namespace U3D.Editor
                 return manualEnvironment;
             }
 
-            // FIXED: Creators always use production environment
+            // Creators always use production environment
             // This prevents the chicken-and-egg problem where login fails because
             // we use development environment before the user is logged in
             return "production";
@@ -151,8 +150,6 @@ namespace U3D.Editor
             EditorPrefs.SetString(prefix + "MessagingSenderId", config.messagingSenderId);
             EditorPrefs.SetString(prefix + "AppId", config.appId);
             EditorPrefs.SetString(prefix + "MeasurementId", config.measurementId);
-
-            Debug.Log($"Firebase {environment} configuration saved securely");
 
             // Reinitialize to pick up new config
             _initialized = false;
@@ -176,8 +173,6 @@ namespace U3D.Editor
             {
                 _configs.Remove(environment);
             }
-
-            Debug.Log($"Firebase {environment} configuration cleared");
         }
 
         // Helper method to check if configuration is complete

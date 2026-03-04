@@ -53,7 +53,6 @@ namespace U3D
             {
                 enableWebGLCursorManagement = false;
                 enabled = false;
-                Debug.Log("U3DWebGLCursorManager: Disabled on non-WebGL/Editor platform");
                 return;
             }
 
@@ -71,7 +70,6 @@ namespace U3D
             _isCursorLocked = false;
 
             string platform = Application.platform == RuntimePlatform.WebGLPlayer ? "WebGL" : "Editor";
-            Debug.Log($"✅ U3DWebGLCursorManager: Initialized for {platform} - awaiting user gesture for cursor lock");
         }
 
         void Update()
@@ -164,8 +162,6 @@ namespace U3D
                 // Show pause menu
                 if (pauseMenu != null)
                     pauseMenu.SetActive(true);
-
-                Debug.Log("🎯 Entered UI Mode (Tab) - Cursor free, WebGL focused");
             }
             else
             {
@@ -175,8 +171,6 @@ namespace U3D
                 // Hide pause menu
                 if (pauseMenu != null)
                     pauseMenu.SetActive(false);
-
-                Debug.Log("🎯 Exited UI Mode - Cursor locked for FPS controls");
             }
         }
 
@@ -197,16 +191,12 @@ namespace U3D
                     pauseMenu.SetActive(false);
                 if (gameUI != null)
                     gameUI.enabled = false;
-
-                Debug.Log("🚪 Escaped WebGL - Cursor free, browser has control");
             }
             else
             {
                 // Returning from escape - restore game UI
                 if (gameUI != null)
                     gameUI.enabled = true;
-
-                Debug.Log("🎯 Returned to WebGL - Ready to resume");
             }
         }
 
@@ -229,16 +219,12 @@ namespace U3D
                 // Clear UI/escape modes
                 _isUIMode = false;
                 _isEscapedMode = false;
-
-                Debug.Log("🥽 U3DWebGLCursorManager: VR mode enabled - cursor lock management suspended");
             }
             else if (!enabled && wasInVR)
             {
                 // Exiting VR - restore cursor lock for FPS controls
                 // Use try-catch as browser state may be unpredictable after VR session
                 TrySetCursorLocked(true);
-
-                Debug.Log("🖱️ U3DWebGLCursorManager: VR mode disabled - cursor lock restored");
             }
         }
 
@@ -249,7 +235,6 @@ namespace U3D
                 // Player clicked back into WebGL window
                 SetEscapedMode(false);
                 TrySetCursorLocked(true); // Resume FPS mode
-                Debug.Log("🎯 WebGL Window Regained Focus - Resuming FPS controls");
             }
         }
 

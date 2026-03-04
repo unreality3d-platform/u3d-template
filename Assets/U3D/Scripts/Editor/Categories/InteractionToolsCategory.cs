@@ -23,26 +23,26 @@ namespace U3D.Editor
         public InteractionToolsCategory()
         {
             tools = new List<CreatorTool>
-            {
-                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
-                new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
-                new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
-                new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
-                new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
-                new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
-                new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
-                new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => Debug.Log("Applied Swimmable"), true),
-                new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => Debug.Log("Applied Seat"), true),
-                new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => Debug.Log("Applied Rideable"), true),
-                new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => Debug.Log("Applied Steerable"), true),
-                new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => Debug.Log("Applied 1x Trigger"), true),
-                new CreatorTool("🚧 Make Toggle", "Switch between two states", () => Debug.Log("Applied Toggle"), true),
-                new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => Debug.Log("Applied Random"), true),
-                new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => Debug.Log("Applied Mutually Exclusive"), true),
-                new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => Debug.Log("Applied Object Destroy Trigger"), true),
-                new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => Debug.Log("Applied Object Reset Trigger"), true),
-                new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => Debug.Log("Applied Player Reset Trigger"), true)
-            };
+    {
+        new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
+        new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+        new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
+        new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
+        new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
+        new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
+        new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
+        new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
+        new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
+        new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
+        new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
+        new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => { }, true),
+        new CreatorTool("🚧 Make Toggle", "Switch between two states", () => { }, true),
+        new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
+        new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
+        new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
+        new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => { }, true),
+        new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true)
+    };
         }
 
         public List<CreatorTool> GetTools() => tools;
@@ -141,7 +141,7 @@ namespace U3D.Editor
             }
         }
 
-        // FIXED: Unified NetworkObject configuration for Shared Mode
+        // Unified NetworkObject configuration for Shared Mode
         private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
         {
             var so = new SerializedObject(networkObject);
@@ -168,8 +168,6 @@ namespace U3D.Editor
             }
 
             so.ApplyModifiedProperties();
-
-            Debug.Log($"Configured NetworkObject for Shared Mode: AllowOverride=true, DestroyOnLeave=false, MasterClient=false");
         }
 
         private static void ApplyGrabbable()
@@ -202,7 +200,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Grabbable to {selected.name}");
         }
 
         private static void ApplyThrowable()
@@ -277,7 +274,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Throwable to {selected.name}");
         }
 
         private static void ApplyKickable()
@@ -349,10 +345,9 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Kickable to {selected.name}");
         }
 
-        // FIXED: Consistent NetworkRigidbody3D configuration for Shared Mode
+        // Consistent NetworkRigidbody3D configuration for Shared Mode
         private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
         {
             var so = new SerializedObject(networkRigidbody);
@@ -386,8 +381,6 @@ namespace U3D.Editor
             }
 
             so.ApplyModifiedProperties();
-
-            Debug.Log("Configured NetworkRigidbody3D for Shared Mode: SyncParent=false, SyncMode=SyncRigidbody, InterpolationTarget=null");
         }
 
         private static void ConfigureNetworkRigidbody3DViaReflection(Component networkRigidbody)
@@ -422,8 +415,6 @@ namespace U3D.Editor
             }
 
             so.ApplyModifiedProperties();
-
-            Debug.Log("Configured NetworkRigidbody3D via reflection for Shared Mode");
         }
 
         /// <summary>
@@ -445,7 +436,6 @@ namespace U3D.Editor
             {
                 layerProp.stringValue = U3DClimbable.CLIMBABLE_LAYER_NAME;
                 tagManager.ApplyModifiedProperties();
-                Debug.Log($"Registered layer {U3DClimbable.CLIMBABLE_LAYER}: '{U3DClimbable.CLIMBABLE_LAYER_NAME}'");
             }
             else if (layerProp.stringValue != U3DClimbable.CLIMBABLE_LAYER_NAME)
             {
@@ -498,7 +488,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Climbable to {selected.name} (layer set to {U3DClimbable.CLIMBABLE_LAYER_NAME})");
         }
 
         private static void ApplyEnterTrigger()
@@ -533,7 +522,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Enter Trigger to {selected.name}");
         }
 
         private static void ApplyExitTrigger()
@@ -568,7 +556,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Exit Trigger to {selected.name}");
         }
 
         private static void ApplyParentTrigger()
@@ -603,7 +590,6 @@ namespace U3D.Editor
             }
 
             EditorUtility.SetDirty(selected);
-            Debug.Log($"Applied Parent Trigger to {selected.name}");
         }
     }
 }

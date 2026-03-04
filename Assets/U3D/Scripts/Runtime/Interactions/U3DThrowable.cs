@@ -7,7 +7,7 @@ using System.Collections;
 namespace U3D
 {
     /// <summary>
-    /// FIXED: Proper physics state management that works with NetworkRigidbody3D
+    /// Proper physics state management that works with NetworkRigidbody3D
     /// Eliminates conflicts with Fusion 2's automatic interpolation system
     /// Handles authority-based physics control for Shared Mode
     /// Enhanced with remappable interaction keys using Unity Input System
@@ -113,11 +113,6 @@ namespace U3D
                 enabled = false;
                 return;
             }
-
-            if (!isNetworked)
-            {
-                Debug.Log($"U3DThrowable on '{name}' running in non-networked mode");
-            }
         }
 
         public override void Spawned()
@@ -149,7 +144,7 @@ namespace U3D
             // Start world bounds monitoring
             StartBoundsMonitoring();
 
-            // FIXED: Subscribe to grabbable events AFTER all components are initialized
+            // Subscribe to grabbable events AFTER all components are initialized
             if (grabbable != null)
             {
                 grabbable.OnReleased.AddListener(OnObjectReleased);
@@ -269,7 +264,7 @@ namespace U3D
             }
         }
 
-        // FIXED: Proper network state synchronization
+        // Proper network state synchronization
         public override void Render()
         {
             if (!isNetworked) return;
@@ -293,7 +288,7 @@ namespace U3D
             }
         }
 
-        // FIXED: Authority-aware physics state management
+        // Authority-aware physics state management
         private void SetPhysicsState(PhysicsState newState)
         {
             currentPhysicsState = newState;
@@ -315,7 +310,7 @@ namespace U3D
                 case PhysicsState.Sleeping:
                 case PhysicsState.Grabbed:
                 case PhysicsState.Resetting:
-                    // FIXED: Only clear velocities if not kinematic to avoid Unity warnings
+                    // Only clear velocities if not kinematic to avoid Unity warnings
                     if (!rb.isKinematic)
                     {
                         rb.linearVelocity = Vector3.zero;
@@ -535,7 +530,7 @@ namespace U3D
             }
         }
 
-        // FIXED: Use Fusion's FixedUpdateNetwork for networked sleep checking
+        // Use Fusion's FixedUpdateNetwork for networked sleep checking
         public override void FixedUpdateNetwork()
         {
             if (!isNetworked || !Object.HasStateAuthority) return;
@@ -569,7 +564,7 @@ namespace U3D
         }
 
         /// <summary>
-        /// FIXED: Returns object to sleep state while ensuring it remains grabbable
+        /// Returns object to sleep state while ensuring it remains grabbable
         /// </summary>
         private void ReturnToGrabbableSleepState()
         {

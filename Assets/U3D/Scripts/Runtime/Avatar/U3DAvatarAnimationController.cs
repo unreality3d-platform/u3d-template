@@ -3,7 +3,7 @@ using Fusion;
 using System.Collections.Generic;
 
 /// <summary>
-/// FIXED: Unity 6 + WebGL production-ready animation controller using AnimatorOverrideController only
+/// Unity 6 + WebGL production-ready animation controller using AnimatorOverrideController only
 /// Supports all 8 core animation states with optimized Fusion 2 networking
 /// WebGL compatible - NO runtime AnimatorController generation
 /// </summary>
@@ -24,7 +24,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     [SerializeField] private bool useCachedParameterIds = true;
     [SerializeField] private bool optimizeInactiveStates = true;
 
-    // FIXED: Single networked state struct for ALL 8 core animation states (optimized)
+    // Single networked state struct for ALL 8 core animation states (optimized)
     [Networked] public U3DAnimationState NetworkAnimationState { get; set; }
 
     // Core Components
@@ -49,7 +49,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     public AvatarAnimationSet AnimationSet => animationSet;
 
     /// <summary>
-    /// FIXED: Networked animation state struct containing all 8 core states
+    /// Networked animation state struct containing all 8 core states
     /// </summary>
     [System.Serializable]
     public struct U3DAnimationState : INetworkStruct
@@ -60,7 +60,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         [Networked] public bool IsFlying { get; set; }
         [Networked] public bool IsSwimming { get; set; }
         [Networked] public bool IsGrounded { get; set; }
-        [Networked] public bool IsClimbing { get; set; }  // ADDED: Missing core state
+        [Networked] public bool IsClimbing { get; set; }  // Missing core state
         [Networked] public bool IsJumping { get; set; }
 
         // Movement parameters
@@ -131,7 +131,6 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         InitializeParameterTracking();
 
         isInitialized = true;
-        Debug.Log("✅ U3DAvatarAnimationController initialized with WebGL-safe approach");
         return true;
     }
 
@@ -181,7 +180,6 @@ public class U3DAvatarAnimationController : NetworkBehaviour
                 {
                     clipOverrides[i] = new KeyValuePair<AnimationClip, AnimationClip>(originalClip, replacementClip);
                     successfulOverrides++;
-                    Debug.Log($"✅ Overrode '{originalClip.name}' with '{replacementClip.name}'");
                 }
             }
 
@@ -191,7 +189,6 @@ public class U3DAvatarAnimationController : NetworkBehaviour
             // Assign to animator
             targetAnimator.runtimeAnimatorController = overrideController;
 
-            Debug.Log($"✅ Created AnimatorOverrideController with {successfulOverrides} overrides");
             return true;
         }
         catch (System.Exception e)
@@ -202,14 +199,14 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Intelligent clip name matching for all 8 core states
+    /// Intelligent clip name matching for all 8 core states
     /// </summary>
     private bool DoesClipNameMatch(string originalName, string setClipKey)
     {
         // Direct match
         if (originalName == setClipKey) return true;
 
-        // FIXED: All 8 core animation name patterns
+        // All 8 core animation name patterns
         var patterns = new Dictionary<string, string[]>
         {
             { "idle", new[] { "idle", "standing", "default" } },
@@ -238,24 +235,11 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Validate the assigned animation set for all 8 core states
+    /// Validate the assigned animation set for all 8 core states
     /// </summary>
     private void ValidateAnimationSet()
     {
-        if (animationSet.ValidateAnimations(out List<string> warnings))
-        {
-            Debug.Log($"✅ Animation set validation passed ({animationSet.GetAssignedCoreAnimationCount()}/8 core states assigned)");
-        }
-        else
-        {
-            Debug.LogWarning("⚠️ Animation set validation found issues:");
-            foreach (string warning in warnings)
-            {
-                Debug.LogWarning(warning);
-            }
-        }
-
-        // ADDED: Check for complete core animation coverage
+        // Check for complete core animation coverage
         if (!animationSet.HasAllCoreAnimations())
         {
             Debug.LogWarning($"⚠️ Incomplete core animation set: {animationSet.GetAssignedCoreAnimationCount()}/8 states assigned\n" +
@@ -264,7 +248,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Cache parameter IDs for Unity 6+ performance optimization
+    /// Cache parameter IDs for Unity 6+ performance optimization
     /// </summary>
     private void CacheParameterIds()
     {
@@ -277,12 +261,10 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         {
             cachedParameterIds[parameter.name] = Animator.StringToHash(parameter.name);
         }
-
-        Debug.Log($"✅ Cached {cachedParameterIds.Count} animator parameter IDs (Unity 6+)");
     }
 
     /// <summary>
-    /// FIXED: Initialize parameter value tracking for all 8 core states
+    /// Initialize parameter value tracking for all 8 core states
     /// </summary>
     private void InitializeParameterTracking()
     {
@@ -316,19 +298,19 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Update networked animation parameters for all 8 core states
+    /// Update networked animation parameters for all 8 core states
     /// </summary>
     private void UpdateNetworkedAnimationState()
     {
         var newState = NetworkAnimationState;
 
-        // FIXED: Sync with all available player controller states
+        // Sync with all available player controller states
         newState.IsCrouching = playerController.NetworkIsCrouching;
         newState.IsFlying = playerController.NetworkIsFlying;
         newState.IsGrounded = playerController.IsGrounded;
         newState.IsJumping = playerController.NetworkIsJumping;
 
-        // ADDED: New core states (add these to PlayerController if not present)
+        // New core states (add these to PlayerController if not present)
         newState.IsSwimming = false; // Add this to player controller if swimming is implemented
         newState.IsClimbing = false; // Add this to player controller if climbing is implemented
 
@@ -365,7 +347,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Update animator parameters with priority logic to prevent animation conflicts
+    /// Update animator parameters with priority logic to prevent animation conflicts
     /// </summary>
     private void UpdateAnimatorParameters()
     {
@@ -628,7 +610,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Smooth network parameter interpolation for remote players (all 8 states)
+    /// Smooth network parameter interpolation for remote players (all 8 states)
     /// </summary>
     private void SmoothNetworkParameters()
     {
@@ -727,8 +709,6 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         {
             targetAnimator.SetTrigger(animationName);
         }
-
-        Debug.Log($"🎬 Triggered animation: {animationName}");
     }
 
     /// <summary>
@@ -748,7 +728,6 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         {
             // Recreate override controller with new animation set
             CreateOverrideController();
-            Debug.Log("✅ Updated animation set and recreated override controller");
         }
     }
 
@@ -797,7 +776,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// FIXED: Debug info for all 8 core states
+    /// Debug info for all 8 core states
     /// </summary>
     public Dictionary<string, object> GetCurrentParameterValues()
     {
@@ -837,7 +816,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// ADDED: Get current network animation state for debugging
+    /// Get current network animation state for debugging
     /// </summary>
     public U3DAnimationState GetCurrentNetworkState()
     {
@@ -845,7 +824,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     }
 
     /// <summary>
-    /// ADDED: Check if specific core animation state is active
+    /// Check if specific core animation state is active
     /// </summary>
     public bool IsStateActive(string stateName)
     {

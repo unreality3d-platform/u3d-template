@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System;
 
 /// <summary>
-/// FIXED: Complete ScriptableObject for all 8 core avatar animation states
+/// Complete ScriptableObject for all 8 core avatar animation states
 /// Unity 6+ optimized with performance caching and network-ready parameter mapping
 /// Core States: Idle, Walking, Running, Crouching, Jumping, Flying, Swimming, Climbing
 /// </summary>
@@ -18,7 +18,7 @@ public class AvatarAnimationSet : ScriptableObject
     [SerializeField] private AnimationClip jumpingLoop;
     [SerializeField] private AnimationClip flyingLoop;
     [SerializeField] private AnimationClip swimmingLoop;
-    [SerializeField] private AnimationClip climbingLoop;  // ADDED: Missing core state
+    [SerializeField] private AnimationClip climbingLoop;  // Missing core state
 
     [Header("Animation Transitions")]
     [SerializeField] private float standardTransitionDuration = 0.15f;
@@ -38,7 +38,7 @@ public class AvatarAnimationSet : ScriptableObject
     // Animation clip validation cache
     private HashSet<AnimationClip> _validatedClips = new HashSet<AnimationClip>();
 
-    // FIXED: All 8 core states for Fusion 2 networking
+    // All 8 core states for Fusion 2 networking
     public static readonly string[] StandardParameters = {
         "IsMoving", "IsCrouching", "IsFlying", "IsSwimming", "IsGrounded", "IsClimbing",
         "MoveSpeed", "MoveX", "MoveY", "JumpTrigger"
@@ -93,7 +93,7 @@ public class AvatarAnimationSet : ScriptableObject
         Critical = 3
     }
 
-    // FIXED: All 8 Core Properties (maintaining compatibility)
+    // All 8 Core Properties (maintaining compatibility)
     public AnimationClip IdleAnimation => idleLoop;
     public AnimationClip WalkAnimation => walkingLoop;
     public AnimationClip RunAnimation => runningLoop;
@@ -107,7 +107,7 @@ public class AvatarAnimationSet : ScriptableObject
     public AnimationClip FlyUpAnimation => flyingLoop;
     public AnimationClip FlyDownAnimation => flyingLoop;
 
-    // FIXED: New core state properties
+    // New core state properties
     public AnimationClip SwimIdleAnimation => swimmingLoop;
     public AnimationClip SwimForwardAnimation => swimmingLoop;
     public AnimationClip ClimbIdleAnimation => climbingLoop;
@@ -167,11 +167,10 @@ public class AvatarAnimationSet : ScriptableObject
         }
 
         _parametersCached = true;
-        Debug.Log($"✅ Cached {_cachedParameterIds.Count} animation parameter IDs for performance");
     }
 
     /// <summary>
-    /// FIXED: Validate all 8 core animation clips for humanoid compatibility
+    /// Validate all 8 core animation clips for humanoid compatibility
     /// </summary>
     public bool ValidateAnimations(out List<string> warnings)
     {
@@ -234,11 +233,7 @@ public class AvatarAnimationSet : ScriptableObject
         }
 
         // Check for humanoid compatibility if possible
-        if (clip.humanMotion)
-        {
-            Debug.Log($"✅ '{clipName}' is humanoid-compatible");
-        }
-        else
+        if (!clip.humanMotion)
         {
             warnings.Add($"⚠️ Animation '{clipName}' may not be humanoid-compatible");
         }
@@ -248,7 +243,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// FIXED: Get animation clip by state name (supports all 8 core states)
+    /// Get animation clip by state name (supports all 8 core states)
     /// </summary>
     public AnimationClip GetAnimationClip(string stateName)
     {
@@ -270,7 +265,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// FIXED: Get all 8 core animation clips for runtime controller generation
+    /// Get all 8 core animation clips for runtime controller generation
     /// </summary>
     public Dictionary<string, AnimationClip> GetAllAnimationClips()
     {
@@ -336,7 +331,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// ADDED: Check if all 8 core animations are assigned
+    /// Check if all 8 core animations are assigned
     /// </summary>
     public bool HasAllCoreAnimations()
     {
@@ -346,7 +341,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// ADDED: Get count of assigned core animations
+    /// Get count of assigned core animations
     /// </summary>
     public int GetAssignedCoreAnimationCount()
     {
@@ -378,7 +373,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// ADDED: Flexible validation - allows partial animation sets for creators
+    /// Flexible validation - allows partial animation sets for creators
     /// </summary>
     public bool HasMinimumRequiredAnimations()
     {
@@ -387,7 +382,7 @@ public class AvatarAnimationSet : ScriptableObject
     }
 
     /// <summary>
-    /// ADDED: Get validation status for UI feedback
+    /// Get validation status for UI feedback
     /// </summary>
     public string GetValidationStatus()
     {

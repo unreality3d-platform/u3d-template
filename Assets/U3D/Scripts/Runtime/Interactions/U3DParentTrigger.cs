@@ -10,7 +10,7 @@ namespace U3D
     /// Automatically parents/unparents player when entering/exiting trigger
     /// Supports both networked and non-networked modes with proper U3D player detection
     /// Based on Unity 6.1+ standards with Fusion 2 compatibility
-    /// ENHANCED: Includes retry logic and proper player detection
+    /// Includes retry logic and proper player detection
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DParentTrigger : NetworkBehaviour

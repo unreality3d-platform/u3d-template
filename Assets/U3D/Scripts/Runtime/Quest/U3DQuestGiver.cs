@@ -19,7 +19,7 @@ namespace U3D
 
     /// <summary>
     /// NPC or object that gives quests to players.
-    /// FIXED: UnityEvent field names updated to avoid interface method conflicts
+    /// UnityEvent field names updated to avoid interface method conflicts
     /// </summary>
     [AddComponentMenu("U3D/Quest System/U3D Quest Giver")]
     public partial class U3DQuestGiver : MonoBehaviour
@@ -42,7 +42,7 @@ namespace U3D
         [SerializeField] private bool autoInteract = false;
 
         [Header("Interaction Choices")]
-        // ADDED: Mutually exclusive interaction mode system
+        // Mutually exclusive interaction mode system
         [Tooltip("Choose the interaction style for this quest giver")]
         [SerializeField] private U3DInteractionMode interactionMode = U3DInteractionMode.Single;
 
@@ -115,11 +115,11 @@ namespace U3D
 
         private void Awake()
         {
-            // MODIFIED: Updated to use new mutually exclusive system
+            // Updated to use new mutually exclusive system
             ValidateInteractionChoices();
         }
 
-        // ADDED: Validation for new choice system
+        // Validation for new choice system
         private void ValidateInteractionChoices()
         {
             switch (interactionMode)
@@ -157,7 +157,7 @@ namespace U3D
                 {
                     playerInRange = nowInRange;
 
-                    // PRESERVED: Your working proximity detection
+                    // Your working proximity detection
                     if (dialogCanvas == null && playerInRange && CanGiveQuest())
                         CreateDefaultDialogUI();
 
@@ -197,12 +197,12 @@ namespace U3D
 
         private void HandleInput()
         {
-            // MODIFIED: Updated to use new choice system
+            // Updated to use new choice system
             List<U3DInteractionChoice> availableChoices = GetAvailableChoices();
 
             foreach (U3DInteractionChoice choice in availableChoices)
             {
-                if (choice.WasKeyPressed()) // PRESERVED: Your working Input System
+                if (choice.WasKeyPressed()) // Your working Input System
                 {
                     HandleChoiceSelected(choice);
                     break;
@@ -227,8 +227,6 @@ namespace U3D
                     CloseDialog();
                     break;
             }
-
-            Debug.Log($"Choice selected: {choice.choiceLabel} [{choice.choiceKey}]");
         }
 
         public void StartInteraction()
@@ -279,18 +277,16 @@ namespace U3D
             }
             choiceDisplays.Clear();
 
-            // MODIFIED: Updated to use new choice system
+            // Updated to use new choice system
             List<U3DInteractionChoice> availableChoices = GetAvailableChoices();
 
             foreach (U3DInteractionChoice choice in availableChoices)
             {
                 CreateChoiceDisplay(choice);
             }
-
-            Debug.Log($"Updated choices display with {availableChoices.Count} choices");
         }
 
-        // MODIFIED: Updated to use mutually exclusive system
+        // Updated to use mutually exclusive system
         private List<U3DInteractionChoice> GetAvailableChoices()
         {
             List<U3DInteractionChoice> available = new List<U3DInteractionChoice>();
@@ -345,12 +341,12 @@ namespace U3D
             choiceDisplays.Add(choiceText);
         }
 
-        // FIXED: Quest acceptance to properly connect with QuestManager
+        // Quest acceptance to properly connect with QuestManager
         private void AcceptQuest()
         {
             if (questToGive != null && !questToGive.IsActive && !questToGive.IsCompleted)
             {
-                // CRITICAL FIX: Use QuestManager.StartQuest() to ensure UI creation
+                // CRITICAL: Use QuestManager.StartQuest() to ensure UI creation
                 U3DQuestManager questManager = U3DQuestManager.Instance;
                 if (questManager != null)
                 {
@@ -368,7 +364,6 @@ namespace U3D
 
                 UpdateVisualState();
                 CloseDialog();
-                Debug.Log($"Quest '{questToGive.questTitle}' accepted and started!");
             }
         }
 
@@ -389,7 +384,7 @@ namespace U3D
             return true; // Can give quest
         }
 
-        // FIXED: CreateDefaultDialogUI to use WorldSpace instead of ScreenSpace
+        // CreateDefaultDialogUI to use WorldSpace instead of ScreenSpace
         private void CreateDefaultDialogUI()
         {
             GameObject canvasObj = new GameObject("QuestGiver_Dialog");
@@ -400,10 +395,9 @@ namespace U3D
             dialogCanvas.worldCamera = Camera.main; // ADDED for WorldSpace
             dialogCanvas.sortingOrder = 100;
 
-            // REMOVED CanvasScaler - not needed for WorldSpace
             canvasObj.AddComponent<GraphicRaycaster>();
 
-            // ADDED: Position canvas using dialogPositionTransform if available, otherwise above quest giver
+            // Position canvas using dialogPositionTransform if available, otherwise above quest giver
             Transform dialogTransform = transform.Find("Dialog Position");
             if (dialogTransform != null)
             {
@@ -476,11 +470,9 @@ namespace U3D
 
             choicesParent = choicesObj.transform;
 
-            // PRESERVED: Keep dialog visible for testing and immediate choice population
+            // Keep dialog visible for testing and immediate choice population
             dialogCanvas.gameObject.SetActive(true);
-            UpdateChoicesDisplay(); // PRESERVED: Immediately creates the choice displays
-
-            Debug.Log($"Created default dialog UI for {giverName} using WorldSpace canvas - choices parent assigned: {choicesParent != null}");
+            UpdateChoicesDisplay(); // Immediately creates the choice displays
         }
 
         [ContextMenu("Reset Quest Giver")]

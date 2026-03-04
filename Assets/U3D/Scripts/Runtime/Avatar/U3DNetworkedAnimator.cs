@@ -68,7 +68,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         if (animatorController != null)
         {
             targetAnimator.runtimeAnimatorController = animatorController;
-            Debug.Log($"✅ Animation controller applied: {animatorController.name}");
         }
         else
         {
@@ -83,12 +82,10 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         CacheParameterIDs();
 
         IsInitialized = true;
-        Debug.Log("✅ U3DNetworkedAnimator initialized successfully");
 
         // CRITICAL: Apply pending avatar animator if one was set before initialization
         if (pendingAvatarAnimator != null)
         {
-            Debug.Log("⚡ Applying pending avatar animator after initialization");
             SetAvatarAnimator(pendingAvatarAnimator);
             pendingAvatarAnimator = null;
         }
@@ -110,8 +107,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         hashMoveX = Animator.StringToHash("MoveX");
         hashMoveY = Animator.StringToHash("MoveY");
         hashJumpTrigger = Animator.StringToHash("JumpTrigger");
-
-        Debug.Log("✅ Animation parameter IDs cached");
     }
 
     /// <summary>
@@ -119,26 +114,10 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     /// </summary>
     public override void FixedUpdateNetwork()
     {
-        // FUSION 2 REQUIREMENT: Only State Authority can modify animator parameters
-        if (!Object.HasStateAuthority) 
-        {
-            if (debugAnimationStates) Debug.Log("⚠️ No State Authority - skipping animation updates");
-            return;
-        }
-        
-        if (!IsInitialized) 
-        {
-            if (debugAnimationStates) Debug.Log("⚠️ Not initialized - skipping animation updates");
-            return;
-        }
+        if (!Object.HasStateAuthority) return;
+        if (!IsInitialized) return;
+        if (targetAnimator == null) return;
 
-        if (targetAnimator == null)
-        {
-            if (debugAnimationStates) Debug.Log("⚠️ No target animator - skipping animation updates");
-            return;
-        }
-
-        if (debugAnimationStates) Debug.Log("🎯 FixedUpdateNetwork running - updating parameters");
         UpdateAnimationParameters();
     }
 
@@ -195,13 +174,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
             networkAnimator.SetTrigger("JumpTrigger");
         }
 
-        // Debug output
-        if (debugAnimationStates)
-        {
-            Debug.Log($"🎬 AUTHORITY Animation - Moving:{isMoving} Speed:{moveSpeed:F2} Crouch:{isCrouching} Jump:{isJumping} Flying:{isFlying} Ground:{isGrounded}");
-            Debug.Log($"📊 Active Animator: {(networkAnimator.Animator?.name ?? "NULL")} - Controller: {(networkAnimator.Animator?.runtimeAnimatorController?.name ?? "NULL")}");
-        }
-
         // Store for next frame
         lastIsJumping = isJumping;
     }
@@ -216,7 +188,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
 
         if (!IsInitialized)
         {
-            Debug.LogWarning("⏳ Avatar animator set before initialization - storing for later");
             pendingAvatarAnimator = avatarAnimator;
             return;
         }
@@ -225,14 +196,12 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         if (animatorController != null)
         {
             avatarAnimator.runtimeAnimatorController = animatorController;
-            Debug.Log($"✅ Controller applied to avatar animator: {animatorController.name}");
         }
 
         // IMPORTANT: Remove the temporary animator FIRST
         Animator tempAnimator = GetComponent<Animator>();
         if (tempAnimator != null)
         {
-            Debug.Log("🗑️ Removing temporary animator before connecting avatar");
             DestroyImmediate(tempAnimator);
         }
 
@@ -242,7 +211,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         // VERIFY the connection worked
         if (networkAnimator.Animator == avatarAnimator)
         {
-            Debug.Log($"✅ NetworkMecanimAnimator successfully connected to: {avatarAnimator.name}");
         }
         else
         {
@@ -251,8 +219,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         
         // Update our reference
         targetAnimator = avatarAnimator;
-
-        Debug.Log("✅ Avatar animator connected to NetworkMecanimAnimator");
     }
 
     /// <summary>

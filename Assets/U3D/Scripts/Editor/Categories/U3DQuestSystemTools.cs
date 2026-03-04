@@ -8,7 +8,7 @@ namespace U3D.Editor
 {
     /// <summary>
     /// Editor tools for creating quest system components with Unity 6+ default setup
-    /// UPDATED: Now includes automatic interaction choice setup
+    /// Now includes automatic interaction choice setup
     /// </summary>
     public static class U3DQuestSystemTools
     {
@@ -181,7 +181,7 @@ namespace U3D.Editor
             visual.transform.SetParent(giverObj.transform);
             visual.transform.localPosition = Vector3.zero;
 
-            // UPDATED: Use URP Lit shader with magenta color
+            // Use URP Lit shader with magenta color
             Renderer renderer = visual.GetComponent<Renderer>();
             Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             material.color = Color.magenta;

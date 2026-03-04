@@ -15,20 +15,19 @@ namespace U3D.Editor
 
         private List<CreatorTool> tools;
 
-        // NEW: Optimistic approach - assume PayPal is configured unless proven otherwise
         private bool paypalConfigurationChecked = false;
-        private bool paypalConfigured = true; // Optimistic default
+        private bool paypalConfigured = true;
 
         public MonetizationToolsCategory()
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Add Purchase Button", "Single item PayPal purchase with dual transaction (95% to creator)", CreatePurchaseButton, false),
-                new CreatorTool("🟢 Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false),
-                new CreatorTool("🟢 Add Scene Gate", "Scene entry payment gate with PayPal dual transaction", CreateSceneGate, false),
-                new CreatorTool("🟢 Add Shop Object", "3D world PayPal shop with multiple items and dual transactions", CreateShopObject, false),
-                new CreatorTool("🟢 Add Event Gate", "Timed event access with PayPal dual transaction", CreateEventGate, false),
-                new CreatorTool("🟢 Add Screen Shop", "Screen overlay PayPal shop interface with dual transactions", CreateScreenShop, false)
+                new CreatorTool("Add Purchase Button", "Single item PayPal purchase with dual transaction (95% to creator)", CreatePurchaseButton, false),
+                new CreatorTool("Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false),
+                new CreatorTool("Add Scene Gate", "Scene entry payment gate with PayPal dual transaction", CreateSceneGate, false),
+                new CreatorTool("Add Shop Object", "3D world PayPal shop with multiple items and dual transactions", CreateShopObject, false),
+                new CreatorTool("Add Event Gate", "Timed event access with PayPal dual transaction", CreateEventGate, false),
+                new CreatorTool("Add Screen Shop", "Screen overlay PayPal shop interface with dual transactions", CreateScreenShop, false)
             };
         }
 
@@ -38,13 +37,11 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("Monetization Tools", EditorStyles.boldLabel);
 
-            // NEW: Only check PayPal configuration if we haven't already checked
             if (!paypalConfigurationChecked)
             {
                 CheckPayPalConfiguration();
             }
 
-            // NEW: Optimistically show configured state unless we know it's not configured
             if (paypalConfigured)
             {
                 DrawConfiguredState();
@@ -56,7 +53,6 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Draw tools with conditional enabling
             foreach (var tool in tools)
             {
                 if (!paypalConfigured)
@@ -83,13 +79,10 @@ namespace U3D.Editor
 
         private void CheckPayPalConfiguration()
         {
-            // CRITICAL FIX: Check all possible sources in priority order
             string paypalEmail = "";
 
-            // 1. First check EditorPrefs (most reliable for editor)
             paypalEmail = EditorPrefs.GetString("U3D_PayPalEmail", "");
 
-            // 2. If not found, check ScriptableObject
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
@@ -99,7 +92,6 @@ namespace U3D.Editor
                 }
             }
 
-            // 3. Check U3DAuthenticator (method exists in your code)
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 paypalEmail = U3DAuthenticator.GetPayPalEmail();
@@ -107,29 +99,10 @@ namespace U3D.Editor
 
             paypalConfigured = !string.IsNullOrEmpty(paypalEmail);
             paypalConfigurationChecked = true;
-
-            // Debug log to verify detection
-            if (paypalConfigured)
-            {
-                Debug.Log($"✅ PayPal configured: {paypalEmail}");
-            }
-            else
-            {
-                Debug.Log("❌ PayPal email not found in any storage location");
-
-                // DIAGNOSTIC: List what we checked
-                Debug.Log("🔍 PayPal email search results:");
-                Debug.Log($"   EditorPrefs['U3D_PayPalEmail']: '{EditorPrefs.GetString("U3D_PayPalEmail", "")}'");
-                Debug.Log($"   U3DAuthenticator.GetPayPalEmail(): '{U3DAuthenticator.GetPayPalEmail()}'");
-
-                var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
-                Debug.Log($"   ScriptableObject: {(creatorData != null ? $"Found, email='{creatorData.PayPalEmail}'" : "Not found")}");
-            }
         }
 
         private void DrawConfiguredState()
         {
-            // UNIFIED: Get PayPal email from centralized source
             string paypalEmail = U3DAuthenticator.GetPayPalEmail();
 
             EditorGUILayout.HelpBox(
@@ -163,7 +136,6 @@ namespace U3D.Editor
             EditorGUILayout.Space(10);
         }
 
-        // NEW: Method to force recheck (called when PayPal setup changes)
         public void RefreshPayPalConfiguration()
         {
             paypalConfigurationChecked = false;
@@ -174,7 +146,6 @@ namespace U3D.Editor
 
         private void CreatePurchaseButton()
         {
-            // NEW: Only validate PayPal setup when actually creating tools (optimistic approach)
             if (!ValidatePayPalSetupOnDemand()) return;
 
             GameObject buttonObject = CreatePaymentUI("Purchase Button", CreatePurchaseButtonUI);
@@ -183,20 +154,17 @@ namespace U3D.Editor
             dualTransaction.SetItemDetails("Premium Content", "Creator content purchase", 5.00f);
             dualTransaction.SetVariableAmount(false);
 
-            // Auto-assign UI references
             AssignUIReferences(buttonObject, dualTransaction);
 
-            LogToolCreation("Purchase Button", "Single-purchase payment button with 95%/5% split");
+            NotifyToolCreated("Purchase Button");
         }
 
         private void CreateTipJar()
         {
             if (!ValidatePayPalSetupOnDemand()) return;
 
-            // FIXED: Always create new Canvas for each tool
             Canvas canvas = CreateNewWorldSpaceCanvas("Tip Jar Canvas");
 
-            // COMPLIANT: Use DefaultControls for panel creation
             var uiResources = new DefaultControls.Resources();
             GameObject container = DefaultControls.CreatePanel(uiResources);
             container.name = "Tip Jar";
@@ -208,13 +176,10 @@ namespace U3D.Editor
             containerRect.sizeDelta = new Vector2(300, 200);
             containerRect.anchoredPosition = Vector2.zero;
 
-            // COMPLIANT: Use existing CreateCleanHeaderUI method
             CreateCleanHeaderUI(container, "Tip Jar");
 
-            // COMPLIANT: Initialize TMP resources for text-based elements
             var tmpResources = new TMP_DefaultControls.Resources();
 
-            // Create amount input field using TMP_DefaultControls (COMPLIANT)
             GameObject inputField = TMP_DefaultControls.CreateInputField(tmpResources);
             inputField.name = "AmountInput";
             inputField.transform.SetParent(container.transform, false);
@@ -229,15 +194,13 @@ namespace U3D.Editor
             inputComponent.text = "5.00";
             inputComponent.contentType = TMP_InputField.ContentType.DecimalNumber;
 
-            // COMPLIANT: Add placeholder text with proper color standards
             var placeholder = inputComponent.placeholder as TextMeshProUGUI;
             if (placeholder != null)
             {
                 placeholder.text = "Enter tip amount ($1.00 - $100.00)";
-                placeholder.color = new Color32(150, 150, 150, 128); // Lighter than #323232 for placeholder
+                placeholder.color = new Color32(150, 150, 150, 128);
             }
 
-            // COMPLIANT: Create tip button using TMP_DefaultControls
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
             button.name = "TipButton";
             button.transform.SetParent(container.transform, false);
@@ -248,36 +211,30 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            // COMPLIANT: Update button text with standard #323232 color
             var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)
             {
                 buttonText.text = "Send Tip";
                 buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232 - COMPLIANT
-                                                                 // Button text is center-aligned by default from TMP_DefaultControls - COMPLIANT
+                buttonText.color = new Color32(50, 50, 50, 255);
             }
 
-            // COMPLIANT: Use existing CreateCleanStatusText method
             CreateCleanStatusText(container);
 
             var dualTransaction = container.AddComponent<PayPalDualTransaction>();
             dualTransaction.SetItemDetails("Creator Tip", "Support this creator's work", 5.00f);
             dualTransaction.SetVariableAmount(true, 1.00f, 100.00f);
 
-            // COMPLIANT: Use existing AssignUIReferences method
             AssignUIReferences(container, dualTransaction);
 
-            // FIXED: Select the Canvas (top-level parent) instead of container
             Selection.activeGameObject = canvas.gameObject;
-            LogToolCreation("Tip Jar", "Variable donation system with 95%/5% split");
+            NotifyToolCreated("Tip Jar");
         }
 
         private void CreateSceneGate()
         {
             if (!ValidatePayPalSetupOnDemand()) return;
 
-            // Use screen overlay UI instead of world space
             GameObject gateObject = CreateScreenOverlayUI("Scene Gate", CreateSceneGateOverlayUI);
 
             var dualTransaction = gateObject.AddComponent<PayPalDualTransaction>();
@@ -287,10 +244,9 @@ namespace U3D.Editor
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(gateController.OpenGate);
 
-            // Auto-assign UI references
             AssignUIReferences(gateObject, dualTransaction);
 
-            LogToolCreation("Scene Gate", "Full-screen access gate that blocks gameplay until payment");
+            NotifyToolCreated("Scene Gate");
         }
 
         private void CreateSceneGateOverlayUI(GameObject container)
@@ -298,23 +254,20 @@ namespace U3D.Editor
             var tmpResources = new TMP_DefaultControls.Resources();
             var uiResources = new DefaultControls.Resources();
 
-            // Make the container cover the full screen
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = Vector2.zero;
             containerRect.anchorMax = Vector2.one;
             containerRect.offsetMin = Vector2.zero;
             containerRect.offsetMax = Vector2.zero;
 
-            // Add a semi-transparent background to block interaction
             var containerImage = container.GetComponent<Image>();
             if (containerImage == null)
             {
                 containerImage = container.AddComponent<Image>();
             }
-            containerImage.color = new Color(0, 0, 0, 0.8f); // Dark overlay
-            containerImage.raycastTarget = true; // Block clicks
+            containerImage.color = new Color(0, 0, 0, 0.8f);
+            containerImage.raycastTarget = true;
 
-            // Create centered content panel
             GameObject contentPanel = DefaultControls.CreatePanel(uiResources);
             contentPanel.name = "ContentPanel";
             contentPanel.transform.SetParent(container.transform, false);
@@ -325,17 +278,14 @@ namespace U3D.Editor
             contentRect.sizeDelta = new Vector2(400, 300);
             contentRect.anchoredPosition = Vector2.zero;
 
-            // Style the content panel
             var contentImage = contentPanel.GetComponent<Image>();
             if (contentImage != null)
             {
-                contentImage.color = new Color(1f, 1f, 1f, 0.95f); // White background
+                contentImage.color = new Color(1f, 1f, 1f, 0.95f);
             }
 
-            // Create header
             CreateCleanHeaderUI(contentPanel, "Scene Access Required");
 
-            // Create main message text
             GameObject messageText = TMP_DefaultControls.CreateText(tmpResources);
             messageText.name = "MessageText";
             messageText.transform.SetParent(contentPanel.transform, false);
@@ -351,12 +301,11 @@ namespace U3D.Editor
             {
                 messageTMP.text = "This premium content requires payment to access.\n\nSupport the creator and unlock this experience!";
                 messageTMP.fontSize = 14;
-                messageTMP.color = new Color32(50, 50, 50, 255); // #323232
+                messageTMP.color = new Color32(50, 50, 50, 255);
                 messageTMP.alignment = TextAlignmentOptions.Center;
                 messageTMP.raycastTarget = false;
             }
 
-            // Create unlock button
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
             button.name = "UnlockButton";
             button.transform.SetParent(contentPanel.transform, false);
@@ -372,17 +321,15 @@ namespace U3D.Editor
             {
                 buttonText.text = "Unlock Scene - $3.00";
                 buttonText.fontSize = 16;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
+                buttonText.color = new Color32(50, 50, 50, 255);
             }
 
-            // Style the button
             var buttonImage = button.GetComponent<Image>();
             if (buttonImage != null)
             {
-                buttonImage.color = new Color32(100, 200, 100, 255); // Green button
+                buttonImage.color = new Color32(100, 200, 100, 255);
             }
 
-            // Create status text
             GameObject statusText = TMP_DefaultControls.CreateText(tmpResources);
             statusText.name = "StatusText";
             statusText.transform.SetParent(contentPanel.transform, false);
@@ -398,7 +345,7 @@ namespace U3D.Editor
             {
                 statusTMP.text = "Ready to accept payment (95% Creator, 5% Platform)";
                 statusTMP.fontSize = 10;
-                statusTMP.color = new Color32(50, 50, 50, 255); // #323232
+                statusTMP.color = new Color32(50, 50, 50, 255);
                 statusTMP.alignment = TextAlignmentOptions.Center;
                 statusTMP.raycastTarget = false;
             }
@@ -412,7 +359,7 @@ namespace U3D.Editor
 
             var shopController = shopObject.AddComponent<U3D.ShopController>();
 
-            LogToolCreation("Shop Object", "Multi-item 3D shop with individual dual transactions");
+            NotifyToolCreated("Shop Object");
         }
 
         private void CreateEventGate()
@@ -428,10 +375,9 @@ namespace U3D.Editor
             dualTransaction.SetVariableAmount(false);
             dualTransaction.OnPaymentSuccess.AddListener(eventController.GrantAccess);
 
-            // Auto-assign UI references
             AssignUIReferences(eventObject, dualTransaction);
 
-            LogToolCreation("Event Gate", "Timed event access with payment verification");
+            NotifyToolCreated("Event Gate");
         }
 
         private void CreateScreenShop()
@@ -442,16 +388,13 @@ namespace U3D.Editor
 
             var screenShopController = screenShop.AddComponent<U3D.ScreenShopController>();
 
-            LogToolCreation("Screen Shop", "Overlay shop interface with dual transaction support");
+            NotifyToolCreated("Screen Shop");
         }
 
         #endregion
 
         #region UI Creation Helpers
 
-        /// <summary>
-        /// Creates a new WorldSpace Canvas for monetization tools - never reuses existing Canvas
-        /// </summary>
         private Canvas CreateNewWorldSpaceCanvas(string canvasName)
         {
             var canvasObject = new GameObject(canvasName);
@@ -464,9 +407,6 @@ namespace U3D.Editor
             return canvas;
         }
 
-        /// <summary>
-        /// Creates a new ScreenSpaceOverlay Canvas for overlay tools
-        /// </summary>
         private Canvas CreateNewOverlayCanvas(string canvasName)
         {
             var canvasObject = new GameObject(canvasName);
@@ -480,7 +420,6 @@ namespace U3D.Editor
 
         private GameObject CreatePaymentUI(string name, System.Action<GameObject> customSetup)
         {
-            // FIXED: Always create new Canvas for each tool with descriptive name
             Canvas canvas = CreateNewWorldSpaceCanvas($"{name} Canvas");
 
             var uiResources = new DefaultControls.Resources();
@@ -498,14 +437,12 @@ namespace U3D.Editor
 
             customSetup?.Invoke(container);
 
-            // FIXED: Select the Canvas (top-level parent) instead of container
             Selection.activeGameObject = canvas.gameObject;
             return container;
         }
 
         private GameObject CreateScreenOverlayUI(string name, System.Action<GameObject> customSetup)
         {
-            // FIXED: Always create new ScreenSpaceOverlay Canvas with descriptive name
             Canvas canvas = CreateNewOverlayCanvas($"{name} Canvas");
 
             var uiResources = new DefaultControls.Resources();
@@ -522,7 +459,6 @@ namespace U3D.Editor
             CreateCleanHeaderUI(container, name);
             customSetup?.Invoke(container);
 
-            // FIXED: Select the Canvas (top-level parent) instead of container
             Selection.activeGameObject = canvas.gameObject;
             return container;
         }
@@ -541,7 +477,6 @@ namespace U3D.Editor
             headerRect.offsetMin = Vector2.zero;
             headerRect.offsetMax = Vector2.zero;
 
-            // Create title text using TMP_DefaultControls
             var tmpResources = new TMP_DefaultControls.Resources();
             GameObject titleText = TMP_DefaultControls.CreateText(tmpResources);
             titleText.name = "Title";
@@ -553,14 +488,13 @@ namespace U3D.Editor
             titleRect.offsetMin = new Vector2(10, 0);
             titleRect.offsetMax = new Vector2(-10, 0);
 
-            // Text is already TextMeshPro from TMP_DefaultControls
             var titleTMP = titleText.GetComponent<TextMeshProUGUI>();
             if (titleTMP != null)
             {
                 titleTMP.text = title;
                 titleTMP.fontSize = 16;
-                titleTMP.color = new Color32(50, 50, 50, 255); // #323232
-                titleTMP.alignment = TextAlignmentOptions.Center; // Titles are center-aligned
+                titleTMP.color = new Color32(50, 50, 50, 255);
+                titleTMP.alignment = TextAlignmentOptions.Center;
                 titleTMP.raycastTarget = false;
             }
         }
@@ -579,13 +513,12 @@ namespace U3D.Editor
             statusRect.offsetMin = new Vector2(10, 5);
             statusRect.offsetMax = new Vector2(-10, -5);
 
-            // Text is already TextMeshPro from TMP_DefaultControls
             var statusTMP = statusText.GetComponent<TextMeshProUGUI>();
             if (statusTMP != null)
             {
                 statusTMP.text = "Ready to accept payments";
                 statusTMP.fontSize = 10;
-                statusTMP.color = new Color32(50, 50, 50, 255); // #323232
+                statusTMP.color = new Color32(50, 50, 50, 255);
                 statusTMP.raycastTarget = false;
             }
         }
@@ -594,7 +527,6 @@ namespace U3D.Editor
         {
             var tmpResources = new TMP_DefaultControls.Resources();
 
-            // Create price text using TMP_DefaultControls
             GameObject priceText = TMP_DefaultControls.CreateText(tmpResources);
             priceText.name = "PriceText";
             priceText.transform.SetParent(container.transform, false);
@@ -610,12 +542,11 @@ namespace U3D.Editor
             {
                 priceTMP.text = "$5.00";
                 priceTMP.fontSize = 18;
-                priceTMP.color = new Color32(50, 50, 50, 255); // #323232
+                priceTMP.color = new Color32(50, 50, 50, 255);
                 priceTMP.alignment = TextAlignmentOptions.Center;
                 priceTMP.raycastTarget = false;
             }
 
-            // Create payment button using TMP_DefaultControls
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
             button.name = "PaymentButton";
             button.transform.SetParent(container.transform, false);
@@ -631,7 +562,7 @@ namespace U3D.Editor
             {
                 buttonText.text = "Purchase";
                 buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
+                buttonText.color = new Color32(50, 50, 50, 255);
             }
 
             CreateCleanStatusText(container);
@@ -641,7 +572,6 @@ namespace U3D.Editor
         {
             var tmpResources = new TMP_DefaultControls.Resources();
 
-            // Create description text using TMP_DefaultControls
             GameObject descText = TMP_DefaultControls.CreateText(tmpResources);
             descText.name = "DescriptionText";
             descText.transform.SetParent(container.transform, false);
@@ -657,12 +587,11 @@ namespace U3D.Editor
             {
                 descTMP.text = "Premium Scene Access Required\nPay to unlock this area";
                 descTMP.fontSize = 12;
-                descTMP.color = new Color32(50, 50, 50, 255); // #323232
+                descTMP.color = new Color32(50, 50, 50, 255);
                 descTMP.alignment = TextAlignmentOptions.Center;
                 descTMP.raycastTarget = false;
             }
 
-            // Create unlock button using TMP_DefaultControls
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
             button.name = "UnlockButton";
             button.transform.SetParent(container.transform, false);
@@ -678,7 +607,7 @@ namespace U3D.Editor
             {
                 buttonText.text = "Unlock Scene";
                 buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
+                buttonText.color = new Color32(50, 50, 50, 255);
             }
 
             CreateCleanStatusText(container);
@@ -689,7 +618,6 @@ namespace U3D.Editor
             var tmpResources = new TMP_DefaultControls.Resources();
             var uiResources = new DefaultControls.Resources();
 
-            // Create shop title using TMP_DefaultControls
             GameObject shopTitle = TMP_DefaultControls.CreateText(tmpResources);
             shopTitle.name = "ShopTitle";
             shopTitle.transform.SetParent(container.transform, false);
@@ -705,12 +633,11 @@ namespace U3D.Editor
             {
                 titleTMP.text = "Creator Shop";
                 titleTMP.fontSize = 14;
-                titleTMP.color = new Color32(50, 50, 50, 255); // #323232
+                titleTMP.color = new Color32(50, 50, 50, 255);
                 titleTMP.alignment = TextAlignmentOptions.Center;
                 titleTMP.raycastTarget = false;
             }
 
-            // Create scroll view for items using DefaultControls
             GameObject scrollView = DefaultControls.CreateScrollView(uiResources);
             scrollView.name = "ItemScrollView";
             scrollView.transform.SetParent(container.transform, false);
@@ -728,7 +655,6 @@ namespace U3D.Editor
         {
             var tmpResources = new TMP_DefaultControls.Resources();
 
-            // Create event info text using TMP_DefaultControls
             GameObject eventInfo = TMP_DefaultControls.CreateText(tmpResources);
             eventInfo.name = "EventInfo";
             eventInfo.transform.SetParent(container.transform, false);
@@ -744,12 +670,11 @@ namespace U3D.Editor
             {
                 infoTMP.text = "Special Event Access";
                 infoTMP.fontSize = 12;
-                infoTMP.color = new Color32(50, 50, 50, 255); // #323232
+                infoTMP.color = new Color32(50, 50, 50, 255);
                 infoTMP.alignment = TextAlignmentOptions.Center;
                 infoTMP.raycastTarget = false;
             }
 
-            // Create timer text using TMP_DefaultControls
             GameObject timerText = TMP_DefaultControls.CreateText(tmpResources);
             timerText.name = "TimerText";
             timerText.transform.SetParent(container.transform, false);
@@ -765,12 +690,11 @@ namespace U3D.Editor
             {
                 timerTMP.text = "Event Active";
                 timerTMP.fontSize = 10;
-                timerTMP.color = new Color32(50, 50, 50, 255); // #323232
+                timerTMP.color = new Color32(50, 50, 50, 255);
                 timerTMP.alignment = TextAlignmentOptions.Center;
                 timerTMP.raycastTarget = false;
             }
 
-            // Create access button using TMP_DefaultControls
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
             button.name = "AccessButton";
             button.transform.SetParent(container.transform, false);
@@ -786,7 +710,7 @@ namespace U3D.Editor
             {
                 buttonText.text = "Buy Ticket";
                 buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
+                buttonText.color = new Color32(50, 50, 50, 255);
             }
 
             CreateCleanStatusText(container);
@@ -797,7 +721,6 @@ namespace U3D.Editor
             var tmpResources = new TMP_DefaultControls.Resources();
             var uiResources = new DefaultControls.Resources();
 
-            // Create close button using TMP_DefaultControls
             GameObject closeButton = TMP_DefaultControls.CreateButton(tmpResources);
             closeButton.name = "CloseButton";
             closeButton.transform.SetParent(container.transform, false);
@@ -813,10 +736,9 @@ namespace U3D.Editor
             {
                 closeText.text = "X";
                 closeText.fontSize = 16;
-                closeText.color = new Color32(50, 50, 50, 255); // #323232
+                closeText.color = new Color32(50, 50, 50, 255);
             }
 
-            // Create shop content area using DefaultControls
             GameObject contentArea = DefaultControls.CreateScrollView(uiResources);
             contentArea.name = "ShopContent";
             contentArea.transform.SetParent(container.transform, false);
@@ -832,7 +754,6 @@ namespace U3D.Editor
 
         private void AssignUIReferences(GameObject container, PayPalDualTransaction dualTransaction)
         {
-            // Find UI components by name
             var paymentButton = container.transform.Find("PaymentButton")?.GetComponent<Button>();
             if (paymentButton == null)
             {
@@ -851,38 +772,29 @@ namespace U3D.Editor
             var priceText = container.transform.Find("PriceText")?.GetComponent<TextMeshProUGUI>();
             var amountInput = container.transform.Find("AmountInput")?.GetComponent<TMP_InputField>();
 
-            // Use the public method to assign references
             dualTransaction.AssignUIReferences(paymentButton, statusText, priceText, amountInput);
 
-            // UNIFIED: Get PayPal email from centralized system and assign it
             string paypalEmail = U3DAuthenticator.GetPayPalEmail();
             if (!string.IsNullOrEmpty(paypalEmail))
             {
                 dualTransaction.SetCreatorPayPalEmail(paypalEmail);
-                Debug.Log($"✅ PayPal email assigned to {container.name}: {paypalEmail}");
             }
             else
             {
-                Debug.LogWarning($"⚠️ No PayPal email available for {container.name}. Component will require setup before use.");
+                Debug.LogWarning($"No PayPal email available for {container.name}. Component will require setup before use.");
             }
-
-            Debug.Log($"UI References assigned to {container.name}: Button={paymentButton != null}, Status={statusText != null}, Price={priceText != null}, Input={amountInput != null}");
         }
 
         #endregion
 
         #region Validation and Logging
 
-        // UNIFIED: Simplified validation using centralized system
         private bool ValidatePayPalSetupOnDemand()
         {
-            // CRITICAL FIX: Use the same multi-source check as CheckPayPalConfiguration
             string paypalEmail = "";
 
-            // 1. Check EditorPrefs first
             paypalEmail = EditorPrefs.GetString("U3D_PayPalEmail", "");
 
-            // 2. Check ScriptableObject if EditorPrefs empty
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
@@ -892,7 +804,6 @@ namespace U3D.Editor
                 }
             }
 
-            // 3. Check U3DAuthenticator (method exists in your code)
             if (string.IsNullOrEmpty(paypalEmail))
             {
                 paypalEmail = U3DAuthenticator.GetPayPalEmail();
@@ -900,7 +811,6 @@ namespace U3D.Editor
 
             if (string.IsNullOrEmpty(paypalEmail))
             {
-                // Show dialog and offer to go to Setup tab
                 bool goToSetup = EditorUtility.DisplayDialog(
                     "PayPal Setup Required",
                     "Please configure your PayPal email to enable monetization tools.\n\n" +
@@ -911,28 +821,23 @@ namespace U3D.Editor
 
                 if (goToSetup)
                 {
-                    OnRequestTabSwitch?.Invoke(0); // Switch to Setup tab
+                    OnRequestTabSwitch?.Invoke(0);
                 }
 
-                // Update our cached state since we now know it's not configured
                 paypalConfigured = false;
                 paypalConfigurationChecked = true;
 
                 return false;
             }
 
-            // Update our cached state since we now know it IS configured
             paypalConfigured = true;
             paypalConfigurationChecked = true;
 
             return true;
         }
 
-        private void LogToolCreation(string toolName, string description)
+        private void NotifyToolCreated(string toolName)
         {
-            Debug.Log($"Created {toolName}: {description}");
-            Debug.Log($"Dual transaction system ready - Creator keeps 95%, Platform fee: 5%");
-
             EditorUtility.DisplayDialog(
                 "Monetization Tool Created!",
                 $"{toolName} has been created successfully.\n\n" +

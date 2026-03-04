@@ -99,7 +99,6 @@ public class ProjectStartupConfiguration
                 isUntitledOnProjectOpen &&
                 System.IO.File.Exists(STARTUP_SCENE_PATH))
             {
-                Debug.Log("🎯 U3D SDK: Loading startup scene for first-time project setup");
                 EditorSceneManager.OpenScene(STARTUP_SCENE_PATH);
                 EditorPrefs.SetBool(PROJECT_STARTUP_LOADED_KEY, true);
             }

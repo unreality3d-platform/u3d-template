@@ -43,11 +43,11 @@ namespace U3D.Editor
         {
             optimizationTools = new List<CreatorTool>
             {
-                new CreatorTool("🚧 Optimize All Textures", "Batch optimize textures by type with compression settings", OptimizeAllTextures),
-                new CreatorTool("🚧 Optimize All Audio", "Compress audio files for faster loading", OptimizeAllAudio),
-                new CreatorTool("🚧 Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
-                new CreatorTool("🚧 Analyze Build Size", "Show largest assets and estimated build size", AnalyzeBuildSize),
-                new CreatorTool("🚧 Find Resources Usage", "Identify Resources folder usage (WebGL performance issue)", FindResourcesFolderUsage)
+                new CreatorTool("Optimize Textures", "Open texture optimization window with WebGL presets", OptimizeAllTextures),
+                new CreatorTool("Optimize Audio", "Open audio optimization window with WebGL presets", OptimizeAllAudio),
+                new CreatorTool("Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
+                new CreatorTool("🚧 Analyze Build Size", "Show largest assets and estimated build size (coming soon)", null),
+                new CreatorTool("🚧 Find Resources Usage", "Identify Resources folder usage (coming soon)", null)
             };
         }
 
@@ -56,7 +56,7 @@ namespace U3D.Editor
             EditorGUILayout.Space(10);
 
             EditorGUILayout.LabelField("Project Health Check", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Run analysis to find and fix issues that could affect your experience.", MessageType.Info);
+            EditorGUILayout.HelpBox("Run analysis to check your project settings and find potential issues.", MessageType.Info);
             EditorGUILayout.Space(10);
 
             EditorGUILayout.BeginHorizontal();
@@ -78,7 +78,7 @@ namespace U3D.Editor
 
             if (analysisRunning)
             {
-                EditorGUILayout.LabelField("🔍 Analyzing...", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("Analyzing...", EditorStyles.boldLabel);
                 return;
             }
 
@@ -96,13 +96,9 @@ namespace U3D.Editor
                     {
                         var issues = categoryResults[category.CategoryName].Count(r => !r.passed);
                         if (issues > 0)
-                        {
                             buttonText += $" ({issues})";
-                        }
                         else
-                        {
                             buttonText = "✓ " + buttonText;
-                        }
                     }
 
                     var buttonStyle = selectedCategoryIndex == i ? EditorStyles.miniButtonMid : EditorStyles.miniButton;
@@ -124,7 +120,6 @@ namespace U3D.Editor
                 }
             }
 
-            // Add Optimization Tools Section
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("WebGL Optimization Tools", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("One-click tools to reduce build size and improve WebGL performance.", MessageType.Info);
@@ -203,18 +198,7 @@ namespace U3D.Editor
                 _ => "ℹ️"
             };
 
-            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField($"{severityIcon} {result.message}", EditorStyles.wordWrappedLabel);
-
-            if (result.severity != ValidationSeverity.Info)
-            {
-                if (GUILayout.Button("Fix", GUILayout.Width(60), GUILayout.Height(25)))
-                {
-                    Debug.Log($"Auto-fixing: {result.message}");
-                }
-            }
-
-            EditorGUILayout.EndHorizontal();
 
             if (result.affectedObjects.Any())
             {
@@ -235,17 +219,18 @@ namespace U3D.Editor
             EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.EndVertical();
 
-            if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
+            EditorGUI.BeginDisabledGroup(tool.action == null);
+            if (GUILayout.Button(tool.action != null ? "Apply" : "Coming Soon", GUILayout.Width(100), GUILayout.Height(35)))
             {
                 tool.action?.Invoke();
             }
+            EditorGUI.EndDisabledGroup();
 
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
         }
 
-        // ENHANCED TEXTURE OPTIMIZATION - Opens dedicated window
         private void OptimizeAllTextures()
         {
             TextureOptimizationWindow.ShowWindow();
@@ -256,110 +241,23 @@ namespace U3D.Editor
             AudioOptimizationWindow.ShowWindow();
         }
 
-        private void AnalyzeBuildSize()
-        {
-            var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
-            var audioGuids = AssetDatabase.FindAssets("t:AudioClip");
-
-            long totalTextureSize = 0;
-            long totalAudioSize = 0;
-            var largeAssets = new List<(string path, long size, string type)>();
-
-            // Quick analysis of file sizes
-            foreach (var guid in textureGuids.Take(100))
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var fileInfo = new FileInfo(path);
-                if (fileInfo.Exists)
-                {
-                    totalTextureSize += fileInfo.Length;
-                    if (fileInfo.Length > 1024 * 1024) // > 1MB
-                    {
-                        largeAssets.Add((path, fileInfo.Length, "Texture"));
-                    }
-                }
-            }
-
-            foreach (var guid in audioGuids)
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var fileInfo = new FileInfo(path);
-                if (fileInfo.Exists)
-                {
-                    totalAudioSize += fileInfo.Length;
-                    if (fileInfo.Length > 1024 * 1024) // > 1MB
-                    {
-                        largeAssets.Add((path, fileInfo.Length, "Audio"));
-                    }
-                }
-            }
-
-            largeAssets = largeAssets.OrderByDescending(a => a.size).Take(10).ToList();
-
-            Debug.Log($"📊 BUILD SIZE ANALYSIS");
-            Debug.Log($"Texture files: {totalTextureSize / 1024 / 1024:F1} MB");
-            Debug.Log($"Audio files: {totalAudioSize / 1024 / 1024:F1} MB");
-            Debug.Log($"");
-
-            if (largeAssets.Any())
-            {
-                Debug.Log($"🔍 LARGEST ASSETS (optimize these first):");
-                foreach (var asset in largeAssets)
-                {
-                    Debug.Log($"  • {Path.GetFileName(asset.path)} ({asset.type}): {asset.size / 1024 / 1024:F1} MB",
-                              AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(asset.path));
-                }
-            }
-
-            var estimatedTotal = (totalTextureSize + totalAudioSize) / 1024 / 1024;
-            if (estimatedTotal > 50)
-            {
-                Debug.LogWarning($"⚠️ Asset size ({estimatedTotal:F1} MB) may cause large builds. Run texture/audio optimization.");
-            }
-            else
-            {
-                Debug.Log($"✅ Asset size ({estimatedTotal:F1} MB) looks good for WebGL.");
-            }
-        }
-
         private void RemoveUnitySplashScreen()
         {
             if (PlayerSettings.SplashScreen.show)
             {
                 PlayerSettings.SplashScreen.show = false;
                 PlayerSettings.SplashScreen.showUnityLogo = false;
-                Debug.Log("🎭 Removed Unity splash screen (saves ~2.7MB)");
+                EditorUtility.DisplayDialog("Splash Screen Removed",
+                    "Unity splash screen has been disabled. This saves ~2.7MB in your build.", "OK");
             }
             else
             {
-                Debug.Log("✅ Unity splash screen already disabled");
-            }
-        }
-
-        private void FindResourcesFolderUsage()
-        {
-            var resourcesPaths = AssetDatabase.FindAssets("", new[] { "Assets" })
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .Where(path => path.Contains("/Resources/"))
-                .ToList();
-
-            if (resourcesPaths.Any())
-            {
-                Debug.LogWarning($"📁 Found {resourcesPaths.Count} assets in Resources folders:");
-                foreach (var path in resourcesPaths.Take(10))
-                {
-                    Debug.LogWarning($"  • {path}", AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
-                }
-                Debug.LogWarning("💡 Resources folder increases WebGL load times. Consider using Addressables instead.");
-            }
-            else
-            {
-                Debug.Log("✅ No Resources folder usage found - perfect for WebGL!");
+                EditorUtility.DisplayDialog("Already Disabled",
+                    "Unity splash screen is already disabled.", "OK");
             }
         }
     }
 
-    // ENHANCED TEXTURE OPTIMIZATION WINDOW WITH IMPROVED FILTERING
     public class TextureOptimizationWindow : EditorWindow
     {
         private class TextureFileData
@@ -385,7 +283,7 @@ namespace U3D.Editor
                 var fileInfo = new FileInfo(texturePath);
                 fileSize = fileInfo.Exists ? fileInfo.Length : 0;
 
-                isSelected = true; // Default to selected
+                isSelected = true;
 
                 if (importer != null)
                 {
@@ -393,7 +291,6 @@ namespace U3D.Editor
                     textureShape = importer.textureShape;
                     generateMipMaps = importer.mipmapEnabled;
 
-                    // Get WebGL platform settings or default
                     if (importer.GetPlatformTextureSettings("WebGL").overridden)
                     {
                         var webglSettings = importer.GetPlatformTextureSettings("WebGL");
@@ -422,21 +319,18 @@ namespace U3D.Editor
 
             public bool ShouldExcludeFromSizeOptimization()
             {
-                // Exclude normal maps and cube textures (skyboxes) from size optimization
                 return textureType == TextureImporterType.NormalMap ||
                        textureShape == TextureImporterShape.TextureCube;
             }
 
             public bool ShouldExcludeFromCompression()
             {
-                // Be more conservative with compression exclusions
                 return textureType == TextureImporterType.NormalMap ||
                        textureType == TextureImporterType.Lightmap ||
                        textureShape == TextureImporterShape.TextureCube;
             }
         }
 
-        // Enhanced filter options
         private enum OptimizationLevelFilter
         {
             All,
@@ -461,23 +355,20 @@ namespace U3D.Editor
             WithoutCrunchCompression
         }
 
-        // Filter state variables
         private OptimizationLevelFilter optimizationFilter = OptimizationLevelFilter.All;
         private MipMapFilter mipMapFilter = MipMapFilter.All;
         private CompressionFilter compressionFilter = CompressionFilter.All;
         private bool excludeNormalMaps = true;
         private bool excludeSkyboxes = true;
 
-        // Dynamic folder exclusion system
         private List<string> availableFolders = new List<string>();
         private Dictionary<string, bool> folderExclusions = new Dictionary<string, bool>();
         private bool showFolderFilters = false;
 
-        // UI state
         private List<TextureFileData> textureFiles = new List<TextureFileData>();
         private Vector2 scrollPosition;
         private Vector2 filterScrollPosition;
-        private float fileListHeight = 300f; // Expandable height
+        private float fileListHeight = 300f;
         private bool isResizing = false;
 
         public static void ShowWindow()
@@ -492,26 +383,21 @@ namespace U3D.Editor
         {
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Texture Optimization for WebGL", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Enhanced filtering system - select textures and choose optimization presets.", MessageType.Info);
+            EditorGUILayout.HelpBox("Select textures and apply WebGL optimization presets. Normal maps and skyboxes are preserved automatically.", MessageType.Info);
             EditorGUILayout.Space(10);
 
-            // Top controls
             DrawTopControls();
             EditorGUILayout.Space(10);
 
-            // Enhanced filter section
             DrawEnhancedFilters();
             EditorGUILayout.Space(10);
 
-            // Folder exclusion section
             DrawFolderExclusionControls();
             EditorGUILayout.Space(10);
 
-            // File list with resizable height
             DrawResizableFileList();
             EditorGUILayout.Space(10);
 
-            // Optimization presets
             DrawOptimizationPresets();
         }
 
@@ -545,33 +431,28 @@ namespace U3D.Editor
 
         private void DrawEnhancedFilters()
         {
-            EditorGUILayout.LabelField("Enhanced Filters", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Filters", EditorStyles.boldLabel);
 
-            // Optimization level filter
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Optimization Level:", GUILayout.Width(120));
             optimizationFilter = (OptimizationLevelFilter)EditorGUILayout.EnumPopup(optimizationFilter);
             EditorGUILayout.EndHorizontal();
 
-            // Mip map filter
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Mip Maps:", GUILayout.Width(120));
             mipMapFilter = (MipMapFilter)EditorGUILayout.EnumPopup(mipMapFilter);
             EditorGUILayout.EndHorizontal();
 
-            // Compression filter
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Crunch Compression:", GUILayout.Width(120));
             compressionFilter = (CompressionFilter)EditorGUILayout.EnumPopup(compressionFilter);
             EditorGUILayout.EndHorizontal();
 
-            // Texture type exclusions
             EditorGUILayout.BeginHorizontal();
             excludeNormalMaps = EditorGUILayout.Toggle("Exclude Normal Maps", excludeNormalMaps);
             excludeSkyboxes = EditorGUILayout.Toggle("Exclude Skyboxes", excludeSkyboxes);
             EditorGUILayout.EndHorizontal();
 
-            // Filter results info
             var filteredTextures = GetEnhancedFilteredTextures();
             var selectedCount = filteredTextures.Count(t => t.isSelected);
             EditorGUILayout.LabelField($"Results: {filteredTextures.Count()} shown, {selectedCount} selected", EditorStyles.miniLabel);
@@ -618,10 +499,8 @@ namespace U3D.Editor
 
             EditorGUILayout.LabelField($"Texture Files ({displayFiles.Count()} shown):", EditorStyles.boldLabel);
 
-            // Resizable file list area
             var listRect = GUILayoutUtility.GetRect(0, fileListHeight, GUILayout.ExpandWidth(true));
 
-            // Handle resizing
             var resizeRect = new Rect(listRect.x, listRect.yMax - 5, listRect.width, 10);
             EditorGUIUtility.AddCursorRect(resizeRect, MouseCursor.ResizeVertical);
 
@@ -643,7 +522,6 @@ namespace U3D.Editor
                 }
             }
 
-            // Draw the actual file list
             scrollPosition = GUI.BeginScrollView(listRect, scrollPosition,
                 new Rect(0, 0, listRect.width - 20, displayFiles.Count() * 60));
 
@@ -657,7 +535,6 @@ namespace U3D.Editor
 
             GUI.EndScrollView();
 
-            // Draw resize handle
             GUI.Box(resizeRect, "", EditorStyles.helpBox);
         }
 
@@ -704,7 +581,6 @@ namespace U3D.Editor
         {
             EditorGUILayout.LabelField("WebGL Optimization Presets", EditorStyles.boldLabel);
 
-            // Use filtered results for consistency with the UI display and processing
             var filteredTextures = GetEnhancedFilteredTextures();
             var selectedFiles = filteredTextures.Where(t => t.isSelected).ToList();
 
@@ -718,12 +594,11 @@ namespace U3D.Editor
 
             EditorGUILayout.BeginHorizontal();
 
-            // Preset 1: Ultra Optimized (512px)
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Ultra Optimized", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Max size: 512px\n• Crunch compression: 50%\n• Best for size reduction\n• Preserves normal maps/skyboxes", EditorStyles.wordWrappedMiniLabel);
 
-            GUI.color = new Color(1f, 0.8f, 0.8f); // Light red tint
+            GUI.color = new Color(1f, 0.8f, 0.8f);
             if (GUILayout.Button("Apply to Selected", GUILayout.Height(30)))
             {
                 ApplyOptimizationPreset(512, true, 50);
@@ -731,12 +606,11 @@ namespace U3D.Editor
             GUI.color = Color.white;
             EditorGUILayout.EndVertical();
 
-            // Preset 2: Balanced (1024px)
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Balanced", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Max size: 1024px\n• Crunch compression: 50%\n• Good quality/size balance\n• Preserves normal maps/skyboxes", EditorStyles.wordWrappedMiniLabel);
 
-            GUI.color = new Color(0.8f, 1f, 0.8f); // Light green tint
+            GUI.color = new Color(0.8f, 1f, 0.8f);
             if (GUILayout.Button("Apply to Selected", GUILayout.Height(30)))
             {
                 ApplyOptimizationPreset(1024, true, 50);
@@ -748,7 +622,6 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            // Mip Map Controls
             EditorGUILayout.LabelField("Mip Map Controls", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
 
@@ -771,28 +644,12 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space(5);
-
-            // Quick actions for filtered results
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Select All Current Filter Results"))
-            {
-                textureFiles.ForEach(t => t.isSelected = filteredTextures.Contains(t));
-            }
-
-            if (GUILayout.Button("Show Optimization Summary"))
-            {
-                ShowOptimizationSummary();
-            }
-            EditorGUILayout.EndHorizontal();
         }
 
         private List<TextureFileData> GetEnhancedFilteredTextures()
         {
             var filtered = textureFiles.AsEnumerable();
 
-            // Apply optimization level filter
             filtered = optimizationFilter switch
             {
                 OptimizationLevelFilter.NotOptimized => filtered.Where(t => !HasWebGLOptimization(t)),
@@ -803,7 +660,6 @@ namespace U3D.Editor
                 _ => filtered
             };
 
-            // Apply mip map filter
             filtered = mipMapFilter switch
             {
                 MipMapFilter.WithMipMaps => filtered.Where(t => t.generateMipMaps),
@@ -811,7 +667,6 @@ namespace U3D.Editor
                 _ => filtered
             };
 
-            // Apply compression filter
             filtered = compressionFilter switch
             {
                 CompressionFilter.WithCrunchCompression => filtered.Where(t => t.hasCrunchCompression),
@@ -819,14 +674,12 @@ namespace U3D.Editor
                 _ => filtered
             };
 
-            // Apply texture type exclusions
             if (excludeNormalMaps)
                 filtered = filtered.Where(t => t.textureType != TextureImporterType.NormalMap);
 
             if (excludeSkyboxes)
                 filtered = filtered.Where(t => t.textureShape != TextureImporterShape.TextureCube);
 
-            // Apply folder exclusions
             foreach (var folderExclusion in folderExclusions.Where(kv => kv.Value))
             {
                 filtered = filtered.Where(t => !t.path.ToLower().Contains(folderExclusion.Key.ToLower()));
@@ -839,58 +692,42 @@ namespace U3D.Editor
         {
             textureFiles.Clear();
             var textureGuids = AssetDatabase.FindAssets("t:Texture2D");
-            int totalFound = 0;
-            int systemExcluded = 0;
-            int fontExcluded = 0;
 
             foreach (var guid in textureGuids)
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
-                totalFound++;
 
-                // Filter out Unity system assets and packages
                 if (ShouldExcludeSystemAsset(path))
-                {
-                    if (IsFontRelatedTexture(Path.GetFileName(path.ToLower()), path.ToLower()))
-                        fontExcluded++;
-                    else
-                        systemExcluded++;
                     continue;
-                }
 
                 textureFiles.Add(new TextureFileData(path));
             }
 
             textureFiles = textureFiles.OrderByDescending(t => t.fileSize).ToList();
             RefreshFolderList();
-
-            Debug.Log($"🎨 TEXTURE ANALYSIS: Found {totalFound} total textures");
-            Debug.Log($"📂 Showing {textureFiles.Count} project textures");
-            Debug.Log($"🚫 Excluded {systemExcluded} system textures, {fontExcluded} font-related textures");
         }
 
         private void RefreshFolderList()
         {
             availableFolders.Clear();
 
-            var allPaths = textureFiles.Select(t => t.path).ToList();
             var folders = new HashSet<string>();
 
-            foreach (var path in allPaths)
+            foreach (var textureFile in textureFiles)
             {
+                var path = textureFile.path;
                 if (path.StartsWith("Assets/"))
                 {
-                    var pathParts = path.Substring(7).Split('/'); // Remove "Assets/"
+                    var pathParts = path.Substring(7).Split('/');
                     if (pathParts.Length > 1)
                     {
-                        folders.Add(pathParts[0]); // Add top-level folder
+                        folders.Add(pathParts[0]);
                     }
                 }
             }
 
             availableFolders = folders.OrderBy(f => f).ToList();
 
-            // Preserve existing exclusion settings
             var newFolderExclusions = new Dictionary<string, bool>();
             foreach (var folder in availableFolders)
             {
@@ -910,68 +747,27 @@ namespace U3D.Editor
             showFolderFilters = false;
         }
 
-        private void ShowOptimizationSummary()
-        {
-            var notOptimized = textureFiles.Where(t => !HasWebGLOptimization(t)).ToList();
-            var optimized512 = textureFiles.Where(t => HasWebGLOptimization(t) && t.currentMaxSize == 512).ToList();
-            var optimized1024 = textureFiles.Where(t => HasWebGLOptimization(t) && t.currentMaxSize == 1024).ToList();
-            var optimizedOther = textureFiles.Where(t => HasWebGLOptimization(t) && t.currentMaxSize != 512 && t.currentMaxSize != 1024).ToList();
-            var withMipMaps = textureFiles.Where(t => t.generateMipMaps).ToList();
-            var withCrunch = textureFiles.Where(t => t.hasCrunchCompression).ToList();
-
-            Debug.Log("🎨 TEXTURE OPTIMIZATION SUMMARY");
-            Debug.Log($"📊 Not Optimized: {notOptimized.Count} textures");
-            Debug.Log($"📊 Optimized to 512px: {optimized512.Count} textures");
-            Debug.Log($"📊 Optimized to 1024px: {optimized1024.Count} textures");
-            Debug.Log($"📊 Other optimization levels: {optimizedOther.Count} textures");
-            Debug.Log($"📊 With Mip Maps: {withMipMaps.Count} textures");
-            Debug.Log($"📊 With Crunch Compression: {withCrunch.Count} textures");
-
-            if (notOptimized.Count > 10)
-            {
-                Debug.LogWarning($"⚠️ {notOptimized.Count} textures are not optimized for WebGL. Consider applying optimization presets.");
-            }
-
-            var totalSize = textureFiles.Sum(t => t.fileSize) / 1024 / 1024;
-            Debug.Log($"📊 Total texture size: {totalSize:F1} MB");
-
-            EditorUtility.DisplayDialog("Optimization Summary",
-                $"Not Optimized: {notOptimized.Count}\n" +
-                $"Optimized to 512px: {optimized512.Count}\n" +
-                $"Optimized to 1024px: {optimized1024.Count}\n" +
-                $"Other levels: {optimizedOther.Count}\n\n" +
-                $"With Mip Maps: {withMipMaps.Count}\n" +
-                $"With Crunch: {withCrunch.Count}\n\n" +
-                $"Total size: {totalSize:F1} MB\n\n" +
-                $"Check Console for details.", "OK");
-        }
-
         private bool ShouldExcludeSystemAsset(string path)
         {
             var pathLower = path.ToLower();
             var fileName = Path.GetFileName(pathLower);
 
-            // Always exclude Unity packages and system directories
             if (pathLower.Contains("packages/") ||
                 pathLower.Contains("u3d/") ||
                 pathLower.Contains("library/"))
                 return true;
 
-            // Exclude font files (TTF files shouldn't appear in Texture2D search, but just in case)
             if (pathLower.EndsWith(".ttf") || pathLower.EndsWith(".otf"))
                 return true;
 
-            // Exclude ALL font-related textures (comprehensive font filtering)
             if (IsFontRelatedTexture(fileName, pathLower))
                 return true;
 
-            // Exclude common Unity generated textures
             if (pathLower.Contains("unity_builtin_extra") ||
                 pathLower.Contains("default-") ||
                 pathLower.Contains("builtin_"))
                 return true;
 
-            // Exclude shader and material preview textures
             if (pathLower.Contains("preview") &&
                 (pathLower.Contains("material") || pathLower.Contains("shader")))
                 return true;
@@ -981,13 +777,11 @@ namespace U3D.Editor
 
         private bool IsFontRelatedTexture(string fileName, string pathLower)
         {
-            // TextMeshPro font assets and atlases
             if (pathLower.Contains("textmeshpro") ||
                 fileName.Contains("tmp") ||
                 fileName.Contains("sdf"))
                 return true;
 
-            // Font atlas patterns (common TextMeshPro naming)
             if (fileName.Contains("atlas") && (
                 fileName.Contains("font") ||
                 fileName.Contains("liberation") ||
@@ -995,7 +789,6 @@ namespace U3D.Editor
                 fileName.Contains("opensans")))
                 return true;
 
-            // Common font names that become atlas textures
             string[] fontKeywords = {
                 "liberation", "arial", "opensans", "roboto", "ubuntu",
                 "calibri", "times", "helvetica", "verdana", "georgia",
@@ -1011,7 +804,6 @@ namespace U3D.Editor
                     return true;
             }
 
-            // TextMeshPro generated file patterns
             if (fileName.Contains(" sdf") ||
                 fileName.EndsWith("_atlas") ||
                 fileName.EndsWith(" atlas") ||
@@ -1023,7 +815,6 @@ namespace U3D.Editor
 
         private void ApplyOptimizationPreset(int maxTextureSize, bool useCrunchCompression, int quality)
         {
-            // Use filtered results instead of full list
             var filteredTextures = GetEnhancedFilteredTextures();
             var selectedFiles = filteredTextures.Where(t => t.isSelected).ToList();
 
@@ -1038,69 +829,59 @@ namespace U3D.Editor
 
             foreach (var textureFile in selectedFiles)
             {
-                if (textureFile.importer != null)
+                if (textureFile.importer == null) continue;
+
+                bool skipSizeOptimization = textureFile.ShouldExcludeFromSizeOptimization();
+                bool skipCompression = textureFile.ShouldExcludeFromCompression();
+
+                if (skipSizeOptimization && skipCompression)
                 {
-                    // Skip textures that shouldn't be size-optimized
-                    bool skipSizeOptimization = textureFile.ShouldExcludeFromSizeOptimization();
-                    bool skipCompression = textureFile.ShouldExcludeFromCompression();
-
-                    if (skipSizeOptimization && skipCompression)
-                    {
-                        skippedCount++;
-                        continue;
-                    }
-
-                    // Get or create WebGL platform settings
-                    var webglSettings = textureFile.importer.GetPlatformTextureSettings("WebGL");
-                    webglSettings.overridden = true;
-
-                    // Apply size optimization (if appropriate)
-                    if (!skipSizeOptimization)
-                    {
-                        webglSettings.maxTextureSize = maxTextureSize;
-                    }
-
-                    // Apply compression optimization (if appropriate)
-                    if (!skipCompression)
-                    {
-                        webglSettings.crunchedCompression = useCrunchCompression;
-                        if (useCrunchCompression)
-                        {
-                            webglSettings.compressionQuality = quality;
-                        }
-
-                        // Use appropriate format based on alpha channel
-                        if (textureFile.importer.DoesSourceTextureHaveAlpha())
-                        {
-                            webglSettings.format = TextureImporterFormat.DXT5Crunched;
-                        }
-                        else
-                        {
-                            webglSettings.format = TextureImporterFormat.DXT1Crunched;
-                        }
-                    }
-
-                    textureFile.importer.SetPlatformTextureSettings(webglSettings);
-                    EditorUtility.SetDirty(textureFile.importer);
-                    textureFile.importer.SaveAndReimport();
-                    optimizedCount++;
+                    skippedCount++;
+                    continue;
                 }
+
+                var webglSettings = textureFile.importer.GetPlatformTextureSettings("WebGL");
+                webglSettings.overridden = true;
+
+                if (!skipSizeOptimization)
+                {
+                    webglSettings.maxTextureSize = maxTextureSize;
+                }
+
+                if (!skipCompression)
+                {
+                    webglSettings.crunchedCompression = useCrunchCompression;
+                    if (useCrunchCompression)
+                    {
+                        webglSettings.compressionQuality = quality;
+                    }
+
+                    if (textureFile.importer.DoesSourceTextureHaveAlpha())
+                    {
+                        webglSettings.format = TextureImporterFormat.DXT5Crunched;
+                    }
+                    else
+                    {
+                        webglSettings.format = TextureImporterFormat.DXT1Crunched;
+                    }
+                }
+
+                textureFile.importer.SetPlatformTextureSettings(webglSettings);
+                EditorUtility.SetDirty(textureFile.importer);
+                textureFile.importer.SaveAndReimport();
+                optimizedCount++;
             }
 
             AssetDatabase.Refresh();
             RefreshTextureList();
 
-            Debug.Log($"🎨 TEXTURE OPTIMIZATION COMPLETE");
-            Debug.Log($"✅ Optimized: {optimizedCount} textures (max size: {maxTextureSize}px, crunch: {useCrunchCompression})");
-            Debug.Log($"⏭️ Skipped: {skippedCount} textures (normal maps/skyboxes preserved)");
-
             EditorUtility.DisplayDialog("Optimization Complete",
-                $"Applied optimization to {optimizedCount} textures.\nSkipped {skippedCount} textures (normal maps/skyboxes).\n\nCheck Console for details.", "OK");
+                $"Optimized {optimizedCount} textures (max size: {maxTextureSize}px, crunch compression enabled).\n" +
+                $"Skipped {skippedCount} textures (normal maps/skyboxes preserved).", "OK");
         }
 
         private void ApplyMipMapSetting(bool enableMipMaps)
         {
-            // Use filtered results instead of full list
             var filteredTextures = GetEnhancedFilteredTextures();
             var selectedFiles = filteredTextures.Where(t => t.isSelected).ToList();
 
@@ -1126,9 +907,6 @@ namespace U3D.Editor
             AssetDatabase.Refresh();
             RefreshTextureList();
 
-            Debug.Log($"🔧 MIP MAP SETTING APPLIED");
-            Debug.Log($"✅ Modified: {modifiedCount} textures (mip maps: {(enableMipMaps ? "enabled" : "disabled")})");
-
             EditorUtility.DisplayDialog("Mip Map Setting Applied",
                 $"Modified {modifiedCount} textures.\nMip maps are now {(enableMipMaps ? "enabled" : "disabled")} for selected textures.", "OK");
         }
@@ -1140,7 +918,6 @@ namespace U3D.Editor
         }
     }
 
-    // Audio Optimization Window (preserved unchanged)
     public class AudioOptimizationWindow : EditorWindow
     {
         private class AudioFileData
@@ -1220,10 +997,9 @@ namespace U3D.Editor
         {
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Audio Optimization for WebGL", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Select audio files and choose optimization preset. This will override WebGL platform settings.", MessageType.Info);
+            EditorGUILayout.HelpBox("Select audio files and apply WebGL optimization presets. This sets WebGL-specific platform overrides.", MessageType.Info);
             EditorGUILayout.Space(10);
 
-            // Controls
             EditorGUILayout.BeginHorizontal();
 
             if (GUILayout.Button("Refresh List"))
@@ -1246,7 +1022,6 @@ namespace U3D.Editor
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(10);
 
-            // File list
             var displayFiles = showOnlyUnoptimized ?
                 audioFiles.Where(a => a.currentFormat == "PCM" || !HasWebGLOverride(a.importer)).ToList() :
                 audioFiles;
@@ -1282,13 +1057,11 @@ namespace U3D.Editor
 
             EditorGUILayout.EndScrollView();
 
-            // Preset buttons
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("WebGL Optimization Presets:", EditorStyles.boldLabel);
 
             EditorGUILayout.BeginHorizontal();
 
-            // Preset 1: Ambient/Music
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Ambient & Music", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Streaming load\n• Low quality (size priority)\n• Best for background audio", EditorStyles.wordWrappedMiniLabel);
@@ -1298,7 +1071,6 @@ namespace U3D.Editor
             }
             EditorGUILayout.EndVertical();
 
-            // Preset 2: Instant Load
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("Instant Load", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Decompress on load\n• Medium quality\n• Best for intro/start sounds", EditorStyles.wordWrappedMiniLabel);
@@ -1308,7 +1080,6 @@ namespace U3D.Editor
             }
             EditorGUILayout.EndVertical();
 
-            // Preset 3: One-Shot/UI
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("UI & One-Shot", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Compressed in memory\n• High quality\n• Best for UI/interaction sounds", EditorStyles.wordWrappedMiniLabel);
@@ -1356,12 +1127,10 @@ namespace U3D.Editor
 
         private void ApplyPresetToSelected(AudioImporterSampleSettings settings, string presetName)
         {
-            // Use the same filtering logic as the UI display
             var displayFiles = showOnlyUnoptimized ?
                 audioFiles.Where(a => a.currentFormat == "PCM" || !HasWebGLOverride(a.importer)).ToList() :
                 audioFiles;
 
-            // Only process selected files from the currently visible/filtered list
             var selectedFiles = displayFiles.Where(a => a.isSelected).ToList();
 
             if (!selectedFiles.Any())
@@ -1388,10 +1157,8 @@ namespace U3D.Editor
             AssetDatabase.Refresh();
             RefreshAudioList();
 
-            Debug.Log($"🔊 Applied '{presetName}' preset to {optimizedCount} audio files");
-
             EditorUtility.DisplayDialog("Optimization Complete",
-                $"Applied '{presetName}' preset to {optimizedCount} audio files.\n\nCheck the Console for details.", "OK");
+                $"Applied '{presetName}' preset to {optimizedCount} audio files.", "OK");
         }
 
         private bool HasWebGLOverride(AudioImporter importer)

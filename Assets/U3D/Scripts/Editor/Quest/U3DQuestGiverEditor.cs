@@ -41,7 +41,7 @@ namespace U3D.Editor
 
     /// <summary>
     /// Custom Editor for U3DQuestGiver to enhance Inspector experience
-    /// MODIFIED: Removed Dialog Position section, reordered Interaction Choices above Creator Events
+    /// Removed Dialog Position section, reordered Interaction Choices above Creator Events
     /// </summary>
     [CustomEditor(typeof(U3DQuestGiver))]
     public class U3DQuestGiverEditor : UnityEditor.Editor
@@ -69,7 +69,7 @@ namespace U3D.Editor
 
             U3DQuestGiver questGiver = (U3DQuestGiver)target;
 
-            // Draw default properties first - MODIFIED: Exclude interaction choices and UI references
+            // Draw default properties first - Exclude interaction choices and UI references
             DrawPropertiesExcluding(serializedObject,
                 "interactionMode",
                 "singleChoice",
@@ -85,7 +85,7 @@ namespace U3D.Editor
                 "OnPlayerEnterRangeEvent",
                 "OnPlayerExitRangeEvent");
 
-            // ADDED: Custom section for mutually exclusive interaction choices - MOVED ABOVE Creator Events
+            // Custom section for mutually exclusive interaction choices - MOVED ABOVE Creator Events
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Interaction Choices", EditorStyles.boldLabel);
 
@@ -93,7 +93,7 @@ namespace U3D.Editor
                 "Choose how players interact with this quest giver. Each mode provides different interaction options.",
                 MessageType.Info);
 
-            // ADDED: Interaction Mode Selection with radio button style
+            // Interaction Mode Selection with radio button style
             EditorGUILayout.BeginVertical(GUI.skin.box);
 
             U3DInteractionMode currentMode = (U3DInteractionMode)interactionMode.enumValueIndex;
@@ -176,7 +176,7 @@ namespace U3D.Editor
 
             EditorGUILayout.EndVertical();
 
-            // ADDED: Creator Events section - NOW APPEARS AFTER Interaction Choices
+            // Creator Events section - NOW APPEARS AFTER Interaction Choices
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Creator Events", EditorStyles.boldLabel);
 

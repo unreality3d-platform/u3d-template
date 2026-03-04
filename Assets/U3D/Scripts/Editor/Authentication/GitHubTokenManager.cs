@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System;
-using System.Text;
 
 namespace U3D.Editor
 {
@@ -23,9 +22,6 @@ namespace U3D.Editor
         public static string GitHubUsername => _githubUsername;
         public static string Token => _githubToken;
 
-        /// <summary>
-        /// CRITICAL: Check if we should skip operations during builds
-        /// </summary>
         private static bool ShouldSkipDuringBuild()
         {
             return BuildPipeline.isBuildingPlayer ||
@@ -35,12 +31,8 @@ namespace U3D.Editor
 
         static GitHubTokenManager()
         {
-            // CRITICAL: Skip initialization during builds to prevent IndexOutOfRangeException
             if (ShouldSkipDuringBuild())
-            {
-                Debug.Log("🚫 GitHubTokenManager: Skipping initialization during build process");
                 return;
-            }
 
             LoadCredentials();
         }
@@ -55,7 +47,6 @@ namespace U3D.Editor
         public static void RefreshFromEditorPrefs()
         {
             LoadCredentials();
-            Debug.Log($"🔄 GitHub credentials refreshed - HasValidToken: {HasValidToken}, Username: {GitHubUsername}");
         }
 
         public static async Task<GitHubValidationResult> ValidateAndSetToken(string token)
@@ -95,7 +86,7 @@ namespace U3D.Editor
                             {
                                 IsValid = true,
                                 Username = _githubUsername,
-                                Message = $"Token validated successfully for user: {_githubUsername}"
+                                Message = $"Token validated for user: {_githubUsername}"
                             };
                         }
                     }
@@ -111,10 +102,7 @@ namespace U3D.Editor
                                 errorMessage = errorData["message"].ToString();
                             }
                         }
-                        catch
-                        {
-                            // Use default error message
-                        }
+                        catch { }
 
                         return new GitHubValidationResult
                         {
@@ -144,20 +132,16 @@ namespace U3D.Editor
         public static async Task<bool> CheckRepositoryPermissions()
         {
             if (!HasValidToken)
-            {
                 return false;
-            }
 
             try
             {
                 using (var client = new HttpClient())
                 {
-                    // FIXED: Use "token" instead of "Bearer"
                     client.DefaultRequestHeaders.Add("Authorization", $"token {_githubToken}");
                     client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
                     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 
-                    // Check if we can access repositories
                     var response = await client.GetAsync("https://api.github.com/user/repos?per_page=1");
                     return response.IsSuccessStatusCode;
                 }
@@ -169,171 +153,12 @@ namespace U3D.Editor
             }
         }
 
-        // FIXED: Unity licensing automation methods with correct authorization
-        public static async Task<bool> SetRepositorySecret(string repositoryName, string secretName, string secretValue)
-        {
-            if (!HasValidToken)
-            {
-                Debug.LogError("No valid GitHub token available for setting repository secrets");
-                return false;
-            }
-
-            try
-            {
-                using (var client = new HttpClient())
-                {
-                    // FIXED: Use "token" format consistently
-                    client.DefaultRequestHeaders.Add("Authorization", $"token {_githubToken}");
-                    client.DefaultRequestHeaders.Add("User-Agent", "Unreality3D-Unity-SDK");
-                    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-                    client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
-
-                    Debug.Log($"Setting GitHub secret: {secretName} for repository: {repositoryName}");
-
-                    // Step 1: Get repository public key for encryption
-                    var publicKeyUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/public-key";
-                    Debug.Log($"Fetching public key from: {publicKeyUrl}");
-
-                    var keyResponse = await client.GetAsync(publicKeyUrl);
-
-                    if (!keyResponse.IsSuccessStatusCode)
-                    {
-                        var keyError = await keyResponse.Content.ReadAsStringAsync();
-                        Debug.LogError($"Failed to get repository public key: {keyResponse.StatusCode} - {keyError}");
-                        return false;
-                    }
-
-                    var keyData = JsonConvert.DeserializeObject<Dictionary<string, object>>(await keyResponse.Content.ReadAsStringAsync());
-                    var publicKey = keyData["key"].ToString();
-                    var keyId = keyData["key_id"].ToString();
-
-                    Debug.Log($"Retrieved public key successfully. Key ID: {keyId}");
-
-                    // Step 2: Encrypt the secret value using Firebase Cloud Function
-                    Debug.Log("Encrypting secret value...");
-                    var encryptedValue = await EncryptSecretValue(secretValue, publicKey);
-                    Debug.Log("Secret encrypted successfully");
-
-                    // Step 3: Set the repository secret
-                    var secretData = new
-                    {
-                        encrypted_value = encryptedValue,
-                        key_id = keyId
-                    };
-
-                    var json = JsonConvert.SerializeObject(secretData);
-                    var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                    var secretUrl = $"https://api.github.com/repos/{_githubUsername}/{repositoryName}/actions/secrets/{secretName}";
-                    Debug.Log($"Setting secret at: {secretUrl}");
-
-                    var secretResponse = await client.PutAsync(secretUrl, content);
-
-                    if (secretResponse.IsSuccessStatusCode)
-                    {
-                        Debug.Log($"✅ Successfully set repository secret: {secretName}");
-                        return true;
-                    }
-                    else
-                    {
-                        var secretError = await secretResponse.Content.ReadAsStringAsync();
-                        Debug.LogError($"❌ Failed to set repository secret {secretName}: {secretResponse.StatusCode} - {secretError}");
-                        return false;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"❌ Error setting repository secret {secretName}: {ex.Message}");
-                return false;
-            }
-        }
-
-        public static async Task<bool> SetupUnityRepositorySecrets(string repositoryName, UnityCredentials credentials)
-        {
-            if (credentials == null)
-            {
-                Debug.LogError("Unity credentials are null");
-                return false;
-            }
-
-            try
-            {
-                Debug.Log($"🔧 Setting up Unity repository secrets for: {repositoryName}");
-
-                // Set UNITY_EMAIL secret
-                if (!string.IsNullOrEmpty(credentials.Email))
-                {
-                    Debug.Log("Setting UNITY_EMAIL secret...");
-                    var emailResult = await SetRepositorySecret(repositoryName, "UNITY_EMAIL", credentials.Email);
-                    if (!emailResult)
-                    {
-                        Debug.LogError("❌ Failed to set UNITY_EMAIL secret");
-                        return false;
-                    }
-                    Debug.Log("✅ UNITY_EMAIL secret set successfully");
-                }
-
-                // Set UNITY_PASSWORD secret
-                if (!string.IsNullOrEmpty(credentials.Password))
-                {
-                    Debug.Log("Setting UNITY_PASSWORD secret...");
-                    var passwordResult = await SetRepositorySecret(repositoryName, "UNITY_PASSWORD", credentials.Password);
-                    if (!passwordResult)
-                    {
-                        Debug.LogError("❌ Failed to set UNITY_PASSWORD secret");
-                        return false;
-                    }
-                    Debug.Log("✅ UNITY_PASSWORD secret set successfully");
-                }
-
-                // Set UNITY_AUTHENTICATOR_KEY secret (optional for 2FA)
-                if (!string.IsNullOrEmpty(credentials.AuthenticatorKey))
-                {
-                    Debug.Log("Setting UNITY_TOTP_KEY secret...");
-                    var authKeyResult = await SetRepositorySecret(repositoryName, "UNITY_TOTP_KEY", credentials.AuthenticatorKey);
-                    if (!authKeyResult)
-                    {
-                        Debug.LogWarning("⚠️ Failed to set UNITY_TOTP_KEY secret (this is optional for 2FA)");
-                        // Don't return false here since 2FA key is optional
-                    }
-                    else
-                    {
-                        Debug.Log("✅ UNITY_TOTP_KEY secret set successfully");
-                    }
-                }
-
-                Debug.Log("🎉 Unity repository secrets configured successfully");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"❌ Error setting up Unity repository secrets: {ex.Message}");
-                return false;
-            }
-        }
-
-        // Encrypt secret value using GitHub-compatible sealed box encryption
-        private static async Task<string> EncryptSecretValue(string secretValue, string base64PublicKey)
-        {
-            try
-            {
-                return await GitHubSecurityHelper.EncryptForGitHubSecret(secretValue, base64PublicKey);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Secret encryption failed: {ex.Message}");
-                throw;
-            }
-        }
-
         public static void ClearToken()
         {
             _githubToken = "";
             _githubUsername = "";
             _tokenValidated = false;
 
-            // FIXED: Use build guards for EditorPrefs access
             if (!ShouldSkipDuringBuild())
             {
                 EditorPrefs.DeleteKey(TOKEN_KEY);
@@ -344,28 +169,20 @@ namespace U3D.Editor
 
         private static void SaveCredentials()
         {
-            // FIXED: Use build guards for EditorPrefs access
             if (ShouldSkipDuringBuild())
-            {
                 return;
-            }
 
             if (!string.IsNullOrEmpty(_githubToken))
-            {
                 EditorPrefs.SetString(TOKEN_KEY, _githubToken);
-            }
 
             if (!string.IsNullOrEmpty(_githubUsername))
-            {
                 EditorPrefs.SetString(USERNAME_KEY, _githubUsername);
-            }
 
             EditorPrefs.SetBool(VALIDATED_KEY, _tokenValidated);
         }
 
         private static void LoadCredentials()
         {
-            // FIXED: Use build guards for EditorPrefs access
             if (ShouldSkipDuringBuild())
             {
                 _githubToken = "";
@@ -387,13 +204,5 @@ namespace U3D.Editor
         public string Username { get; set; }
         public string Message { get; set; }
         public string ErrorMessage { get; set; }
-    }
-
-    [System.Serializable]
-    public class UnityCredentials
-    {
-        public string Email { get; set; }
-        public string Password { get; set; }
-        public string AuthenticatorKey { get; set; } // Optional for 2FA
     }
 }

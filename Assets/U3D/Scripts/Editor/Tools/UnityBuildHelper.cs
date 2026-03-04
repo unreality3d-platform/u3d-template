@@ -103,7 +103,7 @@ namespace U3D.Editor
                 // Start build with enhanced progress tracking
                 StartBuildProgressTracking(onProgress);
 
-                // CRITICAL FIX: Execute BuildPlayer via delayCall to escape the player loop.
+                // Execute BuildPlayer via delayCall to escape the player loop.
                 // BuildPipeline.BuildPlayer throws "cannot be executed while inside the player loop"
                 // when called from an async continuation that resumes during the loop.
                 // EditorApplication.delayCall runs between loop iterations, which is safe.
@@ -264,7 +264,6 @@ namespace U3D.Editor
                         }
 
                         Directory.CreateDirectory(fallbackPath);
-                        Debug.Log($"Created fallback directory: {fallbackPath}");
                     }
                     catch (Exception fallbackEx)
                     {
@@ -299,11 +298,6 @@ namespace U3D.Editor
             if (PlayerSettings.WebGL.memorySize < 128)
             {
                 Debug.LogWarning("WebGL memory size is very low. Consider increasing to at least 256MB for better performance.");
-            }
-
-            if (QualitySettings.renderPipeline != null)
-            {
-                Debug.Log("Universal Render Pipeline detected. Build size may be larger than Built-in Render Pipeline.");
             }
 
             return new BuildValidationResult { IsValid = true };
@@ -379,8 +373,6 @@ namespace U3D.Editor
         {
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
 
-            Debug.Log("U3D SDK: Using Unity 6+ automatic WebAssembly memory management (no manual sizing needed)");
-
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.nameFilesAsHashes = true;
 
@@ -395,9 +387,7 @@ namespace U3D.Editor
 
             PlayerSettings.productName = Application.productName;
             PlayerSettings.companyName = !string.IsNullOrEmpty(PlayerSettings.companyName) ?
-                PlayerSettings.companyName : "Unity Creator";
-
-            Debug.Log("✅ Unity 6+ WebGL build settings applied with IndexOutOfRangeException workarounds");
+            PlayerSettings.companyName : "Unreality3D Creator";
         }
 
         private static async Task<string> ValidateGitHubPagesCompatibility(string buildPath)
@@ -527,7 +517,6 @@ namespace U3D.Editor
 
                     CopyDirectoryRecursively(sourceDirectory, targetDirectory);
 
-                    Debug.Log($"Build files copied from {buildPath} to {repositoryPath}");
                     return true;
                 }
                 catch (Exception ex)

@@ -41,7 +41,6 @@ namespace U3D
             if (instance == null)
             {
                 instance = this;
-                Debug.Log("InteractionManager: Singleton instance created");
             }
             else if (instance != this)
             {
@@ -67,7 +66,6 @@ namespace U3D
                 {
                     localPlayerController = player;
                     playerCamera = player.GetComponentInChildren<Camera>();
-                    Debug.Log($"InteractionManager: Found local player {player.name}");
                     break;
                 }
             }
@@ -94,26 +92,12 @@ namespace U3D
         /// </summary>
         public void OnPlayerInteract()
         {
-            if (localPlayerController == null)
-            {
-                Debug.LogWarning("InteractionManager: No local player available for interaction");
-                return;
-            }
+            if (localPlayerController == null) return;
 
-            // Find the best interactable to use
             IU3DInteractable targetInteractable = GetBestInteractable();
-
             if (targetInteractable != null)
             {
-                Debug.Log($"Interacted with: {targetInteractable.GetInteractionPrompt()}");
                 targetInteractable.OnInteract();
-            }
-            else
-            {
-                if (debugMode)
-                {
-                    Debug.Log("No interactables found in range");
-                }
             }
         }
 

@@ -54,8 +54,6 @@ public class U3DAvatarManager : NetworkBehaviour
         {
             Debug.LogWarning("⚠️ No avatar FBX assigned - using default setup");
         }
-
-        Debug.Log($"U3DAvatarManager spawned for {(Object.HasStateAuthority ? "Local" : "Remote")} player");
     }
 
     void InitializeAvatar()
@@ -88,7 +86,6 @@ public class U3DAvatarManager : NetworkBehaviour
             avatarRenderers = avatarInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
 
             isInitialized = true;
-            Debug.Log("✅ Avatar initialized successfully with clean animation system");
         }
         catch (System.Exception e)
         {
@@ -109,8 +106,6 @@ public class U3DAvatarManager : NetworkBehaviour
 
         // Tell the animation system about the new avatar
         networkedAnimator.SetAvatarAnimator(avatarAnimator);
-
-        Debug.Log("✅ Animation system connected to avatar");
     }
 
     void ConfigureHumanoidAvatar()
@@ -123,7 +118,6 @@ public class U3DAvatarManager : NetworkBehaviour
         if (avatarAssetFromFBX != null && avatarAssetFromFBX.isHuman)
         {
             avatarAsset = avatarAssetFromFBX;
-            Debug.Log("✅ Using existing Humanoid Avatar from FBX");
         }
         else
         {

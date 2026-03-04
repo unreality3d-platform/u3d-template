@@ -70,8 +70,7 @@ namespace U3D.Networking
                 }
             }
 
-            int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;
-            Debug.Log($"Found {enhancedSpawnPoints.Count} enhanced spawn points and {simpleSpawnPoints.Count} simple spawn points (Total: {totalSpawnPoints})");
+            int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;           
         }
 
         /// <summary>
@@ -125,7 +124,6 @@ namespace U3D.Networking
                 var enhancedPoint = enhancedSpawnPoints[spawnIndex];
                 var spawnData = enhancedPoint.GetSpawnData();
 
-                Debug.Log($"Using enhanced spawn point {spawnIndex}: pos={spawnData.position}, rot={spawnData.rotation.eulerAngles.y}°");
                 return spawnData;
             }
             else
@@ -135,7 +133,6 @@ namespace U3D.Networking
                 Vector3 spawnPos = simpleSpawnPoints[simpleIndex].position;
                 Quaternion spawnRot = Quaternion.Euler(0, defaultSpawnYRotation, 0);
 
-                Debug.Log($"Using simple spawn point {simpleIndex}: pos={spawnPos}, default rot={defaultSpawnYRotation}°");
                 return (spawnPos, spawnRot);
             }
         }

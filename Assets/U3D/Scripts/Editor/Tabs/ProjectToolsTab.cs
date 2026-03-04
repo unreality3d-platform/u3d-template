@@ -128,7 +128,7 @@ namespace U3D.Editor
                     if (newSelection && !isSelected)
                     {
                         selectedCategoryIndex = i;
-                        // NEW: Refresh MonetizationToolsCategory when switching to it
+                        // Refresh MonetizationToolsCategory when switching to it
                         RefreshCategoryIfNeeded(i);
                     }
                 }
@@ -146,7 +146,7 @@ namespace U3D.Editor
                     if (newSelection && !isSelected)
                     {
                         selectedCategoryIndex = i;
-                        // NEW: Refresh MonetizationToolsCategory when switching to it
+                        // Refresh MonetizationToolsCategory when switching to it
                         RefreshCategoryIfNeeded(i);
                     }
                 }
@@ -172,7 +172,7 @@ namespace U3D.Editor
             EditorGUILayout.EndScrollView();
         }
 
-        // NEW: Method to refresh specific categories when switching to them
+        // Method to refresh specific categories when switching to them
         private void RefreshCategoryIfNeeded(int categoryIndex)
         {
             if (categoryIndex >= 0 && categoryIndex < categories.Count)

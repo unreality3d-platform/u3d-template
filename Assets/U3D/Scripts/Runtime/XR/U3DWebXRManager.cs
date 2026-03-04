@@ -41,7 +41,6 @@ namespace U3D.XR
             {
                 Instance = this;
                 DontDestroyOnLoad(gameObject);
-                LogVerbose("U3DWebXRManager initialized");
             }
             else if (Instance != this)
             {
@@ -58,13 +57,10 @@ namespace U3D.XR
         void InitializeWebXR()
         {
 #if WEBXR_ENABLED && UNITY_WEBGL && !UNITY_EDITOR
-            Debug.Log("[U3DWebXRManager] Subscribing to WebXRManager.OnXRChange");
             WebXRManager.OnXRChange += OnXRChange;
             StartCoroutine(CheckVRSupportDelayed());
-            Debug.Log("[U3DWebXRManager] WebXR event subscription active");
 #else
             _isVRSupported = false;
-            Debug.Log("[U3DWebXRManager] WebXR not available (Editor, non-WebGL build, or package not installed)");
 #endif
         }
 
@@ -76,26 +72,20 @@ namespace U3D.XR
             if (WebXRManager.Instance != null)
             {
                 _isVRSupported = WebXRManager.Instance.isSupportedVR;
-                Debug.Log($"[U3DWebXRManager] VR Support detected: {_isVRSupported}");
                 OnVRSupportDetected?.Invoke(_isVRSupported);
             }
             else
             {
-                Debug.Log("[U3DWebXRManager] WebXRManager.Instance not found - VR support check failed");
                 _isVRSupported = false;
                 OnVRSupportDetected?.Invoke(false);
             }
         }
 
         private void OnXRChange(WebXRState state, int viewsCount, Rect leftRect, Rect rightRect)
-        {
-            Debug.Log($"[U3DWebXRManager] OnXRChange FIRED: state={state}, views={viewsCount}");
-    
+        {    
             _currentXRState = state;
             bool wasVRActive = _isVRActive;
             _isVRActive = (state == WebXRState.VR);
-    
-            Debug.Log($"[U3DWebXRManager] wasVRActive={wasVRActive}, _isVRActive={_isVRActive}");
 
             if (_isVRActive != wasVRActive)
             {
@@ -106,8 +96,6 @@ namespace U3D.XR
 
         private void HandleVRModeChange(bool enteringVR)
         {
-            Debug.Log($"[U3DWebXRManager] HandleVRModeChange: {(enteringVR ? "ENTERING" : "EXITING")} VR");
-
             if (_localPlayerController == null && autoFindLocalPlayer)
             {
                 FindLocalPlayer();
@@ -116,7 +104,6 @@ namespace U3D.XR
             if (_localPlayerController != null)
             {
                 _localPlayerController.SetVRMode(enteringVR);
-                Debug.Log($"[U3DWebXRManager] Notified player controller: SetVRMode({enteringVR})");
             }
             else
             {
@@ -135,22 +122,17 @@ namespace U3D.XR
                 if (player.IsLocalPlayer)
                 {
                     _localPlayerController = player;
-                    Debug.Log($"[U3DWebXRManager] Found local player: {player.gameObject.name}");
                     return;
                 }
             }
-
-            Debug.Log("[U3DWebXRManager] No local player found in scene");
         }
 
         public void RegisterLocalPlayer(U3DPlayerController player)
         {
             _localPlayerController = player;
-            Debug.Log($"[U3DWebXRManager] Local player registered: {player.gameObject.name}");
 
             if (_isVRActive)
             {
-                Debug.Log("[U3DWebXRManager] VR already active - notifying newly registered player");
                 player.SetVRMode(true);
             }
         }
@@ -160,15 +142,6 @@ namespace U3D.XR
             if (_localPlayerController == player)
             {
                 _localPlayerController = null;
-                Debug.Log("[U3DWebXRManager] Local player unregistered");
-            }
-        }
-
-        private void LogVerbose(string message)
-        {
-            if (verboseLogging)
-            {
-                Debug.Log($"[U3DWebXRManager] {message}");
             }
         }
 

@@ -192,7 +192,7 @@ namespace U3D.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
 
-            // FIXED: Use build guards for EditorPrefs access
+            // Use build guards for EditorPrefs access
             bool showOnStartup = true;
             if (!ShouldSkipDuringBuild())
             {
@@ -203,7 +203,7 @@ namespace U3D.Editor
 
             if (newShowOnStartup != showOnStartup)
             {
-                // FIXED: Use build guards for EditorPrefs access
+                // Use build guards for EditorPrefs access
                 if (!ShouldSkipDuringBuild())
                 {
                     EditorPrefs.SetBool("U3D_ShowOnStartup", newShowOnStartup);

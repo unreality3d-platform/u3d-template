@@ -6,7 +6,7 @@ using UnityEngine.Events;
 namespace U3D
 {
     /// <summary>
-    /// FIXED: Reliable authority management for Shared Mode grab/throw system
+    /// Reliable authority management for Shared Mode grab/throw system
     /// Prevents race conditions and ensures deterministic state synchronization
     /// Enhanced with remappable interaction keys using Unity Input System
     /// Input handling delegated to U3DInteractionManager to prevent double-input
@@ -58,7 +58,7 @@ namespace U3D
         [Tooltip("Called when grab attempt fails")]
         public UnityEvent OnGrabFailed;
 
-        // FIXED: Proper network state management for Shared Mode
+        // Proper network state management for Shared Mode
         [Networked] public bool NetworkIsGrabbed { get; set; }
         [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
         [Networked] public byte NetworkGrabState { get; set; } // 0=Free, 1=Grabbing, 2=Grabbed
@@ -123,11 +123,6 @@ namespace U3D
             // Check if this object has networking support
             networkObject = GetComponent<NetworkObject>();
             isNetworked = networkObject != null;
-
-            if (!isNetworked)
-            {
-                Debug.Log($"U3DGrabbable on '{name}' running in non-networked mode");
-            }
         }
 
         private void Start()
@@ -184,7 +179,7 @@ namespace U3D
             NetworkGrabbedBy = PlayerRef.None;
         }
 
-        // FIXED: Reliable authority change handling
+        // Reliable authority change handling
         public void OnStateAuthorityChanged()
         {
             if (!isNetworked) return;
@@ -225,7 +220,7 @@ namespace U3D
             }
         }
 
-        // FIXED: Deterministic grab attempt
+        // Deterministic grab attempt
         public void Grab()
         {
             if (!CanAttemptGrab()) return;
@@ -296,7 +291,7 @@ namespace U3D
                 if (handTransform == null) return;
             }
 
-            // --- NEW: tell Fusion not to fight our parenting while grabbed ---
+            // --- tell Fusion not to fight our parenting while grabbed ---
             if (networkRb3D != null)
             {
                 networkRb3D.SyncParent = false;
@@ -356,7 +351,7 @@ namespace U3D
                 NetworkGrabbedBy = PlayerRef.None;
             }
 
-            // --- NEW: re-enable Fusion's parent syncing after release ---
+            // --- re-enable Fusion's parent syncing after release ---
             if (networkRb3D != null)
             {
                 networkRb3D.SyncParent = true;

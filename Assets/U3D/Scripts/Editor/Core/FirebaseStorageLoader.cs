@@ -21,28 +21,14 @@ public class FirebaseStorageUploader
         _storageBucket = storageBucket;
         _idToken = idToken;
         _httpClient = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
-
-        // ADD THESE DEBUG LINES:
-        Debug.Log($"🔑 Storage Bucket: {_storageBucket}");
-        Debug.Log($"🔑 ID Token Status: {(string.IsNullOrEmpty(_idToken) ? "NULL/EMPTY" : "Present")}");
-        Debug.Log($"🔑 ID Token Length: {_idToken?.Length ?? 0}");
-        if (!string.IsNullOrEmpty(_idToken))
-        {
-            Debug.Log($"🔑 ID Token (first 50 chars): {_idToken.Substring(0, Math.Min(50, _idToken.Length))}...");
-        }
     }
 
     public async Task<bool> UploadBuildToStorage(string buildPath, string creatorUsername, string projectName)
     {
         try
         {
-            Debug.Log($"🔄 Starting Firebase Storage upload for {projectName}...");
-
-            // 1. Collect all files from build directory
             var buildFiles = CollectBuildFiles(buildPath);
-            Debug.Log($"📦 Found {buildFiles.Count} files to upload");
 
-            // 2. Upload files with throttling (max 3 concurrent uploads)
             const int maxConcurrentUploads = 3;
             var semaphore = new SemaphoreSlim(maxConcurrentUploads, maxConcurrentUploads);
             var uploadTasks = new List<Task<bool>>();
@@ -53,24 +39,8 @@ public class FirebaseStorageUploader
                 uploadTasks.Add(uploadTask);
             }
 
-            // Wait for all uploads to complete
             var results = await Task.WhenAll(uploadTasks);
 
-            // DEBUG: Analyze results by file type
-            Debug.Log($"🔍 UPLOAD RESULTS ANALYSIS:");
-            var wasmFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".wasm")).ToList();
-            var jsFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".js")).ToList();
-            var dataFiles = buildFiles.Where(f => f.StoragePath.EndsWith(".data")).ToList();
-
-            var wasmResults = results.Take(wasmFiles.Count).ToArray();
-            var jsResults = results.Skip(wasmFiles.Count).Take(jsFiles.Count).ToArray();
-            var dataResults = results.Skip(wasmFiles.Count + jsFiles.Count).Take(dataFiles.Count).ToArray();
-
-            Debug.Log($"📊 .wasm upload success rate: {wasmResults.Count(r => r)}/{wasmResults.Length}");
-            Debug.Log($"📊 .js upload success rate: {jsResults.Count(r => r)}/{jsResults.Length}");
-            Debug.Log($"📊 .data upload success rate: {dataResults.Count(r => r)}/{dataResults.Length}");
-
-            // Check if all uploads succeeded
             var failedCount = results.Count(r => !r);
             if (failedCount > 0)
             {
@@ -78,9 +48,6 @@ public class FirebaseStorageUploader
                 return false;
             }
 
-            Debug.Log("✅ All files uploaded successfully to Firebase Storage");
-
-            // 3. Call Firebase Function to trigger GitHub deployment
             return await TriggerGitHubDeployment(creatorUsername, projectName, buildFiles);
         }
         catch (Exception ex)
@@ -94,15 +61,10 @@ public class FirebaseStorageUploader
     {
         try
         {
-            Debug.Log($"🔄 Starting Firebase Storage upload for {baseProjectName} with intent: {deploymentIntent}...");
-
-            // NEW: Clear existing Build folder before uploading new files
             await ClearExistingBuildFolder(creatorUsername, baseProjectName);
 
             var buildFiles = CollectBuildFiles(buildPath);
-            Debug.Log($"📦 Found {buildFiles.Count} files to upload");
 
-            // Upload files to temporary path first
             const int maxConcurrentUploads = 3;
             var semaphore = new SemaphoreSlim(maxConcurrentUploads, maxConcurrentUploads);
             var uploadTasks = new List<Task<bool>>();
@@ -122,9 +84,6 @@ public class FirebaseStorageUploader
                 return new DeploymentResult { Success = false, ErrorMessage = "File upload failed" };
             }
 
-            Debug.Log("✅ All files uploaded successfully to Firebase Storage");
-
-            // Trigger GitHub deployment with intent
             return await TriggerGitHubDeploymentWithIntent(creatorUsername, baseProjectName, deploymentIntent, buildFiles);
         }
         catch (Exception ex)
@@ -134,18 +93,12 @@ public class FirebaseStorageUploader
         }
     }
 
-    // Method 1: TriggerGitHubDeploymentWithIntent 
     private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files)
     {
         try
         {
-            Debug.Log("🚀 Triggering GitHub Pages deployment...");
-
             var fileList = files.ConvertAll(f => f.StoragePath);
-
-            // 🚨 CRITICAL FIX: Add PayPal email to deployment request
             var paypalEmail = U3DAuthenticator.GetPayPalEmail();
-            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");
 
             var deploymentRequest = new Dictionary<string, object>
         {
@@ -158,18 +111,12 @@ public class FirebaseStorageUploader
             { "creatorPayPalEmail", paypalEmail ?? "" }
         };
 
-            // 🆕 USE NEW AUTH RETRY METHOD INSTEAD OF REFLECTION
             var result = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry("deployFromStorage", deploymentRequest);
-
-            Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
 
             if (result.ContainsKey("success") && (bool)result["success"])
             {
                 var actualProjectName = result.ContainsKey("actualProjectName") ? result["actualProjectName"].ToString() : baseProjectName;
                 var liveUrl = result.ContainsKey("url") ? result["url"].ToString() : "";
-
-                Debug.Log($"🎉 Deployment successful! Live at: {liveUrl}");
-                Debug.Log($"📝 Actual project name: {actualProjectName}");
 
                 return new DeploymentResult
                 {
@@ -196,9 +143,6 @@ public class FirebaseStorageUploader
     {
         try
         {
-            Debug.Log($"🧹 Clearing existing Build folder from Firebase Storage...");
-
-            // List files in the Build folder
             var listUrl = $"https://firebasestorage.googleapis.com/v0/b/{_storageBucket}/o?" +
                           $"prefix=creators/{creatorUsername}/builds/{projectName}/Build/";
 
@@ -208,22 +152,15 @@ public class FirebaseStorageUploader
             var listResponse = await _httpClient.SendAsync(listRequest);
 
             if (!listResponse.IsSuccessStatusCode)
-            {
-                Debug.Log($"📭 No existing Build folder found or unable to list (this is fine for new projects)");
                 return;
-            }
 
             var listContent = await listResponse.Content.ReadAsStringAsync();
             var listData = JsonConvert.DeserializeObject<Dictionary<string, object>>(listContent);
 
             if (!listData.ContainsKey("items"))
-            {
-                Debug.Log($"📭 No existing files in Build folder");
                 return;
-            }
 
             var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(listData["items"].ToString());
-            Debug.Log($"🗑️ Found {items.Count} existing Build files to delete");
 
             foreach (var item in items)
             {
@@ -236,17 +173,9 @@ public class FirebaseStorageUploader
 
                 var deleteResponse = await _httpClient.SendAsync(deleteRequest);
 
-                if (deleteResponse.IsSuccessStatusCode)
-                {
-                    Debug.Log($"   🗑️ Deleted: {fileName}");
-                }
-                else
-                {
-                    Debug.LogWarning($"   ⚠️ Failed to delete: {fileName}");
-                }
+                if (!deleteResponse.IsSuccessStatusCode)
+                    Debug.LogWarning($"⚠️ Failed to delete existing build file: {fileName}");
             }
-
-            Debug.Log($"✅ Cleared existing Build folder from Firebase Storage");
         }
         catch (Exception ex)
         {
@@ -264,14 +193,14 @@ public class FirebaseStorageUploader
 
     private async Task<bool> UploadFileWithThrottling(BuildFileInfo file, string creatorUsername, string projectName, SemaphoreSlim semaphore)
     {
-        await semaphore.WaitAsync(); // Wait for available slot
+        await semaphore.WaitAsync();
         try
         {
             return await UploadFileToStorage(file, creatorUsername, projectName);
         }
         finally
         {
-            semaphore.Release(); // Release the slot
+            semaphore.Release();
         }
     }
 
@@ -293,34 +222,6 @@ public class FirebaseStorageUploader
             });
         }
 
-        // DEBUG: Log file collection details
-        Debug.Log($"📁 COLLECTED FILES BREAKDOWN:");
-        var wasmFiles = files.Where(f => f.StoragePath.EndsWith(".wasm")).ToList();
-        var jsFiles = files.Where(f => f.StoragePath.EndsWith(".js")).ToList();
-        var dataFiles = files.Where(f => f.StoragePath.EndsWith(".data")).ToList();
-        var htmlFiles = files.Where(f => f.StoragePath.EndsWith(".html")).ToList();
-        var otherFiles = files.Where(f => !f.StoragePath.EndsWith(".wasm") && !f.StoragePath.EndsWith(".js") && !f.StoragePath.EndsWith(".data") && !f.StoragePath.EndsWith(".html")).ToList();
-
-        Debug.Log($"📁 Found .wasm files: {wasmFiles.Count}");
-        foreach (var file in wasmFiles)
-            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)");
-
-        Debug.Log($"📁 Found .js files: {jsFiles.Count}");
-        foreach (var file in jsFiles)
-            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
-
-        Debug.Log($"📁 Found .data files: {dataFiles.Count}");
-        foreach (var file in dataFiles)
-            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)");
-
-        Debug.Log($"📁 Found .html files: {htmlFiles.Count}");
-        foreach (var file in htmlFiles)
-            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
-
-        Debug.Log($"📁 Found other files: {otherFiles.Count}");
-        foreach (var file in otherFiles)
-            Debug.Log($"   📄 {file.StoragePath} ({file.Size / 1024.0:F2} KB)");
-
         return files;
     }
 
@@ -328,18 +229,11 @@ public class FirebaseStorageUploader
     {
         try
         {
-            Debug.Log($"⬆️ Uploading {file.StoragePath} ({file.Size / 1024.0 / 1024.0:F2} MB)...");
-
-            Debug.Log($"🔍 Auth Header: Bearer {(_idToken?.Length > 20 ? _idToken.Substring(0, 20) + "..." : _idToken ?? "NULL")}");
-
-            // Read file content
             var fileBytes = await File.ReadAllBytesAsync(file.LocalPath);
 
-            // Construct Firebase Storage URL
             var storageUrl = $"https://firebasestorage.googleapis.com/v0/b/{_storageBucket}/o" +
                            $"?name=creators/{creatorUsername}/builds/{projectName}/{file.StoragePath}";
 
-            // Create HTTP request
             using var content = new ByteArrayContent(fileBytes);
             content.Headers.Add("Content-Type", file.ContentType);
 
@@ -347,20 +241,14 @@ public class FirebaseStorageUploader
             request.Content = content;
             request.Headers.Add("Authorization", $"Bearer {_idToken}");
 
-            // Send request
             var response = await _httpClient.SendAsync(request);
 
             if (response.IsSuccessStatusCode)
-            {
-                Debug.Log($"✅ Uploaded {file.StoragePath}");
                 return true;
-            }
-            else
-            {
-                var errorText = await response.Content.ReadAsStringAsync();
-                Debug.LogError($"❌ Upload failed for {file.StoragePath}: {response.StatusCode} - {errorText}");
-                return false;
-            }
+
+            var errorText = await response.Content.ReadAsStringAsync();
+            Debug.LogError($"❌ Upload failed for {file.StoragePath}: {response.StatusCode} - {errorText}");
+            return false;
         }
         catch (Exception ex)
         {
@@ -369,18 +257,12 @@ public class FirebaseStorageUploader
         }
     }
 
-    // Method 2: TriggerGitHubDeployment 
     private async Task<bool> TriggerGitHubDeployment(string creatorUsername, string projectName, List<BuildFileInfo> files)
     {
         try
         {
-            Debug.Log("🚀 Triggering GitHub Pages deployment...");
-
             var fileList = files.ConvertAll(f => f.StoragePath);
-
-            // 🚨 CRITICAL FIX: Add PayPal email to deployment request
             var paypalEmail = U3DAuthenticator.GetPayPalEmail();
-            Debug.Log($"🔍 PayPal email being sent to Firebase: '{paypalEmail ?? "NULL"}'");
 
             var deploymentRequest = new Dictionary<string, object>
         {
@@ -392,22 +274,13 @@ public class FirebaseStorageUploader
             { "creatorPayPalEmail", paypalEmail ?? "" }
         };
 
-            // 🆕 USE NEW AUTH RETRY METHOD INSTEAD OF REFLECTION
             var result = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry("deployFromStorage", deploymentRequest);
 
-            Debug.Log($"🔍 Function response: {JsonConvert.SerializeObject(result)}");
-
             if (result.ContainsKey("url"))
-            {
-                var liveUrl = result["url"].ToString();
-                Debug.Log($"🎉 Deployment successful! Live at: {liveUrl}");
                 return true;
-            }
-            else
-            {
-                Debug.LogError("❌ Deployment failed - no URL returned");
-                return false;
-            }
+
+            Debug.LogError("❌ Deployment failed - no URL returned");
+            return false;
         }
         catch (Exception ex)
         {

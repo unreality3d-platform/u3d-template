@@ -47,7 +47,6 @@ namespace U3D.Networking
         {
             playerNumbers.Clear();
             nextPlayerNumber = 1;
-            Debug.Log("🔢 Player numbering system reset");
         }
 
         public static int GetPlayerNumber(PlayerRef playerRef)
@@ -55,7 +54,6 @@ namespace U3D.Networking
             if (!playerNumbers.ContainsKey(playerRef))
             {
                 playerNumbers[playerRef] = nextPlayerNumber++;
-                Debug.Log($"🆔 Assigned Player {playerNumbers[playerRef]} to {playerRef}");
             }
             return playerNumbers[playerRef];
         }
@@ -66,7 +64,6 @@ namespace U3D.Networking
             {
                 int removedNumber = playerNumbers[playerRef];
                 playerNumbers.Remove(playerRef);
-                Debug.Log($"🗑️ Removed Player {removedNumber} ({playerRef}) from numbering system");
             }
         }
 
@@ -84,8 +81,6 @@ namespace U3D.Networking
             FindLocalPlayerCamera();
             UpdatePlayerName();
             _isInitialized = true;
-
-            Debug.Log($"✅ Nametag initialized for {GetDisplayName()}");
         }
 
         void CreateNametagUI()
@@ -109,7 +104,7 @@ namespace U3D.Networking
                 canvasGroup = canvasObject.AddComponent<CanvasGroup>();
             }
 
-            // UPDATED: Use TMP_DefaultControls following Complete UI Creation Methods Reference
+            // Use TMP_DefaultControls following Complete UI Creation Methods Reference
             var tmpResources = new TMP_DefaultControls.Resources();
 
             // Create background panel using DefaultControls
@@ -129,7 +124,7 @@ namespace U3D.Networking
             panelImage.color = new Color(0, 0, 0, 0.6f); // Semi-transparent black
             panelImage.raycastTarget = false;
 
-            // UPDATED: Create player name text using TMP_DefaultControls
+            // Create player name text using TMP_DefaultControls
             var nameTextObject = TMP_DefaultControls.CreateText(tmpResources);
             nameTextObject.name = "PlayerName";
             nameTextObject.transform.SetParent(panelObject.transform, false);
@@ -176,7 +171,6 @@ namespace U3D.Networking
                         if (camera != null && camera.enabled)
                         {
                             _localPlayerCamera = camera;
-                            Debug.Log($"✅ Found local player camera: {camera.name}");
                             break;
                         }
                     }
@@ -190,7 +184,6 @@ namespace U3D.Networking
                     if (mainCamera != null && mainCamera.enabled)
                     {
                         _localPlayerCamera = mainCamera;
-                        Debug.Log($"✅ Using main camera as fallback: {mainCamera.name}");
                     }
                     else
                     {
@@ -201,7 +194,6 @@ namespace U3D.Networking
                             if (cam.enabled && cam.gameObject.activeInHierarchy)
                             {
                                 _localPlayerCamera = cam;
-                                Debug.Log($"✅ Using first active camera: {cam.name}");
                                 break;
                             }
                         }
@@ -223,7 +215,6 @@ namespace U3D.Networking
                 {
                     nametagCanvas.worldCamera = _localPlayerCamera;
                 }
-                Debug.Log($"🎯 Nametag camera set successfully: {_localPlayerCamera.name}");
             }
             else
             {
@@ -239,7 +230,6 @@ namespace U3D.Networking
             string displayName = $"Player {playerNumber}";
 
             playerNameText.text = displayName;
-            Debug.Log($"📛 Updated nametag to: {displayName}");
         }
 
         string GetDisplayName()
@@ -271,7 +261,6 @@ namespace U3D.Networking
                             {
                                 nametagCanvas.worldCamera = _localPlayerCamera;
                             }
-                            Debug.Log($"🎯 Late-found local player camera: {camera.name}");
                             break;
                         }
                     }

@@ -86,7 +86,7 @@ namespace U3D.Editor
             deploymentComplete = false;
             isPublishing = false;
 
-            // FIX: Force repository options to reload on initialization
+            // Force repository options to reload on initialization
             optionsLoaded = false;
             loadingOptions = false;
             availableOptions.Clear();
@@ -109,8 +109,6 @@ namespace U3D.Editor
             EditorPrefs.SetBool("U3D_JustPublished", true);
             EditorPrefs.SetString("U3D_PublishedURL", successUrl);
             EditorPrefs.SetString("U3D_LastRepositoryName", repositoryName);
-
-            Debug.Log($"✅ Marked publish success for: {repositoryName}");
         }
 
         private bool ValidateProductName(string productName, out string error)
@@ -161,8 +159,6 @@ namespace U3D.Editor
             currentStatus = "";
             isPublishing = false;
             shouldCreateNewRepository = true;
-
-            Debug.Log("Publish state reset - ready to publish again");
         }
 
         public void DrawTab()
@@ -272,7 +268,6 @@ namespace U3D.Editor
             var currentProductName = Application.productName;
             if (currentProductName != cachedProductName)
             {
-                Debug.Log($"Product Name changed externally: '{cachedProductName}' → '{currentProductName}'");
                 cachedProductName = currentProductName;
 
                 // Reset options so they reload with new name
@@ -283,8 +278,6 @@ namespace U3D.Editor
             // 🆕 CHECK AUTHENTICATION STATE: Reset if user logged out
             if (!U3DAuthenticator.IsLoggedIn && optionsLoaded)
             {
-                Debug.Log("User logged out - resetting Publish tab state");
-
                 // Clear loaded options and reset to prerequisites
                 availableOptions.Clear();
                 optionsLoaded = false;
@@ -440,8 +433,6 @@ namespace U3D.Editor
                 // Only update if it's actually different to avoid unnecessary changes
                 if (!string.Equals(cachedProductName, suggestedProductName, StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"🔄 Repository selection changed to '{repositoryName}' - syncing Product Name: '{cachedProductName}' → '{suggestedProductName}'");
-
                     // Update Unity's PlayerSettings and our cached value immediately
                     // This ensures deployment pipeline gets correct Product Name
                     PlayerSettings.productName = suggestedProductName;
@@ -709,7 +700,7 @@ namespace U3D.Editor
                     EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
                     EditorGUILayout.LabelField("Product Name:", EditorStyles.miniLabel, GUILayout.Width(80));
 
-                    // MODIFIED: Only allow editing when "Create New Repository" is selected
+                    // Only allow editing when "Create New Repository" is selected
                     bool isCreateNewSelected = selectedOptionIndex == i;
 
                     GUI.enabled = isCreateNewSelected;
@@ -727,8 +718,6 @@ namespace U3D.Editor
                         // Update Unity's PlayerSettings
                         PlayerSettings.productName = newProductName;
                         cachedProductName = newProductName;
-
-                        Debug.Log($"Product Name updated to: {newProductName}");
 
                         // Recalculate default selection based on new Product Name
                         var previousSelection = selectedOptionIndex;
@@ -762,7 +751,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        // ENHANCED: Smart repository name preview
+                        // Smart repository name preview
                         var wouldCreateRepo = GitHubAPI.SanitizeRepositoryName(cachedProductName);
                         var wouldConflict = availableOptions.Any(opt =>
                             opt.Type == ProjectOption.OptionType.UpdateExisting &&
@@ -870,7 +859,7 @@ namespace U3D.Editor
             {
                 if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
                 {
-                    // For Create New: validate Product Name
+                    // For Create validate Product Name
                     if (!ValidateProductName(cachedProductName, out validationError))
                     {
                         canPublish = false;
@@ -904,7 +893,6 @@ namespace U3D.Editor
                     // Use current Product Name for new repository
                     var targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
                     shouldCreateNewRepository = true;
-                    Debug.Log($"🎯 CREATE NEW REPOSITORY: '{targetRepositoryName}' from Product Name: '{cachedProductName}'");
                     EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
                 }
                 else
@@ -920,13 +908,11 @@ namespace U3D.Editor
                         "Are you sure you want to continue?",
                         "Yes, Update", "Cancel"))
                     {
-                        Debug.Log($"🎯 UPDATE EXISTING REPOSITORY: '{targetRepositoryName}' (Product Name synced to: '{cachedProductName}')");
                         EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
                         _ = StartFirebasePublishProcess();
                     }
                     else
                     {
-                        Debug.Log("Repository update cancelled by user");
                         GUI.enabled = true;
                         return; // User cancelled
                     }
@@ -1046,7 +1032,7 @@ namespace U3D.Editor
 
             try
             {
-                // 🆕 DEPLOYMENT FIX: Validate authentication BEFORE starting any deployment operations
+                // Validate authentication BEFORE starting any deployment operations
                 currentStatus = "Preparing authentication for deployment...";
                 bool authReady = await U3DAuthenticator.PrepareForDeployment();
 
@@ -1070,7 +1056,7 @@ namespace U3D.Editor
                 projectBuilt = true;
                 currentStatus = "Unity build completed successfully";
 
-                // 🆕 DEPLOYMENT FIX: Re-validate authentication before the deployment step
+                // Re-validate authentication before the deployment step
                 // (Build process can take 30+ minutes, token might expire)
                 currentStatus = "Re-validating authentication for deployment...";
                 authReady = await U3DAuthenticator.PrepareForDeployment();
@@ -1183,7 +1169,6 @@ namespace U3D.Editor
                 if (File.Exists(sourceThumbnailPath))
                 {
                     File.Copy(sourceThumbnailPath, destThumbnailPath, true);
-                    Debug.Log($"✅ Thumbnail copied from Assets/_MyAssets to build output: {destThumbnailPath}");
                 }
                 else
                 {
@@ -1338,7 +1323,6 @@ namespace U3D.Editor
             if (GUILayout.Button("Copy URL", GUILayout.Height(35)))
             {
                 EditorGUIUtility.systemCopyBuffer = publishUrl;
-                Debug.Log("URL copied to clipboard!");
             }
             EditorGUILayout.EndHorizontal();
 
@@ -1354,9 +1338,6 @@ namespace U3D.Editor
                 githubConnected = false;
                 isPublishing = false;
                 IsComplete = false;
-
-                // Keep options loaded so we show existing options immediately
-                Debug.Log("Returning to repository options for updates");
             }
 
             EditorGUILayout.Space(10);

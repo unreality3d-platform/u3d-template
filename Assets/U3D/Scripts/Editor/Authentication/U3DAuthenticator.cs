@@ -63,7 +63,7 @@ public static class U3DAuthenticator
         if (username.StartsWith("-") || username.EndsWith("-"))
             return false;
 
-        // NEW: Check against reserved paths (using Array.IndexOf for compatibility)
+        // Check against reserved paths (using Array.IndexOf for compatibility)
         if (System.Array.IndexOf(RESERVED_PATHS, username.ToLower()) >= 0)
             return false;
 
@@ -121,7 +121,7 @@ public static class U3DAuthenticator
         {
             var assetPath = "Assets/U3D/Resources/U3DCreatorData.asset";
 
-            // CRITICAL FIX: Ensure the Resources folder structure exists
+            // Ensure the Resources folder structure exists
             var resourcesPath = "Assets/U3D/Resources";
             if (!AssetDatabase.IsValidFolder(resourcesPath))
             {
@@ -140,7 +140,6 @@ public static class U3DAuthenticator
             {
                 data = ScriptableObject.CreateInstance<U3DCreatorData>();
                 AssetDatabase.CreateAsset(data, assetPath);
-                Debug.Log($"✅ Created new U3DCreatorData asset at {assetPath}");
             }
 
             data.PayPalEmail = email;
@@ -148,15 +147,11 @@ public static class U3DAuthenticator
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            // CRITICAL FIX: Verify the asset was created and saved
+            // Verify the asset was created and saved
             var verifyData = AssetDatabase.LoadAssetAtPath<U3DCreatorData>(assetPath);
-            if (verifyData != null && verifyData.PayPalEmail == email)
+            if (verifyData == null || verifyData.PayPalEmail != email)
             {
-                Debug.Log($"✅ U3DAuthenticator: PayPal email '{email}' verified in ScriptableObject");
-            }
-            else
-            {
-                Debug.LogError($"❌ Failed to verify U3DCreatorData asset. Expected: '{email}', Got: '{verifyData?.PayPalEmail ?? "null"}'");
+                Debug.LogError($"Failed to save U3DCreatorData asset. Expected PayPal email: '{email}', Got: '{verifyData?.PayPalEmail ?? "null"}'");
             }
         }
         catch (Exception ex)
@@ -747,7 +742,7 @@ public static class U3DAuthenticator
     }
 
     /// <summary>
-    /// ENHANCED: Improved token refresh with better error handling and logging
+    /// Improved token refresh with better error handling and logging
     /// Replace the existing RefreshIdTokenIfNeeded method
     /// </summary>
     private static async Task<bool> RefreshIdTokenIfNeeded()
@@ -795,7 +790,6 @@ public static class U3DAuthenticator
                     SaveCredentials();
 
                     var newToken = _idToken?.Substring(0, Math.Min(20, _idToken.Length));
-                    Debug.Log($"🔄 Token refreshed: {oldToken}... -> {newToken}...");
 
                     return true;
                 }
@@ -892,15 +886,13 @@ public static class U3DAuthenticator
 
 
     /// <summary>
-    /// ENHANCED: Ensures authentication is valid before starting deployment operations
+    /// Ensures authentication is valid before starting deployment operations
     /// Now includes proactive token refresh and better error handling
     /// </summary>
     public static async Task<bool> PrepareForDeployment()
     {
         try
         {
-            Debug.Log("🔐 U3D: Preparing authentication for deployment...");
-
             // First check if we're even logged in
             if (string.IsNullOrEmpty(_idToken))
             {
@@ -910,7 +902,6 @@ public static class U3DAuthenticator
 
             // ENHANCEMENT: Always refresh token before long operations
             // This ensures we start with maximum time (1 hour) available
-            Debug.Log("🔄 U3D: Proactively refreshing token before deployment...");
             bool refreshed = await RefreshIdTokenIfNeeded();
 
             if (!refreshed && !string.IsNullOrEmpty(_refreshToken))
@@ -944,7 +935,7 @@ public static class U3DAuthenticator
     }
 
     /// <summary>
-    /// ENHANCED: Deployment operations with automatic authentication retry and proactive refresh
+    /// Deployment operations with automatic authentication retry and proactive refresh
     /// Replaces CallFirebaseFunctionWithAuthRetry with better token management
     /// </summary>
     public static async Task<Dictionary<string, object>> CallFirebaseFunctionWithAuthRetry(string functionName, object data)

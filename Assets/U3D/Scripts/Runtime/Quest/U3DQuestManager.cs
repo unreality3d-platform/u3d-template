@@ -110,8 +110,6 @@ namespace U3D
         /// </summary>
         public void StartQuest(U3DQuest quest)
         {
-            Debug.Log($"StartQuest called for: {quest?.questTitle}, already active: {activeQuests.Contains(quest)}");
-
             if (quest == null || activeQuests.Contains(quest))
                 return;
 
@@ -122,8 +120,6 @@ namespace U3D
             OnQuestStarted?.Invoke(quest);
 
             CreateQuestUI(quest);
-
-            Debug.Log($"Quest Started: {quest.questTitle}");
         }
 
         /// <summary>
@@ -153,8 +149,6 @@ namespace U3D
             OnQuestCompleted?.Invoke(quest);
 
             RemoveQuestUI(quest);
-
-            Debug.Log($"Quest Completed: {quest.questTitle}");
         }
 
         /// <summary>
@@ -171,7 +165,7 @@ namespace U3D
             U3DQuest parentQuest = objective.GetComponentInParent<U3DQuest>();
             if (parentQuest != null && activeQuests.Contains(parentQuest))
             {
-                // FIXED: Update UI whenever objective progress changes, not just when quest completes
+                // Update UI whenever objective progress changes, not just when quest completes
                 UpdateQuestUI(parentQuest);
 
                 if (parentQuest.IsCompleted)
@@ -206,7 +200,7 @@ namespace U3D
             {
                 questLogCanvas.gameObject.layer = LayerMask.NameToLayer("UI");
                 questLogCanvas.sortingOrder = 100;
-                // FIXED: Canvas is always enabled when QuestManager exists
+                // Canvas is always enabled when QuestManager exists
                 questLogCanvas.gameObject.SetActive(true);
                 questLogCanvas.enabled = true;
             }
@@ -238,7 +232,6 @@ namespace U3D
                 quest.ResetQuest();
             }
             activeQuests.Clear();
-            Debug.Log("All quests reset");
         }
 
         /// <summary>
@@ -334,8 +327,6 @@ namespace U3D
 
             // Force layout rebuild
             LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
-
-            Debug.Log($"Quest UI created for: {quest.questTitle}");
         }
 
         /// <summary>
@@ -358,40 +349,6 @@ namespace U3D
             objText.raycastTarget = false;
 
             objContainer.name = $"ObjectiveUI_{objective.GetInstanceID()}";
-
-            Debug.Log($"Created objective UI: {objText.text}");
-        }
-
-        /// <summary>
-        /// Verify canvas setup for Unity 6+ compatibility
-        /// </summary>
-        [ContextMenu("Verify Canvas Setup")]
-        public void VerifyCanvasSetup()
-        {
-            if (questLogCanvas == null)
-            {
-                Debug.LogError("QuestLogCanvas is not assigned!");
-                return;
-            }
-
-            Debug.Log($"Canvas Name: {questLogCanvas.name}");
-            Debug.Log($"Canvas Active: {questLogCanvas.gameObject.activeSelf}");
-            Debug.Log($"Canvas Enabled: {questLogCanvas.enabled}");
-            Debug.Log($"Canvas Render Mode: {questLogCanvas.renderMode}");
-            Debug.Log($"Canvas Sorting Order: {questLogCanvas.sortingOrder}");
-            Debug.Log($"Canvas Layer: {questLogCanvas.gameObject.layer}");
-
-            CanvasScaler scaler = questLogCanvas.GetComponent<CanvasScaler>();
-            GraphicRaycaster raycaster = questLogCanvas.GetComponent<GraphicRaycaster>();
-
-            Debug.Log($"Has CanvasScaler: {scaler != null}");
-            Debug.Log($"Has GraphicRaycaster: {raycaster != null}");
-
-            if (questListParent != null)
-            {
-                Debug.Log($"Quest List Parent: {questListParent.name}");
-                Debug.Log($"Quest List Parent Active: {questListParent.gameObject.activeSelf}");
-            }
         }
 
         /// <summary>

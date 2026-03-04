@@ -63,7 +63,7 @@ namespace U3D
 
         private void Start()
         {
-            // FIXED: Prevent double auto-start and ensure proper manager connection
+            // Prevent double auto-start and ensure proper manager connection
             if (startAutomatically && !hasAttemptedAutoStart && !isActive)
             {
                 hasAttemptedAutoStart = true;
@@ -71,7 +71,6 @@ namespace U3D
                 // Try to use the already-initialized quest manager first
                 if (questManager != null)
                 {
-                    Debug.Log($"Starting quest '{questTitle}' through initialized manager");
                     questManager.StartQuest(this);
                 }
                 else
@@ -80,7 +79,6 @@ namespace U3D
                     U3DQuestManager manager = U3DQuestManager.Instance;
                     if (manager != null)
                     {
-                        Debug.Log($"Starting quest '{questTitle}' through found manager instance");
                         manager.StartQuest(this);
                     }
                     else
@@ -97,7 +95,6 @@ namespace U3D
         public void Initialize(U3DQuestManager manager)
         {
             questManager = manager;
-            Debug.Log($"Quest '{questTitle}' initialized with QuestManager");
 
             // Set up objective event listeners
             foreach (U3DQuestObjective objective in objectives)
@@ -111,9 +108,7 @@ namespace U3D
         /// Start this quest
         /// </summary>
         public void StartQuest()
-        {
-            Debug.Log($"StartQuest called on '{questTitle}' - isActive: {isActive}, isCompleted: {isCompleted}, isRepeatable: {isRepeatable}");
-
+        {           
             if (isActive || (isCompleted && !isRepeatable))
                 return;
 
@@ -134,8 +129,6 @@ namespace U3D
             // Register with quest manager if available
             if (questManager == null)
                 questManager = U3DQuestManager.Instance;
-
-            Debug.Log($"Quest '{questTitle}' started with {objectives.Count} objectives");
         }
 
         /// <summary>
@@ -158,8 +151,6 @@ namespace U3D
             UpdateVisualIndicators();
             OnQuestCompleted?.Invoke();
             OnProgressChanged?.Invoke(1.0f);
-
-            Debug.Log($"Quest '{questTitle}' completed!");
         }
 
         /// <summary>
@@ -254,8 +245,6 @@ namespace U3D
             objectives.Clear();
             U3DQuestObjective[] childObjectives = GetComponentsInChildren<U3DQuestObjective>();
             objectives.AddRange(childObjectives);
-
-            Debug.Log($"Found {objectives.Count} objectives for quest '{questTitle}'");
         }
 
         /// <summary>

@@ -22,12 +22,10 @@ public class FirebaseIntegration : MonoBehaviour
     [SerializeField] private string professionalURL = "";
     [SerializeField] private bool multiplayerActive = false;
 
-    // Internal settings (hidden from Creators)
     private string contentId = "creator-content";
     private float contentPrice = 0f;
     private int maxPlayers = 10;
 
-    // Platform integration components (auto-found)
     private U3DFusionNetworkManager networkManager;
     private U3DPlayerSpawner playerSpawner;
 
@@ -52,7 +50,6 @@ public class FirebaseIntegration : MonoBehaviour
     [DllImport("__Internal")]
     private static extern void UnityGetPhotonToken(string roomName, string contentId);
 
-    // Platform state
     private bool _isConnecting = false;
     private string _pendingRoomName = "";
     private string _photonAppId = "a3df46ef-b10a-4954-8526-7a9fdd553543";
@@ -86,45 +83,32 @@ public class FirebaseIntegration : MonoBehaviour
     void Start()
     {
         _startTime = Time.time;
-
-        // Auto-detect platform environment
         DetectDeploymentEnvironment();
-
-        // Auto-find platform components
         InitializeComponents();
-
-        // Auto-check content access
         CheckContentAccess();
 
-        // Auto-initialize multiplayer if enabled
         if (enableMultiplayer)
-        {
             AutoInitializeMultiplayer();
-        }
     }
 
     void InitializeComponents()
     {
-        // Auto-find network components
         if (networkManager == null)
             networkManager = FindAnyObjectByType<U3DFusionNetworkManager>();
 
         if (playerSpawner == null)
             playerSpawner = FindAnyObjectByType<U3DPlayerSpawner>();
 
-        // Auto-create if missing
         if (networkManager == null && enableMultiplayer)
         {
             var networkManagerObject = new GameObject("U3D Network Manager");
             networkManager = networkManagerObject.AddComponent<U3DFusionNetworkManager>();
-            Debug.Log("Auto-created U3D Network Manager");
         }
 
         if (playerSpawner == null && enableMultiplayer)
         {
             var spawnerObject = new GameObject("U3D Player Spawner");
             playerSpawner = spawnerObject.AddComponent<U3DPlayerSpawner>();
-            Debug.Log("Auto-created U3D Player Spawner");
         }
     }
 
@@ -139,18 +123,14 @@ public class FirebaseIntegration : MonoBehaviour
         if (!string.IsNullOrEmpty(deploymentInfoJson))
         {
             _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
-            
-            // Update Inspector display
             detectedEnvironment = _deploymentInfo.deploymentType;
             
             if (_deploymentInfo.isProfessionalURL)
             {
-                // NEW: Use path-based format for display
                 professionalURL = $"unreality3d.com/{_deploymentInfo.creatorUsername}/{_deploymentInfo.projectName}";
                 contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
             }
             
-            // Report metrics after load
             Invoke(nameof(ReportDeploymentMetrics), 2f);
         }
     }
@@ -192,11 +172,17 @@ public class FirebaseIntegration : MonoBehaviour
     {
         if (!enableMultiplayer) return;
 
+        // Ensure the NetworkManager isn't already connected
+        // (prevents double-start if execution order varies)
+        if (networkManager != null && networkManager.IsConnected)
+            return;
+
         string roomName = GetAutoRoomName();
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         try
         {
+            _pendingRoomName = roomName;
             UnityGetPhotonToken(roomName, contentId);
         }
         catch (System.Exception e)
@@ -204,7 +190,6 @@ public class FirebaseIntegration : MonoBehaviour
             Debug.LogWarning($"Multiplayer auto-init failed: {e.Message}");
         }
 #else
-        // Editor simulation
         _pendingRoomName = roomName;
         var mockToken = new PhotonTokenInfo
         {
@@ -219,9 +204,8 @@ public class FirebaseIntegration : MonoBehaviour
     string GetAutoRoomName()
     {
         if (_deploymentInfo != null && _deploymentInfo.isProfessionalURL)
-        {
             return $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
-        }
+
         return $"room_{contentId}";
     }
 
@@ -243,20 +227,12 @@ public class FirebaseIntegration : MonoBehaviour
 
     public void OnAccessCheckComplete(string hasAccess)
     {
-        Debug.Log($"Content access: {(hasAccess == "true" ? "Granted" : "Payment required")}");
     }
 
     public void OnPaymentComplete(string success)
     {
         if (success == "true")
-        {
-            Debug.Log("Payment successful - Access granted!");
             CheckContentAccess();
-        }
-        else
-        {
-            Debug.Log("Payment failed");
-        }
     }
 
     public void OnPhotonTokenReceived(string tokenData)
@@ -278,7 +254,6 @@ public class FirebaseIntegration : MonoBehaviour
         try
         {
             _currentUserInfo = JsonUtility.FromJson<UserInfo>(userDataJson);
-            Debug.Log($"User profile received: {_currentUserInfo.displayName}");
         }
         catch (System.Exception e)
         {
@@ -297,11 +272,6 @@ public class FirebaseIntegration : MonoBehaviour
         {
             bool success = await networkManager.StartNetworking(_pendingRoomName, tokenInfo.appId);
             multiplayerActive = success;
-
-            if (success)
-            {
-                Debug.Log($"Multiplayer connected: {_pendingRoomName}");
-            }
         }
         catch (System.Exception e)
         {
@@ -369,7 +339,6 @@ public class FirebaseIntegration : MonoBehaviour
     }
 }
 
-// Data structures for platform integration
 [System.Serializable]
 public class PhotonTokenInfo
 {
@@ -381,7 +350,6 @@ public class PhotonTokenInfo
 }
 
 #if UNITY_EDITOR
-// Custom property drawer for read-only fields
 [CustomPropertyDrawer(typeof(ReadOnlyAttribute))]
 public class ReadOnlyDrawer : PropertyDrawer
 {
@@ -394,5 +362,4 @@ public class ReadOnlyDrawer : PropertyDrawer
 }
 #endif
 
-// Custom attribute for read-only Inspector fields
 public class ReadOnlyAttribute : UnityEngine.PropertyAttribute { }
