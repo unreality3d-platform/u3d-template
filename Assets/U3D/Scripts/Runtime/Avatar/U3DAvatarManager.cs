@@ -160,22 +160,12 @@ public class U3DAvatarManager : NetworkBehaviour
         }
     }
 
-    // CLEAN: Simplified public API - no complex methods needed
-
     // Utility properties (unchanged)
     public bool IsAvatarInitialized => isInitialized;
     public GameObject GetAvatarInstance() => avatarInstance;
     public Animator GetAvatarAnimator() => avatarAnimator;
     public Avatar GetAvatarAsset() => avatarAsset;
     public U3DNetworkedAnimator GetNetworkedAnimator() => networkedAnimator;
-
-    void OnDestroy()
-    {
-        if (avatarInstance != null)
-        {
-            DestroyImmediate(avatarInstance);
-        }
-    }
 
     void OnValidate()
     {

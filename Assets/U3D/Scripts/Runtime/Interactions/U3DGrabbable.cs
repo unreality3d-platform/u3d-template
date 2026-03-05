@@ -295,9 +295,15 @@ namespace U3D
                 if (handTransform == null) return;
             }
 
-            // --- tell Fusion not to fight our parenting while grabbed ---
+            // Teleport the NetworkRigidbody3D to the hand's grab position BEFORE disabling
+            // SyncParent and before parenting. This aligns Fusion's internal interpolation
+            // target with where we're about to place the object, preventing Fusion's
+            // FixedUpdateNetwork tick from reasserting its stale tracked position and
+            // overwriting localPosition = grabOffset on the frame(s) after grab.
             if (networkRb3D != null)
             {
+                Vector3 targetWorldPos = handTransform.TransformPoint(grabOffset);
+                networkRb3D.Teleport(targetWorldPos, transform.rotation);
                 networkRb3D.SyncParent = false;
             }
 
@@ -328,7 +334,7 @@ namespace U3D
                 rb.useGravity = false;
             }
 
-            // Parent to hand
+            // Parent to hand and set offset
             transform.SetParent(handTransform);
             transform.localPosition = grabOffset;
 

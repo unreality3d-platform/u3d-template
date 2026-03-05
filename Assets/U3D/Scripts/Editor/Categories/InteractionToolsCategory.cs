@@ -231,9 +231,10 @@ namespace U3D.Editor
             if (!selected.GetComponent<Rigidbody>())
             {
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.isKinematic = true; // Start kinematic/sleeping
-                rb.useGravity = false; // Don't fall until thrown
+                rb.isKinematic = true;
+                rb.useGravity = false;
                 rb.mass = 1f;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
             // Add NetworkRigidbody3D for proper Fusion 2 physics networking
@@ -302,9 +303,10 @@ namespace U3D.Editor
             if (!selected.GetComponent<Rigidbody>())
             {
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.isKinematic = true; // Start kinematic/sleeping
-                rb.useGravity = false; // Don't fall until kicked
+                rb.isKinematic = true;
+                rb.useGravity = false;
                 rb.mass = 1f;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
             // Add NetworkRigidbody3D for proper Fusion 2 physics networking

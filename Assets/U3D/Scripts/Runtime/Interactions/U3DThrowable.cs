@@ -79,6 +79,7 @@ namespace U3D
         // State tracking
         private bool isNetworked = false;
         private Coroutine boundsCheckCoroutine;
+        private Coroutine throwVelocityCoroutine;
 
         // Physics state management - FIXED
         private PhysicsState currentPhysicsState = PhysicsState.Sleeping;
@@ -310,37 +311,18 @@ namespace U3D
                 case PhysicsState.Sleeping:
                 case PhysicsState.Grabbed:
                 case PhysicsState.Resetting:
-                    // Always zero velocities when going non-active, regardless of kinematic flag.
-                    // Guarding behind isKinematic caused residual angular velocity to survive
-                    // into the next grab cycle when Fusion had already set kinematic=true,
-                    // producing visible rotation/position drift across repeated grabs.
                     if (!rb.isKinematic)
                     {
                         rb.linearVelocity = Vector3.zero;
                         rb.angularVelocity = Vector3.zero;
                     }
-                    else
-                    {
-                        // Rigidbody is already kinematic (Fusion set it) - use Sleep() to
-                        // flush any internally buffered velocity that Unity holds.
-                        rb.Sleep();
-                    }
-
-                    if (!isNetworked)
-                    {
-                        rb.useGravity = false;
-                        rb.isKinematic = true;
-                    }
-                    // In networked mode, let NetworkRigidbody3D manage kinematic state
+                    rb.useGravity = false;
+                    rb.isKinematic = true;
                     break;
 
                 case PhysicsState.Active:
-                    if (!isNetworked)
-                    {
-                        rb.isKinematic = false;
-                        rb.useGravity = true;
-                    }
-                    // In networked mode, NetworkRigidbody3D handles physics state automatically
+                    rb.isKinematic = false;
+                    rb.useGravity = true;
                     break;
             }
         }
@@ -407,6 +389,16 @@ namespace U3D
 
         private void OnObjectGrabbed()
         {
+            // Cancel any in-flight throw coroutine immediately. If the coroutine's retry
+            // loop is still running from the previous throw, it will find rb.isKinematic=true
+            // (set by grab), force it back to false, and apply throw velocity to the held
+            // object — causing it to fling out of hand on the second grab.
+            if (throwVelocityCoroutine != null)
+            {
+                StopCoroutine(throwVelocityCoroutine);
+                throwVelocityCoroutine = null;
+            }
+
             // Reset throw state when grabbed
             if (isNetworked && Object.HasStateAuthority)
             {
@@ -451,7 +443,7 @@ namespace U3D
             SetPhysicsState(PhysicsState.Active);
 
             // Apply the throw on the next frame AFTER physics state change and unparenting settle.
-            StartCoroutine(ApplyThrowVelocityAfterPhysicsActivation());
+            throwVelocityCoroutine = StartCoroutine(ApplyThrowVelocityAfterPhysicsActivation());
         }
 
         private IEnumerator ApplyThrowVelocityAfterPhysicsActivation()
@@ -494,6 +486,7 @@ namespace U3D
             {
                 Debug.LogWarning("U3DThrowable: Could not apply throw velocity (Rigidbody still kinematic or null).");
                 SetPhysicsState(PhysicsState.Sleeping);
+                throwVelocityCoroutine = null;
                 yield break;
             }
 
@@ -511,6 +504,8 @@ namespace U3D
             {
                 SetPhysicsState(PhysicsState.Sleeping);
             }
+
+            throwVelocityCoroutine = null;
         }
 
         /// <summary>
@@ -632,8 +627,14 @@ namespace U3D
             // Authority check for networked objects
             if (isNetworked && !Object.HasStateAuthority) return;
 
-            // Set to resetting state to prevent physics interference
-            SetPhysicsState(PhysicsState.Resetting);
+            // Make kinematic immediately to stop any ongoing physics before teleporting
+            if (rb != null)
+            {
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
 
             // Reset position and rotation to spawn point
             if (hasNetworkRb3D && networkRigidbody != null)
