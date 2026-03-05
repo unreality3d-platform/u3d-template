@@ -310,11 +310,20 @@ namespace U3D
                 case PhysicsState.Sleeping:
                 case PhysicsState.Grabbed:
                 case PhysicsState.Resetting:
-                    // Only clear velocities if not kinematic to avoid Unity warnings
+                    // Always zero velocities when going non-active, regardless of kinematic flag.
+                    // Guarding behind isKinematic caused residual angular velocity to survive
+                    // into the next grab cycle when Fusion had already set kinematic=true,
+                    // producing visible rotation/position drift across repeated grabs.
                     if (!rb.isKinematic)
                     {
                         rb.linearVelocity = Vector3.zero;
                         rb.angularVelocity = Vector3.zero;
+                    }
+                    else
+                    {
+                        // Rigidbody is already kinematic (Fusion set it) - use Sleep() to
+                        // flush any internally buffered velocity that Unity holds.
+                        rb.Sleep();
                     }
 
                     if (!isNetworked)

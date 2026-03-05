@@ -3,14 +3,10 @@ using System.Collections.Generic;
 
 namespace U3D.Networking
 {
-    /// <summary>
-    /// Enhanced player spawner with rotation support
-    /// Supports both simple tagged GameObjects and enhanced U3D_SpawnPoint components
-    /// </summary>
     public class U3DPlayerSpawner : MonoBehaviour
     {
         [Header("Fallback Settings")]
-        [Tooltip("Used when no spawn points are found")]
+        [Tooltip("Used when no spawn points are found in the scene")]
         [SerializeField] private Vector3 defaultSpawnPosition = Vector3.zero;
 
         [Tooltip("Default Y rotation when using simple spawn points without U3D_SpawnPoint component")]
@@ -20,92 +16,88 @@ namespace U3D.Networking
         [Tooltip("Use random spawn points instead of cycling through them")]
         [SerializeField] private bool useRandomSpawning = false;
 
-        // Runtime state - support both enhanced and simple spawn points
         private List<U3D_SpawnPoint> enhancedSpawnPoints = new List<U3D_SpawnPoint>();
         private List<Transform> simpleSpawnPoints = new List<Transform>();
         private int lastUsedIndex = -1;
 
-        // Singleton access
         public static U3DPlayerSpawner Instance { get; private set; }
 
         void Awake()
         {
-            // Singleton pattern
             if (Instance == null)
-            {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
             else if (Instance != this)
-            {
                 Destroy(gameObject);
+        }
+
+        void Start()
+        {
+            if (gameObject.scene.name == "DontDestroyOnLoad")
+            {
+                Instance = null; // clear so proxy can register as Instance
+                CreateSceneLevelProxy();
+                enabled = false;
                 return;
             }
 
-            // Find all spawn points
             FindSpawnPoints();
+        }
+
+        private void CreateSceneLevelProxy()
+        {
+            // Capture world position/rotation before any scene moves
+            Vector3 worldPosition = transform.position;
+            float worldRotationY = transform.eulerAngles.y;
+
+            var proxyGO = new GameObject("U3D_SpawnPoint_Runtime");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(
+                proxyGO,
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene()
+            );
+
+            var proxy = proxyGO.AddComponent<U3DPlayerSpawner>();
+            proxy.defaultSpawnPosition = worldPosition;
+            proxy.defaultSpawnYRotation = worldRotationY;
+            proxy.useRandomSpawning = useRandomSpawning;
+            // proxy.Awake() fires immediately on AddComponent and registers as Instance
         }
 
         void FindSpawnPoints()
         {
-            // Clear existing lists
             enhancedSpawnPoints.Clear();
             simpleSpawnPoints.Clear();
 
-            // Find all GameObjects with SpawnPoint tag
             var taggedSpawnPoints = GameObject.FindGameObjectsWithTag("SpawnPoint");
 
             foreach (var spawnPoint in taggedSpawnPoints)
             {
-                // Check if it has the enhanced component
                 var enhancedComponent = spawnPoint.GetComponent<U3D_SpawnPoint>();
                 if (enhancedComponent != null)
-                {
                     enhancedSpawnPoints.Add(enhancedComponent);
-                }
                 else
-                {
-                    // Simple spawn point (just Transform)
                     simpleSpawnPoints.Add(spawnPoint.transform);
-                }
             }
-
-            int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;           
         }
 
-        /// <summary>
-        /// Get spawn position - maintains backward compatibility
-        /// </summary>
         public Vector3 GetSpawnPosition()
         {
-            var spawnData = GetSpawnData();
-            return spawnData.position;
+            return GetSpawnData().position;
         }
 
-        /// <summary>
-        /// Get spawn rotation - NEW functionality
-        /// </summary>
         public Quaternion GetSpawnRotation()
         {
-            var spawnData = GetSpawnData();
-            return spawnData.rotation;
+            return GetSpawnData().rotation;
         }
 
-        /// <summary>
-        /// Get complete spawn data (position + rotation)
-        /// </summary>
         public (Vector3 position, Quaternion rotation) GetSpawnData()
         {
             int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;
 
-            // If no spawn points, use defaults
             if (totalSpawnPoints == 0)
             {
-                Debug.LogWarning("No spawn points found, using default position and rotation");
                 return (defaultSpawnPosition, Quaternion.Euler(0, defaultSpawnYRotation, 0));
             }
 
-            // Determine spawn point index
             int spawnIndex;
             if (useRandomSpawning)
             {
@@ -117,51 +109,32 @@ namespace U3D.Networking
                 spawnIndex = lastUsedIndex;
             }
 
-            // Get spawn data from appropriate list
             if (spawnIndex < enhancedSpawnPoints.Count)
             {
-                // Use enhanced spawn point (preferred)
-                var enhancedPoint = enhancedSpawnPoints[spawnIndex];
-                var spawnData = enhancedPoint.GetSpawnData();
-
-                return spawnData;
+                return enhancedSpawnPoints[spawnIndex].GetSpawnData();
             }
             else
             {
-                // Use simple spawn point with default rotation
                 int simpleIndex = spawnIndex - enhancedSpawnPoints.Count;
-                Vector3 spawnPos = simpleSpawnPoints[simpleIndex].position;
-                Quaternion spawnRot = Quaternion.Euler(0, defaultSpawnYRotation, 0);
-
-                return (spawnPos, spawnRot);
+                return (simpleSpawnPoints[simpleIndex].position,
+                        Quaternion.Euler(0, defaultSpawnYRotation, 0));
             }
         }
 
-        /// <summary>
-        /// Get random spawn position - maintains backward compatibility
-        /// </summary>
         public Vector3 GetRandomSpawnPosition()
         {
-            bool originalSetting = useRandomSpawning;
+            bool original = useRandomSpawning;
             useRandomSpawning = true;
-
             Vector3 position = GetSpawnPosition();
-
-            useRandomSpawning = originalSetting;
+            useRandomSpawning = original;
             return position;
         }
 
-        /// <summary>
-        /// Refresh spawn points - call if spawn points are added/removed at runtime
-        /// </summary>
         public void RefreshSpawnPoints()
         {
             FindSpawnPoints();
         }
 
-        /// <summary>
-        /// Get total spawn point count
-        /// </summary>
         public int GetSpawnPointCount()
         {
             return enhancedSpawnPoints.Count + simpleSpawnPoints.Count;

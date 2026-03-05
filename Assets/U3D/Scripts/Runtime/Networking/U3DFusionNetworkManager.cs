@@ -574,8 +574,11 @@ namespace U3D.Networking
 
         public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
         {
-            // In Shared Mode, local player spawns via OnSceneLoadDone
-            if (runner.GameMode != GameMode.Shared && runner.IsServer && playerPrefab.IsValid)
+            bool shouldSpawn = runner.GameMode == GameMode.Shared
+                ? player == runner.LocalPlayer
+                : runner.IsServer;
+
+            if (shouldSpawn && playerPrefab.IsValid)
             {
                 SpawnLocalPlayer(runner, player);
             }
@@ -583,6 +586,8 @@ namespace U3D.Networking
             OnPlayerJoinedEvent?.Invoke(player);
             OnPlayerCountChanged?.Invoke(_spawnedPlayers.Count);
         }
+
+        public void OnSceneLoadDone(NetworkRunner runner) { }
 
         private void SpawnLocalPlayer(NetworkRunner runner, PlayerRef player)
         {
@@ -616,13 +621,25 @@ namespace U3D.Networking
                 _spawnedPlayers[player] = playerObject;
                 var playerController = playerObject.GetComponent<U3DPlayerController>();
                 if (playerController != null)
+                {
                     playerController.RefreshInputActionsFromNetworkManager(this);
+                    StartCoroutine(ForceSpawnPosition(playerController, pos, rot));
+                }
                 InitializePhysicsObjectsForPlayer(player);
             }
             else
             {
                 Debug.LogWarning($"Failed to spawn player at {pos}");
             }
+        }
+
+        private System.Collections.IEnumerator ForceSpawnPosition(U3DPlayerController controller, Vector3 pos, Quaternion rot)
+        {
+            // Wait two frames for Fusion state sync to settle, then force position
+            yield return null;
+            yield return null;
+            controller.SetPosition(pos);
+            controller.SetRotation(rot.eulerAngles.y);
         }
 
         private System.Collections.IEnumerator DelayedSpawn(NetworkRunner runner, PlayerRef player)
@@ -802,13 +819,6 @@ namespace U3D.Networking
         public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data) { }
         public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken) { }
         public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey reliableKey, ArraySegment<byte> data) { }
-        public void OnSceneLoadDone(NetworkRunner runner)
-        {
-            if (runner.GameMode == GameMode.Shared && runner.LocalPlayer != PlayerRef.None && playerPrefab.IsValid)
-            {
-                SpawnLocalPlayer(runner, runner.LocalPlayer);
-            }
-        }
         public void OnSceneLoadStart(NetworkRunner runner) { }
         public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
         public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }

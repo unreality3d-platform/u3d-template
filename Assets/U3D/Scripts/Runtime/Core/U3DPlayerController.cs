@@ -310,6 +310,26 @@ public class U3DPlayerController : NetworkBehaviour
                 _webXRManager.RegisterLocalPlayer(this);
             }
         }
+
+        if (_isLocalPlayer)
+        {
+            switch (perspectiveMode)
+            {
+                case PerspectiveMode.FirstPersonOnly:
+                    SetFirstPerson();
+                    break;
+                case PerspectiveMode.ThirdPersonOnly:
+                    SetThirdPerson();
+                    break;
+                case PerspectiveMode.SmoothScroll:
+                    SetFirstPerson();
+                    break;
+            }
+        }
+        else
+        {
+            CreateNametag();
+        }
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
@@ -490,26 +510,25 @@ public class U3DPlayerController : NetworkBehaviour
 
     void Start()
     {
-        // Set initial perspective based on mode (local player only)
-        if (_isLocalPlayer)
+        // Networked players are configured in Spawned() once HasStateAuthority is known.
+        // Start() runs before Spawned() on networked objects, so _isLocalPlayer is not
+        // yet valid here. Non-networked instances (e.g. editor preview) fall through safely.
+        var networkObject = GetComponent<NetworkObject>();
+        if (networkObject != null && networkObject.IsValid)
+            return;
+
+        // Non-networked fallback: initialize perspective directly
+        switch (perspectiveMode)
         {
-            switch (perspectiveMode)
-            {
-                case PerspectiveMode.FirstPersonOnly:
-                    SetFirstPerson();
-                    break;
-                case PerspectiveMode.ThirdPersonOnly:
-                    SetThirdPerson();
-                    break;
-                case PerspectiveMode.SmoothScroll:
-                    SetFirstPerson();
-                    break;
-            }
-        }
-        else
-        {
-            // CREATE NAMETAG FOR REMOTE PLAYERS ONLY
-            CreateNametag();
+            case PerspectiveMode.FirstPersonOnly:
+                SetFirstPerson();
+                break;
+            case PerspectiveMode.ThirdPersonOnly:
+                SetThirdPerson();
+                break;
+            case PerspectiveMode.SmoothScroll:
+                SetFirstPerson();
+                break;
         }
     }
 

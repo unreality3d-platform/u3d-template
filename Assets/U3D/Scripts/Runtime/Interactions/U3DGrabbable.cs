@@ -202,14 +202,18 @@ namespace U3D
         {
             base.Render();
 
-            // Only do this if we have a hand, are grabbed, and a networked rigidbody is present
-            if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D)
+            // Only smooth-interpolate for remote clients viewing a grabbed object.
+            // The local authority holder sets localPosition directly in PerformGrab() and
+            // does not need interpolation - running it locally causes per-frame float drift
+            // that accumulates into visible position/rotation change across repeated grabs.
+            if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D
+                && isNetworked && !Object.HasStateAuthority)
             {
                 // Smoothly interpolate toward the hand's position/rotation
                 transform.position = Vector3.Lerp(
                     transform.position,
                     handTransform.position + handTransform.TransformVector(grabOffset),
-                    0.5f // tweak this smoothing factor (0.5 = medium smooth, 1.0 = instant snap)
+                    0.5f
                 );
 
                 transform.rotation = Quaternion.Slerp(
@@ -728,9 +732,24 @@ namespace U3D
 
         private void OnDestroy()
         {
-            if (IsCurrentlyGrabbed())
+            // During teardown (especially DestroyImmediate), components may already be
+            // destroyed in arbitrary order. Do not call Release() - perform null-safe
+            // local cleanup only to avoid NullReferenceException on col, networkRb3D, etc.
+            if (localGrabState == GrabState.Grabbed)
             {
-                Release();
+                localGrabState = GrabState.Free;
+
+                if (currentlyGrabbed == this)
+                    currentlyGrabbed = null;
+
+                if (networkRb3D != null)
+                    networkRb3D.SyncParent = true;
+
+                try { transform.SetParent(originalParent); }
+                catch { }
+
+                if (col != null)
+                    col.isTrigger = false;
             }
         }
     }
