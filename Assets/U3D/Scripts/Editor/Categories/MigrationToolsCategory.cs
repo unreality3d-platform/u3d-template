@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
-using UnityEngine;
 using UnityEditor;
+using UnityEngine;
 
 namespace U3D.Editor
 {
@@ -19,11 +19,15 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Remove Script Placeholders", "Remove placeholder components added by the Replace Missing Scripts tool", AssetCleanupTools.RemovePlaceholderComponents),
                 new CreatorTool("🟢 Clean Missing Scripts from Scene", "Remove missing script components directly from all GameObjects in loaded scenes", AssetCleanupTools.RemoveMissingScriptsFromScene),
                 new CreatorTool("🟢 Clean Missing Scripts from Prefabs", "Remove missing script components from prefabs in selected folder", AssetCleanupTools.CleanPrefabsInFolder),
-                
+
                 // Missing Reference Tools
                 new CreatorTool("🟢 Replace Missing References", "Detect missing object references in components and add placeholder tracking components", AssetCleanupTools.ReplaceMissingReferencesWithPlaceholders),
                 new CreatorTool("🟢 Find Reference Placeholders", "Locate and select all GameObjects with missing reference placeholders for easy rewiring", AssetCleanupTools.FindMissingReferencePlaceholders),
-                new CreatorTool("🟢 Remove Reference Placeholders", "Remove all missing reference placeholder components from the scene", AssetCleanupTools.RemoveMissingReferencePlaceholders)
+                new CreatorTool("🟢 Remove Reference Placeholders", "Remove all missing reference placeholder components from the scene", AssetCleanupTools.RemoveMissingReferencePlaceholders),
+
+                // Visual Scripting Tools
+                new CreatorTool("🟢 Clean Visual Scripting Graphs", "Scan the active scene for Script Machine and State Machine components with third party SDK node types and clear their graphs to stop deserialization errors", AssetCleanupTools.CleanVisualScriptingGraphs),
+                new CreatorTool("🟢 Clean third party Project Assets", "Scan a selected folder (including subfolders) for .asset and .prefab files containing third party SDK Visual Scripting nodes. Clears broken graphs and removes missing scripts from prefabs in one pass", AssetCleanupTools.CleanThirdPartyVSProjectAssets),
             };
         }
 
@@ -32,7 +36,7 @@ namespace U3D.Editor
         public void DrawCategory()
         {
             EditorGUILayout.LabelField("Asset Cleanup Tools", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Clean up missing script references and broken object references from your project. These tools help maintain a healthy codebase when migrating or updating assets.", MessageType.Info);
+            EditorGUILayout.HelpBox("Clean up missing script references, broken object references, and broken Visual Scripting graphs. Use these tools when migrating scenes from other platforms or updating assets.", MessageType.Info);
             EditorGUILayout.Space(10);
 
             // Missing Scripts Section
@@ -44,7 +48,6 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
 
-            // Draw missing script tools
             for (int i = 0; i < 4; i++)
             {
                 DrawTool(tools[i]);
@@ -61,23 +64,35 @@ namespace U3D.Editor
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
 
-            // Draw missing reference tools
-            for (int i = 4; i < tools.Count; i++)
+            for (int i = 4; i < 7; i++)
             {
                 DrawTool(tools[i]);
             }
+
+            EditorGUILayout.Space(10);
+
+            // Visual Scripting Section
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("🎮 Visual Scripting Workflow:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("1. Clean third party Project Assets → Clear broken graphs and missing scripts from project files", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("2. Clean Visual Scripting Graphs → Clear remaining broken graphs in the active scene", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("3. Rebuild logic using U3D components or fresh VS graphs", EditorStyles.miniLabel);
+            EditorGUILayout.HelpBox("Use these after porting scenes from third party platforms that embed proprietary Visual Scripting node types. Graphs are cleared without deleting GameObjects.", MessageType.Warning);
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(5);
+
+            DrawTool(tools[7]);
+            DrawTool(tools[8]);
         }
 
         private void DrawTool(CreatorTool tool)
         {
-            // Use responsive drawing but keep confirmation
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             float windowWidth = EditorGUIUtility.currentViewWidth;
 
             if (windowWidth < 400f)
             {
-                // Vertical layout
                 EditorGUILayout.LabelField(tool.title, EditorStyles.boldLabel);
                 EditorGUILayout.LabelField(tool.description, EditorStyles.wordWrappedMiniLabel);
 
@@ -93,7 +108,6 @@ namespace U3D.Editor
             }
             else
             {
-                // Horizontal layout
                 EditorGUILayout.BeginHorizontal();
 
                 EditorGUILayout.BeginVertical();

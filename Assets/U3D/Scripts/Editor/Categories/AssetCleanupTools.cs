@@ -6,12 +6,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 
+#if UNITY_VISUALSCRIPTING
+using Unity.VisualScripting;
+#endif
+
 namespace U3D.Editor
 {
     /// <summary>
     /// Asset cleanup utilities for the U3D SDK.
     /// Handles missing script detection, replacement, and cleanup.
     /// Also handles missing object reference detection and placeholder management.
+    /// Also handles broken Visual Scripting graph cleanup.
     /// </summary>
     public static class AssetCleanupTools
     {
@@ -29,27 +34,22 @@ namespace U3D.Editor
                 int numComponents = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go);
                 if (numComponents > 0)
                 {
-                    // Register undo operation
                     Undo.RegisterCompleteObjectUndo(go, "Replace missing scripts with placeholders");
 
-                    // Check for suggestions before adding placeholders
                     string suggestion = ComponentSuggestions.GetSuggestionForGameObject(go.name);
                     if (!string.IsNullOrEmpty(suggestion))
                     {
                         suggestionsFound++;
                     }
 
-                    // Add placeholder components (suggestions auto-populate in Awake)
                     for (int i = 0; i < numComponents; i++)
                     {
                         go.AddComponent<MissingScriptPlaceholder>();
                     }
 
-                    // Remove missing script components
                     GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
                     replacedCount += numComponents;
 
-                    // Mark object as dirty
                     EditorUtility.SetDirty(go);
                 }
             }
@@ -61,7 +61,7 @@ namespace U3D.Editor
 
                 if (suggestionsFound > 0)
                 {
-                    Debug.Log($"💡 U3D SDK: Found {suggestionsFound} objects with replacement suggestions! Check placeholder components in Inspector for details.");
+                    Debug.Log($"💡 U3D SDK: Found {suggestionsFound} objects with replacement suggestions. Check placeholder components in Inspector for details.");
                 }
             }
             else
@@ -115,57 +115,41 @@ namespace U3D.Editor
                 gameObjectsProcessed++;
                 var missingRefsOnThisObject = new List<MissingReferenceInfo>();
 
-                // Get all components on this GameObject
                 Component[] components = go.GetComponents<Component>();
 
                 foreach (Component component in components)
                 {
-                    if (component == null) continue; // Skip null/missing components
-                    if (component is MissingReferencePlaceholder) continue; // Skip our own placeholders
+                    if (component == null) continue;
+                    if (component is MissingReferencePlaceholder) continue;
 
-                    // Use SerializedObject to inspect all properties
                     SerializedObject serializedObject = new SerializedObject(component);
                     SerializedProperty property = serializedObject.GetIterator();
 
-                    // Iterate through all properties
                     bool enterChildren = true;
                     while (property.NextVisible(enterChildren))
                     {
-                        enterChildren = false; // Only enter children on first iteration
+                        enterChildren = false;
 
-                        // Check for missing object references
-                        if (property.propertyType == SerializedPropertyType.ObjectReference)
+                        if (property.propertyType == SerializedPropertyType.ObjectReference &&
+                            property.objectReferenceValue == null &&
+                            property.objectReferenceInstanceIDValue != 0)
                         {
-                            // Missing reference: null value but non-zero instance ID indicates missing reference
-                            if (property.objectReferenceValue == null && property.objectReferenceInstanceIDValue != 0)
-                            {
-                                string gameObjectPath = GetGameObjectPath(go);
-                                string componentType = component.GetType().Name;
-                                string propertyName = property.name;
-                                string expectedType = GetExpectedReferenceType(property);
-                                string propertyPath = property.propertyPath;
-
-                                var missingRefInfo = new MissingReferenceInfo(
-                                    componentType,
-                                    propertyName,
-                                    expectedType,
-                                    propertyPath,
-                                    gameObjectPath
-                                );
-
-                                missingRefsOnThisObject.Add(missingRefInfo);
-                                missingReferencesFound++;
-                            }
+                            missingReferencesFound++;
+                            missingRefsOnThisObject.Add(new MissingReferenceInfo(
+                                component.GetType().Name,
+                                property.displayName,
+                                property.type,
+                                property.propertyPath,
+                                GetGameObjectPath(go)
+                            ));
                         }
                     }
                 }
 
-                // If we found missing references on this GameObject, add a placeholder component
                 if (missingRefsOnThisObject.Count > 0)
                 {
                     Undo.RegisterCompleteObjectUndo(go, "Add missing reference placeholder");
 
-                    // Check if a MissingReferencePlaceholder already exists
                     MissingReferencePlaceholder existingPlaceholder = go.GetComponent<MissingReferencePlaceholder>();
 
                     if (existingPlaceholder == null)
@@ -174,7 +158,6 @@ namespace U3D.Editor
                         placeholdersAdded++;
                     }
 
-                    // Add all missing reference info to the placeholder
                     foreach (var missingRef in missingRefsOnThisObject)
                     {
                         existingPlaceholder.AddMissingReference(
@@ -194,8 +177,7 @@ namespace U3D.Editor
             {
                 EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                 Debug.Log($"🔧 U3D SDK: Found {missingReferencesFound} missing references across {gameObjectsProcessed} GameObjects.");
-                Debug.Log($"💡 U3D SDK: Added {placeholdersAdded} MissingReferencePlaceholder components to track missing references.");
-                Debug.Log($"🔍 U3D SDK: Look for MissingReferencePlaceholder components in Inspector to see details and use 'Find Missing Reference Placeholders' tool to locate them all.");
+                Debug.Log($"💡 U3D SDK: Added {placeholdersAdded} MissingReferencePlaceholder components. Use 'Find Reference Placeholders' to locate them.");
             }
             else
             {
@@ -231,18 +213,15 @@ namespace U3D.Editor
                 {
                     MissingReferencePlaceholder placeholder = go.GetComponent<MissingReferencePlaceholder>();
                     var missingRefs = placeholder.GetMissingReferences();
-
                     string gameObjectPath = GetGameObjectPath(go);
                     Debug.Log($"📍 {gameObjectPath} - {missingRefs.Count} missing references", go);
 
-                    // Log details for each missing reference
                     foreach (var missingRef in missingRefs)
                     {
                         Debug.Log($"   • {missingRef.componentType}.{missingRef.propertyName} (expecting {missingRef.expectedType})", go);
                     }
                 }
 
-                // Select all objects with placeholders for easy inspection
                 Selection.objects = placeholderObjects.ToArray();
                 Debug.Log($"🎯 U3D SDK: Selected all {placeholderObjects.Count} GameObjects with missing reference placeholders in Hierarchy.");
             }
@@ -289,7 +268,6 @@ namespace U3D.Editor
             int removedCount = 0;
             int gameObjectCount = 0;
 
-            // Loop through all open scenes
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 Scene scene = SceneManager.GetSceneAt(i);
@@ -329,162 +307,358 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Clean missing scripts from prefabs in a selected folder
+        /// Clean prefabs in a selected folder by removing missing script components
         /// </summary>
         public static void CleanPrefabsInFolder()
         {
-            string selectedPath = "";
+            string folderPath = EditorUtility.OpenFolderPanel("Select Folder Containing Prefabs", "Assets", "");
 
-            // Check if we have a selected folder in the project window
-            if (Selection.activeObject != null)
+            if (string.IsNullOrEmpty(folderPath)) return;
+
+            if (folderPath.StartsWith(Application.dataPath))
             {
-                string assetPath = AssetDatabase.GetAssetPath(Selection.activeObject);
-                if (AssetDatabase.IsValidFolder(assetPath))
+                folderPath = "Assets" + folderPath.Substring(Application.dataPath.Length);
+            }
+
+            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { folderPath });
+            int cleanedCount = 0;
+            int prefabCount = prefabGuids.Length;
+
+            foreach (string guid in prefabGuids)
+            {
+                string prefabPath = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
+
+                if (prefab == null) continue;
+
+                bool prefabModified = false;
+                GameObject[] allObjects = prefab.GetComponentsInChildren<Transform>(true)
+                                               .Select(t => t.gameObject)
+                                               .ToArray();
+
+                foreach (GameObject go in allObjects)
                 {
-                    selectedPath = assetPath;
+                    int before = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go);
+                    if (before > 0)
+                    {
+                        GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
+                        cleanedCount += before;
+                        prefabModified = true;
+                    }
+                }
+
+                if (prefabModified)
+                {
+                    PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
+                }
+
+                PrefabUtility.UnloadPrefabContents(prefab);
+            }
+
+            AssetDatabase.Refresh();
+            Debug.Log($"🧼 U3D SDK: Cleaned {cleanedCount} missing script(s) from {prefabCount} prefab(s) in {folderPath}.");
+        }
+
+        /// <summary>
+        /// Detect ScriptMachine and StateMachine components in the active scene whose embedded
+        /// or external graphs contain third party SDK node types, and clear them.
+        /// </summary>
+        public static void CleanVisualScriptingGraphs()
+        {
+#if UNITY_VISUALSCRIPTING
+            int machinesFound = 0;
+            var candidates = new List<(Component component, bool isEmbedded, string graphPath)>();
+
+            const string emptyEmbeddedGraph = "{\"nest\":{\"source\":\"Embed\",\"macro\":null,\"embed\":{\"variables\":{\"Kind\":\"Flow\",\"collection\":{\"$content\":[],\"$version\":\"A\"},\"$version\":\"A\"},\"controlInputDefinitions\":[],\"controlOutputDefinitions\":[],\"valueInputDefinitions\":[],\"valueOutputDefinitions\":[],\"title\":null,\"summary\":null,\"pan\":{\"x\":0.0,\"y\":0.0},\"zoom\":1.0,\"elements\":[],\"$version\":\"A\"}}}";
+
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                Scene scene = SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        foreach (Component component in t.gameObject.GetComponents<Component>())
+                        {
+                            if (component == null) continue;
+                            if (!(component is ScriptMachine) && !(component is StateMachine)) continue;
+
+                            machinesFound++;
+
+                            SerializedObject so = new SerializedObject(component);
+                            SerializedProperty dataProp = so.FindProperty("_data");
+                            SerializedProperty jsonProp = dataProp?.FindPropertyRelative("_json");
+                            SerializedProperty graphProp = so.FindProperty("_graph");
+
+                            if (jsonProp != null && !string.IsNullOrEmpty(jsonProp.stringValue)
+                                && jsonProp.stringValue.Contains("SpatialSys"))
+                            {
+                                candidates.Add((component, true, null));
+                            }
+                            else if (graphProp != null && graphProp.objectReferenceValue != null)
+                            {
+                                string graphPath = AssetDatabase.GetAssetPath(graphProp.objectReferenceValue);
+                                if (!string.IsNullOrEmpty(graphPath) && File.Exists(graphPath))
+                                {
+                                    string graphText = File.ReadAllText(graphPath);
+                                    if (graphText.Contains("SpatialSys"))
+                                        candidates.Add((component, false, graphPath));
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            // If no folder selected, prompt user
-            if (string.IsNullOrEmpty(selectedPath))
+            if (machinesFound == 0)
             {
-                selectedPath = EditorUtility.OpenFolderPanel("Select folder containing prefabs", "Assets", "");
+                Debug.Log("✅ U3D SDK: No Script Machine or State Machine components found in scene.");
+                return;
+            }
 
-                if (string.IsNullOrEmpty(selectedPath))
-                {
-                    Debug.Log("🚫 U3D SDK: Prefab cleanup cancelled - no folder selected.");
-                    return;
-                }
+            if (candidates.Count == 0)
+            {
+                Debug.Log($"✅ U3D SDK: Checked {machinesFound} VS machine(s) - no third-party graphs detected.");
+                return;
+            }
 
-                // Convert absolute path to relative path
-                if (selectedPath.StartsWith(Application.dataPath))
+            bool confirm = EditorUtility.DisplayDialog(
+                "Clear Third-Party VS Graphs",
+                $"Found {candidates.Count} VS graph(s) containing third-party node types across {machinesFound} machine(s) checked.\n\n" +
+                "Entire graphs will be cleared - all nodes including any valid Unity VS logic in the same graph will be lost.\n\n" +
+                "For graphs with mixed content, consider manually deleting only the red 'Script Missing' nodes in the VS Graph editor instead.\n\n" +
+                "This action can be undone with Ctrl+Z.",
+                "Clear All", "Cancel");
+
+            if (!confirm) return;
+
+            int graphsNulled = 0;
+            var affectedObjects = new List<GameObject>();
+
+            foreach (var (component, isEmbedded, graphPath) in candidates)
+            {
+                SerializedObject so = new SerializedObject(component);
+
+                if (isEmbedded)
                 {
-                    selectedPath = "Assets" + selectedPath.Substring(Application.dataPath.Length);
+                    SerializedProperty dataProp = so.FindProperty("_data");
+                    SerializedProperty jsonProp = dataProp?.FindPropertyRelative("_json");
+                    if (jsonProp != null)
+                    {
+                        Undo.RegisterCompleteObjectUndo(component, "Clear broken embedded VS graph");
+                        jsonProp.stringValue = emptyEmbeddedGraph;
+                        so.ApplyModifiedProperties();
+                    }
                 }
                 else
                 {
-                    Debug.LogError("🚫 U3D SDK: Selected folder must be within the Assets folder.");
-                    return;
-                }
-            }
-
-            CleanPrefabsInFolderInternal(selectedPath);
-        }
-
-        private static void CleanPrefabsInFolderInternal(string folderPath)
-        {
-            int removedComponentsCount = 0;
-            int processedPrefabsCount = 0;
-
-            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { folderPath });
-            var visitedPrefabs = new HashSet<Object>();
-
-            for (int i = 0; i < prefabGuids.Length; i++)
-            {
-                string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuids[i]);
-
-                EditorUtility.DisplayProgressBar(
-                    "U3D SDK: Cleaning Prefabs",
-                    $"Processing: {Path.GetFileName(prefabPath)}",
-                    (float)i / prefabGuids.Length
-                );
-
-                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                if (prefab != null)
-                {
-                    var result = CleanPrefabRecursively(prefab, visitedPrefabs);
-                    removedComponentsCount += result.removedComponents;
-                    if (result.wasModified)
+                    SerializedProperty graphProp = so.FindProperty("_graph");
+                    if (graphProp != null)
                     {
-                        processedPrefabsCount++;
+                        Undo.RegisterCompleteObjectUndo(component, "Null broken external VS graph");
+                        graphProp.objectReferenceValue = null;
+                        so.ApplyModifiedProperties();
                     }
                 }
+
+                GameObject go = (component as MonoBehaviour)?.gameObject;
+                if (go != null)
+                {
+                    EditorUtility.SetDirty(go);
+                    affectedObjects.Add(go);
+                    Debug.LogWarning($"⚠️ U3D SDK: Cleared third-party VS graph on '{GetGameObjectPath(go)}'", go);
+                }
+
+                graphsNulled++;
             }
 
-            EditorUtility.ClearProgressBar();
-            AssetDatabase.SaveAssets();
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log($"🔧 U3D SDK: Cleared {graphsNulled} third-party VS graph(s). {machinesFound - graphsNulled} machine(s) were clean.");
+            Debug.Log($"📋 U3D SDK: Affected GameObjects selected in Hierarchy.");
+            Selection.objects = affectedObjects.ToArray();
+#else
+    EditorUtility.DisplayDialog(
+        "Visual Scripting Not Available",
+        "Unity Visual Scripting package is not installed in this project. Add 'com.unity.visualscripting' via Package Manager to use this tool.",
+        "OK");
+#endif
+        }
+
+        /// <summary>
+        /// Scan a selected folder (including subfolders) for .asset and .prefab files containing
+        /// third party SDK Visual Scripting node types and clean them. Also removes missing script
+        /// components from prefabs in the same pass. Targets project assets rather than scene objects.
+        /// </summary>
+        public static void CleanThirdPartyVSProjectAssets()
+        {
+#if UNITY_VISUALSCRIPTING
+            string folderPath = EditorUtility.OpenFolderPanel("Select Folder Containing Imported Assets", "Assets", "");
+
+            if (string.IsNullOrEmpty(folderPath)) return;
+
+            if (folderPath.StartsWith(Application.dataPath))
+                folderPath = "Assets" + folderPath.Substring(Application.dataPath.Length);
+
+            const string emptyEmbeddedGraph = "{\"nest\":{\"source\":\"Embed\",\"macro\":null,\"embed\":{\"variables\":{\"Kind\":\"Flow\",\"collection\":{\"$content\":[],\"$version\":\"A\"},\"$version\":\"A\"},\"controlInputDefinitions\":[],\"controlOutputDefinitions\":[],\"valueInputDefinitions\":[],\"valueOutputDefinitions\":[],\"title\":null,\"summary\":null,\"pan\":{\"x\":0.0,\"y\":0.0},\"zoom\":1.0,\"elements\":[],\"$version\":\"A\"}}}";
+
+            bool confirmed = EditorUtility.DisplayDialog(
+                "Clear Third-Party VS Graphs",
+                $"This will scan all .asset and .prefab files in '{folderPath}' and its subfolders.\n\n" +
+                "Any VS graph containing third-party node types will be entirely cleared - all nodes including valid Unity VS logic in the same graph will be lost.\n\n" +
+                "For graphs with mixed content, consider manually deleting only the red 'Script Missing' nodes in the VS Graph editor instead.\n\n" +
+                "Missing scripts will also be removed from prefabs in the same pass.",
+                "Continue", "Cancel");
+
+            if (!confirmed) return;
+
+            string absoluteFolder = Path.Combine(Application.dataPath, folderPath.Substring("Assets".Length).TrimStart('/', '\\'));
+            string[] assetFiles = Directory.GetFiles(absoluteFolder, "*.asset", SearchOption.AllDirectories);
+            string[] prefabFiles = Directory.GetFiles(absoluteFolder, "*.prefab", SearchOption.AllDirectories);
+
+            int totalFiles = assetFiles.Length + prefabFiles.Length;
+            int graphsCleared = 0;
+            int missingScriptsRemoved = 0;
+            int filesModified = 0;
+            int fileIndex = 0;
+
+            try
+            {
+                // --- Pass 1: .asset files - write directly to disk to bypass VS re-serialization ---
+                foreach (string absolutePath in assetFiles)
+                {
+                    string relativePath = "Assets" + absolutePath.Substring(Application.dataPath.Length).Replace('\\', '/');
+                    fileIndex++;
+
+                    EditorUtility.DisplayProgressBar(
+                        "Cleaning Third-Party VS Project Assets",
+                        $"Checking: {Path.GetFileName(relativePath)}",
+                        (float)fileIndex / totalFiles);
+
+                    string fileText = File.ReadAllText(absolutePath);
+                    if (!fileText.Contains("SpatialSys")) continue;
+
+                    string modifiedText = System.Text.RegularExpressions.Regex.Replace(
+                        fileText,
+                        @"(_json: ')(.*?SpatialSys.*?)('(\s*\n|\s*$))",
+                        m => m.Groups[1].Value + emptyEmbeddedGraph + m.Groups[3].Value,
+                        System.Text.RegularExpressions.RegexOptions.Singleline
+                    );
+
+                    if (modifiedText != fileText)
+                    {
+                        File.WriteAllText(absolutePath, modifiedText);
+                        graphsCleared++;
+                        filesModified++;
+                        Debug.LogWarning($"⚠️ U3D SDK: Cleared third-party VS graph in asset: {relativePath}");
+                    }
+                }
+
+                // --- Pass 2: .prefab files (missing scripts + embedded VS graphs) ---
+                foreach (string absolutePath in prefabFiles)
+                {
+                    string relativePath = "Assets" + absolutePath.Substring(Application.dataPath.Length).Replace('\\', '/');
+                    fileIndex++;
+
+                    EditorUtility.DisplayProgressBar(
+                        "Cleaning Third-Party VS Project Assets",
+                        $"Checking: {Path.GetFileName(relativePath)}",
+                        (float)fileIndex / totalFiles);
+
+                    string fileText = File.ReadAllText(absolutePath);
+                    bool hasSpatial = fileText.Contains("SpatialSys");
+                    bool hasMissingScripts = fileText.Contains("m_Script: {fileID: 0}");
+
+                    if (!hasSpatial && !hasMissingScripts) continue;
+
+                    GameObject prefab = PrefabUtility.LoadPrefabContents(relativePath);
+                    if (prefab == null) continue;
+
+                    bool prefabModified = false;
+
+                    foreach (Transform t in prefab.GetComponentsInChildren<Transform>(true))
+                    {
+                        GameObject go = t.gameObject;
+
+                        int before = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go);
+                        if (before > 0)
+                        {
+                            GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
+                            missingScriptsRemoved += before;
+                            prefabModified = true;
+                        }
+
+                        if (hasSpatial)
+                        {
+                            foreach (Component component in go.GetComponents<Component>())
+                            {
+                                if (component == null) continue;
+                                if (!(component is ScriptMachine) && !(component is StateMachine)) continue;
+
+                                SerializedObject so = new SerializedObject(component);
+                                SerializedProperty dataProp = so.FindProperty("_data");
+                                SerializedProperty jsonProp = dataProp?.FindPropertyRelative("_json");
+
+                                if (jsonProp != null && !string.IsNullOrEmpty(jsonProp.stringValue)
+                                    && jsonProp.stringValue.Contains("SpatialSys"))
+                                {
+                                    jsonProp.stringValue = emptyEmbeddedGraph;
+                                    so.ApplyModifiedProperties();
+                                    graphsCleared++;
+                                    prefabModified = true;
+                                    Debug.LogWarning($"⚠️ U3D SDK: Cleared third-party VS graph in prefab: {relativePath} on '{go.name}'");
+                                }
+                            }
+                        }
+                    }
+
+                    if (prefabModified)
+                    {
+                        PrefabUtility.SaveAsPrefabAsset(prefab, relativePath);
+                        filesModified++;
+                    }
+
+                    PrefabUtility.UnloadPrefabContents(prefab);
+                }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
             AssetDatabase.Refresh();
 
-            if (processedPrefabsCount > 0)
+            if (graphsCleared > 0 || missingScriptsRemoved > 0)
             {
-                Debug.Log($"🧹 U3D SDK: Processed {processedPrefabsCount} prefab(s) and removed {removedComponentsCount} missing script component(s) from folder: {folderPath}");
+                Debug.Log($"🔧 U3D SDK: Cleaned {filesModified} file(s) in '{folderPath}'.");
+                if (graphsCleared > 0)
+                    Debug.Log($"   • {graphsCleared} third-party VS graph(s) cleared.");
+                if (missingScriptsRemoved > 0)
+                    Debug.Log($"   • {missingScriptsRemoved} missing script(s) removed from prefabs.");
             }
             else
             {
-                Debug.Log($"✅ U3D SDK: No missing scripts found in prefabs in folder: {folderPath}");
+                Debug.Log($"✅ U3D SDK: No third-party VS content or missing scripts found in '{folderPath}'.");
             }
+#else
+    EditorUtility.DisplayDialog(
+        "Visual Scripting Not Available",
+        "Unity Visual Scripting package is not installed in this project. Add 'com.unity.visualscripting' via Package Manager to use this tool.",
+        "OK");
+#endif
         }
 
-        private static (int removedComponents, bool wasModified) CleanPrefabRecursively(GameObject prefabRoot, HashSet<Object> visitedPrefabs)
-        {
-            if (!visitedPrefabs.Add(prefabRoot)) return (0, false);
-
-            int totalRemoved = 0;
-            bool wasModified = false;
-
-            var allObjects = prefabRoot.GetComponentsInChildren<Transform>(true)
-                .Select(t => t.gameObject);
-
-            foreach (var go in allObjects)
-            {
-                if (PrefabUtility.IsPartOfAnyPrefab(go))
-                {
-                    var source = PrefabUtility.GetCorrespondingObjectFromSource(go);
-                    if (source != null && visitedPrefabs.Add(source))
-                    {
-                        var result = CleanGameObjectPrefab(source);
-                        totalRemoved += result.removedCount;
-                        if (result.wasModified) wasModified = true;
-                    }
-                }
-
-                var goResult = CleanGameObjectPrefab(go);
-                totalRemoved += goResult.removedCount;
-                if (goResult.wasModified) wasModified = true;
-            }
-
-            return (totalRemoved, wasModified);
-        }
-
-        private static (int removedCount, bool wasModified) CleanGameObjectPrefab(GameObject go)
-        {
-            int missingCount = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(go);
-            if (missingCount > 0)
-            {
-                Undo.RegisterCompleteObjectUndo(go, "Remove missing scripts from prefab");
-                GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
-                EditorUtility.SetDirty(go);
-                return (missingCount, true);
-            }
-            return (0, false);
-        }
-
-        /// <summary>
-        /// Get the full hierarchy path of a GameObject
-        /// </summary>
         private static string GetGameObjectPath(GameObject go)
         {
-            if (go.transform.parent == null)
-                return go.name;
-
-            return GetGameObjectPath(go.transform.parent.gameObject) + "/" + go.name;
-        }
-
-        /// <summary>
-        /// Get the expected type name for an object reference property
-        /// </summary>
-        private static string GetExpectedReferenceType(SerializedProperty property)
-        {
-            // Try to get type info from the property
-            if (property.type.StartsWith("PPtr<$"))
+            string path = go.name;
+            Transform parent = go.transform.parent;
+            while (parent != null)
             {
-                // Extract type from PPtr<$TypeName>
-                string typeName = property.type.Substring(6, property.type.Length - 7);
-                return typeName;
+                path = parent.name + "/" + path;
+                parent = parent.parent;
             }
-
-            // Fallback to generic Object if we can't determine the type
-            return "Object";
+            return path;
         }
     }
 }

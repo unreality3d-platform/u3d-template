@@ -12,6 +12,10 @@ namespace U3D.Editor
         public bool IsComplete { get; private set; }
         public System.Action<int> OnRequestTabSwitch { get; set; }
 
+        private enum CheckFixSection { Validation, AssetCleanup }
+        private CheckFixSection selectedSection = CheckFixSection.Validation;
+
+        // Validation section
         private List<IValidationCategory> validationCategories;
         private List<CreatorTool> optimizationTools;
         private int selectedCategoryIndex = 0;
@@ -20,11 +24,50 @@ namespace U3D.Editor
         private Vector2 resultsScrollPosition;
         private Vector2 optimizationScrollPosition;
 
+        // Asset Cleanup section
+        private MigrationToolsCategory migrationTools;
+        private Vector2 cleanupScrollPosition;
+
+        private GUIStyle sectionButtonStyle;
+        private GUIStyle activeSectionButtonStyle;
+        private bool stylesInitialized = false;
+
         public void Initialize()
         {
             InitializeValidationCategories();
             InitializeOptimizationTools();
             categoryResults = new Dictionary<string, List<ValidationResult>>();
+            migrationTools = new MigrationToolsCategory();
+        }
+
+        private void InitializeStyles()
+        {
+            if (stylesInitialized) return;
+            try
+            {
+                if (EditorStyles.miniButton == null) return;
+
+                sectionButtonStyle = new GUIStyle(EditorStyles.miniButton)
+                {
+                    normal = { textColor = Color.white },
+                    hover = { textColor = Color.white },
+                    onNormal = { textColor = Color.white }
+                };
+
+                activeSectionButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
+                {
+                    normal = { textColor = Color.white },
+                    hover = { textColor = Color.white },
+                    onNormal = { textColor = Color.white },
+                    fontStyle = FontStyle.Bold
+                };
+
+                stylesInitialized = true;
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
         }
 
         private void InitializeValidationCategories()
@@ -53,8 +96,45 @@ namespace U3D.Editor
 
         public void DrawTab()
         {
+            InitializeStyles();
+
             EditorGUILayout.Space(10);
 
+            // Section switcher
+            EditorGUILayout.BeginHorizontal();
+
+            string[] sectionNames = { "Validation", "Asset Cleanup" };
+            for (int i = 0; i < sectionNames.Length; i++)
+            {
+                CheckFixSection section = (CheckFixSection)i;
+                bool isActive = selectedSection == section;
+                GUIStyle style = stylesInitialized
+                    ? (isActive ? activeSectionButtonStyle : sectionButtonStyle)
+                    : (isActive ? EditorStyles.miniButtonMid : EditorStyles.miniButton);
+
+                if (GUILayout.Button(sectionNames[i], style, GUILayout.Height(28)))
+                {
+                    selectedSection = section;
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(10);
+
+            switch (selectedSection)
+            {
+                case CheckFixSection.Validation:
+                    DrawValidationSection();
+                    break;
+                case CheckFixSection.AssetCleanup:
+                    DrawAssetCleanupSection();
+                    break;
+            }
+        }
+
+        private void DrawValidationSection()
+        {
             EditorGUILayout.LabelField("Project Health Check", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Run analysis to check your project settings and find potential issues.", MessageType.Info);
             EditorGUILayout.Space(10);
@@ -132,6 +212,13 @@ namespace U3D.Editor
                 DrawOptimizationTool(tool);
             }
 
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawAssetCleanupSection()
+        {
+            cleanupScrollPosition = EditorGUILayout.BeginScrollView(cleanupScrollPosition);
+            migrationTools.DrawCategory();
             EditorGUILayout.EndScrollView();
         }
 
@@ -231,15 +318,8 @@ namespace U3D.Editor
             EditorGUILayout.Space(5);
         }
 
-        private void OptimizeAllTextures()
-        {
-            TextureOptimizationWindow.ShowWindow();
-        }
-
-        private void OptimizeAllAudio()
-        {
-            AudioOptimizationWindow.ShowWindow();
-        }
+        private void OptimizeAllTextures() => TextureOptimizationWindow.ShowWindow();
+        private void OptimizeAllAudio() => AudioOptimizationWindow.ShowWindow();
 
         private void RemoveUnitySplashScreen()
         {
