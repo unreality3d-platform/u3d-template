@@ -694,9 +694,7 @@ public class U3DPlayerController : NetworkBehaviour
         // Apply camera pitch for remote players (head movement)
         if (playerCamera != null)
         {
-            Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
-            cameraRotation.x = NetworkCameraPitch;
-            playerCamera.transform.localEulerAngles = cameraRotation;
+            playerCamera.transform.localRotation = Quaternion.Euler(NetworkCameraPitch, 0f, 0f);
         }
 
         // Update VR hand visuals for remote VR players
@@ -719,9 +717,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (!IsCursorLocked()) return;
 
         // Apply smooth camera rotation in Render for consistent timing
-        Vector3 cameraRotation = playerCamera.transform.localEulerAngles;
-        cameraRotation.x = cameraPitch;
-        playerCamera.transform.localEulerAngles = cameraRotation;
+        playerCamera.transform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
 
     // ==================== VR/WebXR MODE HANDLING ====================
