@@ -797,6 +797,8 @@ namespace U3D.Networking
             _interactPressed = false;
             _teleportPressed = false;
             _perspectiveScrollValue = 0f;
+            _cachedLookInput = Vector2.zero; 
+            _cachedMovementInput = Vector2.zero;
         }
 
         public InputAction GetMoveAction() => _moveAction;

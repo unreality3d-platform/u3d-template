@@ -1249,10 +1249,10 @@ public class U3DPlayerController : NetworkBehaviour
                     NetworkCameraPitch = cameraPitchAdvanced;
                 }
 
-                // Apply camera pivot rotation
+                // Apply camera pivot rotation - localRotation only, character body carries yaw
                 if (cameraPivot != null)
                 {
-                    cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
+                    cameraPivot.localRotation = Quaternion.Euler(cameraPitchAdvanced, 0f, 0f);
                 }
             }
             else
@@ -1370,11 +1370,19 @@ public class U3DPlayerController : NetworkBehaviour
             NetworkCameraPitch = cameraPitchAdvanced;
         }
 
-        // Apply camera pivot rotation (this creates the orbit effect)
+        // Apply camera pivot rotation
         if (cameraPivot != null)
         {
-            // Set pivot rotation for camera orbit
-            cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
+            if (isLeftMouseDragging && !isRightMouseDragging)
+            {
+                // Left-click orbit: character body does NOT rotate, pivot tracks its own world yaw
+                cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
+            }
+            else
+            {
+                // Right-click / both-buttons: character body carries yaw, pivot only needs local pitch
+                cameraPivot.localRotation = Quaternion.Euler(cameraPitchAdvanced, 0f, 0f);
+            }
         }
     }
 
