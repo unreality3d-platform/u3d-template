@@ -1620,7 +1620,6 @@ public class U3DPlayerController : NetworkBehaviour
         }
         else
         {
-            Debug.LogWarning("❌ No valid teleport destination found");
         }
     }
 
@@ -1929,10 +1928,6 @@ public class U3DPlayerController : NetworkBehaviour
             Vector3 finalPosition = transform.position;
             float distanceMoved = Vector3.Distance(startPosition, finalPosition);
 
-            if (distanceMoved < 0.1f)
-            {
-                Debug.LogWarning("⚠️ Position barely changed - possible teleport failure");
-            }
 
         }
         catch (System.Exception e)
