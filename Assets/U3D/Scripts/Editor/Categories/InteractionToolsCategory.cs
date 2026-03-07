@@ -20,29 +20,34 @@ namespace U3D.Editor
         private static bool addNetworkObjectToExitTrigger = true;
         private static bool addNetworkObjectToParentTrigger = true;
 
+        // Object Spawner preferences
+        private static GameObject objectSpawnerPrefab = null;
+        private static bool objectSpawnerNetworked = false;
+
         public InteractionToolsCategory()
         {
             tools = new List<CreatorTool>
-    {
-        new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
-        new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
-        new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
-        new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
-        new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
-        new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
-        new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
-        new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
-        new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
-        new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
-        new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
-        new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => { }, true),
-        new CreatorTool("🚧 Make Toggle", "Switch between two states", () => { }, true),
-        new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
-        new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
-        new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
-        new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => { }, true),
-        new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true)
-    };
+            {
+                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
+                new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+                new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
+                new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
+                new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
+                new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
+                new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
+                new CreatorTool("🟢 Add Object Spawner", "Spawn a prefab at this location when the scene starts", ApplyObjectSpawner, true),
+                new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
+                new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
+                new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
+                new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
+                new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => { }, true),
+                new CreatorTool("🚧 Make Toggle", "Switch between two states", () => { }, true),
+                new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
+                new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
+                new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
+                new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => { }, true),
+                new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true)
+            };
         }
 
         public List<CreatorTool> GetTools() => tools;
@@ -53,7 +58,6 @@ namespace U3D.Editor
             EditorGUILayout.HelpBox("Add interactive behaviors to your objects. Select an object first, then click Apply.", MessageType.Info);
             EditorGUILayout.Space(10);
 
-            // Update the description for Make Throwable based on selection
             UpdateThrowableDescription();
 
             foreach (var tool in tools)
@@ -64,10 +68,8 @@ namespace U3D.Editor
 
         private void DrawToolWithNetworkingOption(CreatorTool tool)
         {
-            // Draw the main tool UI
             ProjectToolsTab.DrawCategoryTool(tool);
 
-            // Add networking checkbox for tools that support networking
             if (tool.title == "🟢 Make Grabbable")
             {
                 EditorGUI.indentLevel++;
@@ -110,6 +112,31 @@ namespace U3D.Editor
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space(5);
             }
+            else if (tool.title == "🟢 Add Object Spawner")
+            {
+                EditorGUI.indentLevel++;
+
+                objectSpawnerPrefab = (GameObject)EditorGUILayout.ObjectField(
+                    "Prefab to spawn",
+                    objectSpawnerPrefab,
+                    typeof(GameObject),
+                    false
+                );
+
+                objectSpawnerNetworked = EditorGUILayout.Toggle("Visible to all players", objectSpawnerNetworked);
+
+                if (objectSpawnerNetworked)
+                {
+                    EditorGUILayout.HelpBox("Prefab must have a NetworkObject component.", MessageType.Info);
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("Spawned object will only be visible to the local player.", MessageType.Warning);
+                }
+
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space(5);
+            }
         }
 
         private void UpdateThrowableDescription()
@@ -121,17 +148,8 @@ namespace U3D.Editor
                 if (selected != null)
                 {
                     bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
-
-                    if (!hasGrabbable)
-                    {
-                        throwableTool.description = "Select a Grabbable object";
-                        throwableTool.requiresSelection = true;
-                    }
-                    else
-                    {
-                        throwableTool.description = "Objects can be thrown around";
-                        throwableTool.requiresSelection = true;
-                    }
+                    throwableTool.description = hasGrabbable ? "Objects can be thrown around" : "Select a Grabbable object";
+                    throwableTool.requiresSelection = true;
                 }
                 else
                 {
@@ -141,31 +159,21 @@ namespace U3D.Editor
             }
         }
 
-        // Unified NetworkObject configuration for Shared Mode
         private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
         {
             var so = new SerializedObject(networkObject);
 
-            // CRITICAL: Enable Allow State Authority Override for authority transfer
             var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
             if (allowOverrideProp != null)
-            {
                 allowOverrideProp.boolValue = true;
-            }
 
-            // CRITICAL: Disable Destroy When State Authority Leaves (objects persist)
             var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
             if (destroyOnLeaveProp != null)
-            {
                 destroyOnLeaveProp.boolValue = false;
-            }
 
-            // CRITICAL: Disable Is Master Client Object (any player can grab)
             var isMasterClientProp = so.FindProperty("_isMasterClientObject");
             if (isMasterClientProp != null)
-            {
                 isMasterClientProp.boolValue = false;
-            }
 
             so.ApplyModifiedProperties();
         }
@@ -179,25 +187,17 @@ namespace U3D.Editor
                 return;
             }
 
-            // Only add collider - no Rigidbody for grabbables
             if (!selected.GetComponent<Collider>())
-            {
                 selected.AddComponent<BoxCollider>();
-            }
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add grabbable component
-            U3DGrabbable grabbable = selected.GetComponent<U3DGrabbable>();
-            if (grabbable == null)
-            {
-                grabbable = selected.AddComponent<U3DGrabbable>();
-            }
+            if (selected.GetComponent<U3DGrabbable>() == null)
+                selected.AddComponent<U3DGrabbable>();
 
             EditorUtility.SetDirty(selected);
         }
@@ -211,23 +211,18 @@ namespace U3D.Editor
                 return;
             }
 
-            // Check for grabbable components
-            bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
-
-            if (!hasGrabbable)
+            if (selected.GetComponent<U3DGrabbable>() == null)
             {
                 Debug.LogWarning("Object must have U3DGrabbable component first!");
                 return;
             }
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add Rigidbody (required for throwable physics)
             if (!selected.GetComponent<Rigidbody>())
             {
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
@@ -237,7 +232,6 @@ namespace U3D.Editor
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
-            // Add NetworkRigidbody3D for proper Fusion 2 physics networking
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
                 try
@@ -249,11 +243,9 @@ namespace U3D.Editor
                         ConfigureNetworkRigidbody3DForSharedMode(networkRigidbody);
                     }
 #else
-                    // Fallback: reflection in case addon not installed
                     var networkRigidbody3DType = System.Type.GetType(
                         "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
                     );
-
                     if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
                     {
                         var networkRigidbody = selected.AddComponent(networkRigidbody3DType) as Component;
@@ -267,12 +259,8 @@ namespace U3D.Editor
                 }
             }
 
-            // Add throwable component
-            U3DThrowable throwable = selected.GetComponent<U3DThrowable>();
-            if (throwable == null)
-            {
-                throwable = selected.AddComponent<U3DThrowable>();
-            }
+            if (selected.GetComponent<U3DThrowable>() == null)
+                selected.AddComponent<U3DThrowable>();
 
             EditorUtility.SetDirty(selected);
         }
@@ -286,20 +274,15 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure object has a collider
             if (!selected.GetComponent<Collider>())
-            {
                 selected.AddComponent<BoxCollider>();
-            }
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToKickable && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add Rigidbody (required for kickable physics)
             if (!selected.GetComponent<Rigidbody>())
             {
                 Rigidbody rb = selected.AddComponent<Rigidbody>();
@@ -309,7 +292,6 @@ namespace U3D.Editor
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
-            // Add NetworkRigidbody3D for proper Fusion 2 physics networking
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
                 try
@@ -321,11 +303,9 @@ namespace U3D.Editor
                         ConfigureNetworkRigidbody3DForSharedMode(networkRigidbody);
                     }
 #else
-                    // Fallback: reflection in case addon not installed
                     var networkRigidbody3DType = System.Type.GetType(
                         "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
                     );
-
                     if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
                     {
                         var networkRigidbody = selected.AddComponent(networkRigidbody3DType) as Component;
@@ -339,48 +319,31 @@ namespace U3D.Editor
                 }
             }
 
-            // Add kickable component
-            U3DKickable kickable = selected.GetComponent<U3DKickable>();
-            if (kickable == null)
-            {
-                kickable = selected.AddComponent<U3DKickable>();
-            }
+            if (selected.GetComponent<U3DKickable>() == null)
+                selected.AddComponent<U3DKickable>();
 
             EditorUtility.SetDirty(selected);
         }
 
-        // Consistent NetworkRigidbody3D configuration for Shared Mode
         private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
         {
             var so = new SerializedObject(networkRigidbody);
 
-            // CRITICAL: Disable SyncParent to prevent conflicts with grab parenting
             var syncParentProp = so.FindProperty("_syncParent");
             if (syncParentProp != null)
-            {
                 syncParentProp.boolValue = false;
-            }
 
-            // Set sync mode for multiplayer physics
             var syncModeProp = so.FindProperty("_syncMode");
             if (syncModeProp != null)
-            {
-                syncModeProp.intValue = 1; // SyncRigidbody mode for physics objects
-            }
+                syncModeProp.intValue = 1;
 
-            // Enable scale synchronization for consistency
             var syncScaleProp = so.FindProperty("_syncScale");
             if (syncScaleProp != null)
-            {
                 syncScaleProp.boolValue = true;
-            }
 
-            // CRITICAL: Leave InterpolationTarget as null (let Fusion 2 handle)
             var interpolationTargetProp = so.FindProperty("_interpolationTarget");
             if (interpolationTargetProp != null)
-            {
                 interpolationTargetProp.objectReferenceValue = null;
-            }
 
             so.ApplyModifiedProperties();
         }
@@ -391,38 +354,25 @@ namespace U3D.Editor
 
             var so = new SerializedObject(networkRigidbody);
 
-            // CRITICAL: Disable SyncParent via reflection
             var syncParentProp = so.FindProperty("_syncParent");
             if (syncParentProp != null)
-            {
                 syncParentProp.boolValue = false;
-            }
 
             var syncModeProp = so.FindProperty("_syncMode");
             if (syncModeProp != null)
-            {
-                syncModeProp.intValue = 1; // SyncRigidbody mode
-            }
+                syncModeProp.intValue = 1;
 
             var syncScaleProp = so.FindProperty("_syncScale");
             if (syncScaleProp != null)
-            {
                 syncScaleProp.boolValue = true;
-            }
 
             var interpolationTargetProp = so.FindProperty("_interpolationTarget");
             if (interpolationTargetProp != null)
-            {
                 interpolationTargetProp.objectReferenceValue = null;
-            }
 
             so.ApplyModifiedProperties();
         }
 
-        /// <summary>
-        /// Ensures the "Climbable" layer exists at index 6 in the project's TagManager.
-        /// Called automatically when applying climbable to an object.
-        /// </summary>
         private static void EnsureClimbableLayerExists()
         {
             SerializedObject tagManager = new SerializedObject(
@@ -449,16 +399,11 @@ namespace U3D.Editor
             }
         }
 
-        /// <summary>
-        /// Recursively sets the layer on a GameObject and all its children.
-        /// </summary>
         private static void SetLayerRecursive(GameObject obj, int layer)
         {
             obj.layer = layer;
             foreach (Transform child in obj.transform)
-            {
                 SetLayerRecursive(child.gameObject, layer);
-            }
         }
 
         private static void ApplyClimbable()
@@ -470,24 +415,36 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure the Climbable layer is registered in project settings
             EnsureClimbableLayerExists();
 
-            // Ensure object has a collider (non-trigger; players need to collide with it)
             if (!selected.GetComponent<Collider>())
-            {
                 selected.AddComponent<BoxCollider>();
-            }
 
-            // Set the object and all children to the Climbable layer
             SetLayerRecursive(selected, U3DClimbable.CLIMBABLE_LAYER);
 
-            // Add the climbable marker component
-            U3DClimbable climbable = selected.GetComponent<U3DClimbable>();
-            if (climbable == null)
+            if (selected.GetComponent<U3DClimbable>() == null)
+                selected.AddComponent<U3DClimbable>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyObjectSpawner()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
             {
-                climbable = selected.AddComponent<U3DClimbable>();
+                Debug.LogWarning("Please select an object first");
+                return;
             }
+
+            U3DObjectSpawner spawner = selected.GetComponent<U3DObjectSpawner>();
+            if (spawner == null)
+                spawner = selected.AddComponent<U3DObjectSpawner>();
+
+            if (objectSpawnerPrefab != null)
+                spawner.prefabToSpawn = objectSpawnerPrefab;
+
+            spawner.networked = objectSpawnerNetworked;
 
             EditorUtility.SetDirty(selected);
         }
@@ -501,27 +458,19 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure object has a trigger collider
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
-            {
                 collider = selected.AddComponent<BoxCollider>();
-            }
             collider.isTrigger = true;
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add enter trigger component
-            U3DEnterTrigger enterTrigger = selected.GetComponent<U3DEnterTrigger>();
-            if (enterTrigger == null)
-            {
-                enterTrigger = selected.AddComponent<U3DEnterTrigger>();
-            }
+            if (selected.GetComponent<U3DEnterTrigger>() == null)
+                selected.AddComponent<U3DEnterTrigger>();
 
             EditorUtility.SetDirty(selected);
         }
@@ -535,27 +484,19 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure object has a trigger collider
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
-            {
                 collider = selected.AddComponent<BoxCollider>();
-            }
             collider.isTrigger = true;
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add exit trigger component
-            U3DExitTrigger exitTrigger = selected.GetComponent<U3DExitTrigger>();
-            if (exitTrigger == null)
-            {
-                exitTrigger = selected.AddComponent<U3DExitTrigger>();
-            }
+            if (selected.GetComponent<U3DExitTrigger>() == null)
+                selected.AddComponent<U3DExitTrigger>();
 
             EditorUtility.SetDirty(selected);
         }
@@ -569,27 +510,19 @@ namespace U3D.Editor
                 return;
             }
 
-            // Ensure object has a trigger collider
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
-            {
                 collider = selected.AddComponent<BoxCollider>();
-            }
             collider.isTrigger = true;
 
-            // Add and configure NetworkObject if requested and not already present
             if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            // Add parent trigger component
-            U3DParentTrigger parentTrigger = selected.GetComponent<U3DParentTrigger>();
-            if (parentTrigger == null)
-            {
-                parentTrigger = selected.AddComponent<U3DParentTrigger>();
-            }
+            if (selected.GetComponent<U3DParentTrigger>() == null)
+                selected.AddComponent<U3DParentTrigger>();
 
             EditorUtility.SetDirty(selected);
         }

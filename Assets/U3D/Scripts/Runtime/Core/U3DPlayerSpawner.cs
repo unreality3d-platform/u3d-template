@@ -5,13 +5,6 @@ namespace U3D.Networking
 {
     public class U3DPlayerSpawner : MonoBehaviour
     {
-        [Header("Fallback Settings")]
-        [Tooltip("Used when no spawn points are found in the scene")]
-        [SerializeField] private Vector3 defaultSpawnPosition = Vector3.zero;
-
-        [Tooltip("Default Y rotation when no USDPlayerSpawnPoint components are found")]
-        [SerializeField] private float defaultSpawnYRotation = 0f;
-
         [Header("Spawn Behavior")]
         [Tooltip("Use random spawn points instead of cycling through them")]
         [SerializeField] private bool useRandomSpawning = false;
@@ -19,6 +12,10 @@ namespace U3D.Networking
         private List<U3DPlayerSpawnPoint> enhancedSpawnPoints = new List<U3DPlayerSpawnPoint>();
         private List<Transform> simpleSpawnPoints = new List<Transform>();
         private int lastUsedIndex = -1;
+
+        // Used only by the DontDestroyOnLoad proxy to carry position into the scene
+        private Vector3 _fallbackPosition;
+        private float _fallbackRotationY;
 
         public static U3DPlayerSpawner Instance { get; private set; }
 
@@ -55,9 +52,9 @@ namespace U3D.Networking
             );
 
             var proxy = proxyGO.AddComponent<U3DPlayerSpawner>();
-            proxy.defaultSpawnPosition = worldPosition;
-            proxy.defaultSpawnYRotation = worldRotationY;
             proxy.useRandomSpawning = useRandomSpawning;
+            proxy._fallbackPosition = worldPosition;
+            proxy._fallbackRotationY = worldRotationY;
         }
 
         void FindSpawnPoints()
@@ -77,22 +74,19 @@ namespace U3D.Networking
             }
         }
 
-        public Vector3 GetSpawnPosition()
-        {
-            return GetSpawnData().position;
-        }
-
-        public Quaternion GetSpawnRotation()
-        {
-            return GetSpawnData().rotation;
-        }
+        public Vector3 GetSpawnPosition() => GetSpawnData().position;
+        public Quaternion GetSpawnRotation() => GetSpawnData().rotation;
 
         public (Vector3 position, Quaternion rotation) GetSpawnData()
         {
             int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;
 
             if (totalSpawnPoints == 0)
-                return (defaultSpawnPosition, Quaternion.Euler(0, defaultSpawnYRotation, 0));
+            {
+                Vector3 fallback = _fallbackPosition != Vector3.zero ? _fallbackPosition : transform.position;
+                float rotY = _fallbackPosition != Vector3.zero ? _fallbackRotationY : transform.eulerAngles.y;
+                return (fallback, Quaternion.Euler(0, rotY, 0));
+            }
 
             int spawnIndex;
             if (useRandomSpawning)
@@ -110,7 +104,7 @@ namespace U3D.Networking
 
             int simpleIndex = spawnIndex - enhancedSpawnPoints.Count;
             return (simpleSpawnPoints[simpleIndex].position,
-                    Quaternion.Euler(0, defaultSpawnYRotation, 0));
+                    Quaternion.Euler(0, transform.eulerAngles.y, 0));
         }
 
         public Vector3 GetRandomSpawnPosition()
