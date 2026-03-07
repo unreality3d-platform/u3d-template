@@ -26,17 +26,15 @@ namespace U3D.Editor
         {
             var allComponents = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
 
-            // Check for U3D CORE system components (not spawned player controller)
             var hasFirebaseIntegration = allComponents.Any(mb => mb.GetType().Name == "FirebaseIntegration");
-            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3D_FusionNetworkManager");
-            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3D_PlayerSpawner");
-            var hasCursorManager = allComponents.Any(mb => mb.GetType().Name == "U3D_CursorManager");
+            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3DFusionNetworkManager");
+            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3DPlayerSpawner");
+            var hasCursorManager = allComponents.Any(mb => mb.GetType().Name == "U3DCursorManager");
 
             var componentsFound = 0;
             var missingComponents = new List<string>();
             var optionalComponents = new List<string>();
 
-            // Required components
             if (hasFirebaseIntegration)
                 componentsFound++;
             else
@@ -45,31 +43,25 @@ namespace U3D.Editor
             if (hasFusionNetworkManager)
                 componentsFound++;
             else
-                missingComponents.Add("U3D_FusionNetworkManager");
+                missingComponents.Add("U3DFusionNetworkManager");
 
             if (hasPlayerSpawner)
                 componentsFound++;
             else
-                missingComponents.Add("U3D_PlayerSpawner");
+                missingComponents.Add("U3DPlayerSpawner");
 
-            // Optional but recommended
             if (!hasCursorManager)
-                optionalComponents.Add("U3D_CursorManager");
+                optionalComponents.Add("U3DCursorManager");
 
-            var requiredCount = 3; // Firebase + NetworkManager + PlayerSpawner
+            var requiredCount = 3;
             var isComplete = componentsFound == requiredCount;
 
             string message;
             if (isComplete)
             {
-                if (optionalComponents.Count > 0)
-                {
-                    message = $"✅ U3D CORE system configured. Optional: {string.Join(", ", optionalComponents)}";
-                }
-                else
-                {
-                    message = "✅ All U3D CORE components found - networking system ready";
-                }
+                message = optionalComponents.Count > 0
+                    ? $"✅ U3D CORE system configured. Optional: {string.Join(", ", optionalComponents)}"
+                    : "✅ All U3D CORE components found - networking system ready";
             }
             else
             {
@@ -81,12 +73,12 @@ namespace U3D.Editor
 
         private ValidationResult ValidateSpawnPoints()
         {
-            var spawnPoints = GameObject.FindGameObjectsWithTag("Respawn");
+            var spawnPoints = GameObject.FindGameObjectsWithTag("PlayerSpawnPoint");
             var hasSpawnPoints = spawnPoints.Length > 0;
 
             return new ValidationResult(
                 hasSpawnPoints,
-                hasSpawnPoints ? $"{spawnPoints.Length} spawn points found" : "Add spawn points for player positioning",
+                hasSpawnPoints ? $"{spawnPoints.Length} player spawn point(s) found" : "Add a player spawn point - tag a GameObject 'PlayerSpawnPoint' to set where players appear",
                 hasSpawnPoints ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }

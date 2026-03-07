@@ -9,14 +9,14 @@ namespace U3D.Networking
         [Tooltip("Used when no spawn points are found in the scene")]
         [SerializeField] private Vector3 defaultSpawnPosition = Vector3.zero;
 
-        [Tooltip("Default Y rotation when using simple spawn points without U3D_SpawnPoint component")]
+        [Tooltip("Default Y rotation when no USDPlayerSpawnPoint components are found")]
         [SerializeField] private float defaultSpawnYRotation = 0f;
 
         [Header("Spawn Behavior")]
         [Tooltip("Use random spawn points instead of cycling through them")]
         [SerializeField] private bool useRandomSpawning = false;
 
-        private List<U3D_SpawnPoint> enhancedSpawnPoints = new List<U3D_SpawnPoint>();
+        private List<U3DPlayerSpawnPoint> enhancedSpawnPoints = new List<U3DPlayerSpawnPoint>();
         private List<Transform> simpleSpawnPoints = new List<Transform>();
         private int lastUsedIndex = -1;
 
@@ -34,7 +34,7 @@ namespace U3D.Networking
         {
             if (gameObject.scene.name == "DontDestroyOnLoad")
             {
-                Instance = null; // clear so proxy can register as Instance
+                Instance = null;
                 CreateSceneLevelProxy();
                 enabled = false;
                 return;
@@ -45,11 +45,10 @@ namespace U3D.Networking
 
         private void CreateSceneLevelProxy()
         {
-            // Capture world position/rotation before any scene moves
             Vector3 worldPosition = transform.position;
             float worldRotationY = transform.eulerAngles.y;
 
-            var proxyGO = new GameObject("U3D_SpawnPoint_Runtime");
+            var proxyGO = new GameObject("U3DPlayerSpawnPoint_Runtime");
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(
                 proxyGO,
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene()
@@ -59,7 +58,6 @@ namespace U3D.Networking
             proxy.defaultSpawnPosition = worldPosition;
             proxy.defaultSpawnYRotation = worldRotationY;
             proxy.useRandomSpawning = useRandomSpawning;
-            // proxy.Awake() fires immediately on AddComponent and registers as Instance
         }
 
         void FindSpawnPoints()
@@ -67,11 +65,11 @@ namespace U3D.Networking
             enhancedSpawnPoints.Clear();
             simpleSpawnPoints.Clear();
 
-            var taggedSpawnPoints = GameObject.FindGameObjectsWithTag("SpawnPoint");
+            var taggedSpawnPoints = GameObject.FindGameObjectsWithTag("PlayerSpawnPoint");
 
             foreach (var spawnPoint in taggedSpawnPoints)
             {
-                var enhancedComponent = spawnPoint.GetComponent<U3D_SpawnPoint>();
+                var enhancedComponent = spawnPoint.GetComponent<U3DPlayerSpawnPoint>();
                 if (enhancedComponent != null)
                     enhancedSpawnPoints.Add(enhancedComponent);
                 else
@@ -94,9 +92,7 @@ namespace U3D.Networking
             int totalSpawnPoints = enhancedSpawnPoints.Count + simpleSpawnPoints.Count;
 
             if (totalSpawnPoints == 0)
-            {
                 return (defaultSpawnPosition, Quaternion.Euler(0, defaultSpawnYRotation, 0));
-            }
 
             int spawnIndex;
             if (useRandomSpawning)
@@ -110,15 +106,11 @@ namespace U3D.Networking
             }
 
             if (spawnIndex < enhancedSpawnPoints.Count)
-            {
                 return enhancedSpawnPoints[spawnIndex].GetSpawnData();
-            }
-            else
-            {
-                int simpleIndex = spawnIndex - enhancedSpawnPoints.Count;
-                return (simpleSpawnPoints[simpleIndex].position,
-                        Quaternion.Euler(0, defaultSpawnYRotation, 0));
-            }
+
+            int simpleIndex = spawnIndex - enhancedSpawnPoints.Count;
+            return (simpleSpawnPoints[simpleIndex].position,
+                    Quaternion.Euler(0, defaultSpawnYRotation, 0));
         }
 
         public Vector3 GetRandomSpawnPosition()
