@@ -76,9 +76,9 @@ namespace U3D.Editor
             categories = new List<IToolCategory>
             {
                 new InteractionToolsCategory(),
-                new MonetizationToolsCategory(),
                 new SystemsToolsCategory(),
                 new MediaToolsCategory(),
+                new MonetizationToolsCategory(),
                 //new MigrationToolsCategory()
             };
 

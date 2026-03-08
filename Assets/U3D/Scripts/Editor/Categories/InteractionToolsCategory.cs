@@ -20,20 +20,25 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
-                new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
-                new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
-                new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
-                new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
-                new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
+                new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
+                new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
+                new CreatorTool("🟢 Add Click Trigger", "Execute actions when player clicks this object", ApplyClickTrigger, true),
                 new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => { }, true),
                 new CreatorTool("🚧 Make Toggle", "Switch between two states", () => { }, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
                 new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
                 new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => { }, true),
-                new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true)
+                new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true),
+                // ── Movement ──
+                new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
+                new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
+                new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
+                new CreatorTool("🚧 Add Scene Portal", "Portal to load a different scene", () => { }, true),
+                new CreatorTool("🚧 Add 1-Way Portal", "Portal for one-direction travel within scene", () => { }, true),
+                new CreatorTool("🚧 Add 2-Way Portal", "Portal for bi-directional travel within scene", () => { }, true),
             };
         }
 
@@ -47,10 +52,36 @@ namespace U3D.Editor
 
             UpdateThrowableDescription();
 
+            bool inMovementSection = false;
+
             foreach (var tool in tools)
             {
+                if (!inMovementSection && IsMovementTool(tool.title))
+                {
+                    inMovementSection = true;
+                    EditorGUILayout.Space(6);
+                    EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+                    GUIStyle movementHeaderStyle = new GUIStyle(EditorStyles.label)
+                    {
+                        fontStyle = FontStyle.BoldAndItalic,
+                        alignment = TextAnchor.MiddleCenter
+                    };
+                    EditorGUILayout.LabelField("Movement", movementHeaderStyle);
+                    EditorGUILayout.Space(4);
+                }
+
                 ProjectToolsTab.DrawCategoryTool(tool);
             }
+        }
+
+        private static bool IsMovementTool(string title)
+        {
+            return title == "🚧 Add Seat"
+                || title == "🚧 Make Rideable"
+                || title == "🚧 Make Steerable"
+                || title == "🚧 Add Scene Portal"
+                || title == "🚧 Add 1-Way Portal"
+                || title == "🚧 Add 2-Way Portal";
         }
 
         private void UpdateThrowableDescription()
@@ -80,7 +111,6 @@ namespace U3D.Editor
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
             {
-                // Create a new empty GameObject at the scene origin when nothing is selected
                 selected = new GameObject("Object Spawner");
                 Undo.RegisterCreatedObjectUndo(selected, "Add Object Spawner");
                 Selection.activeGameObject = selected;
@@ -293,6 +323,32 @@ namespace U3D.Editor
 
             if (selected.GetComponent<U3DExitTrigger>() == null)
                 selected.AddComponent<U3DExitTrigger>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyClickTrigger()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+                selected.AddComponent<BoxCollider>();
+            // isTrigger intentionally not set — collider must be solid for raycast
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (selected.GetComponent<U3DClickTrigger>() == null)
+                selected.AddComponent<U3DClickTrigger>();
 
             EditorUtility.SetDirty(selected);
         }

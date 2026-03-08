@@ -254,6 +254,7 @@ MonoBehaviour:
   kickKey: 114
   maxKickDistance: 1.5
   kickDetectionRadius: 1.2
+  labelUI: {fileID: 0}
   OnKicked:
     m_PersistentCalls:
       m_Calls: []
@@ -3083,6 +3084,7 @@ MonoBehaviour:
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
+  labelUI: {fileID: 1924854879}
   OnGrabbed:
     m_PersistentCalls:
       m_Calls: []
@@ -4327,6 +4329,7 @@ MonoBehaviour:
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0, z: 0}
   allowMultiGrab: 0
+  labelUI: {fileID: 0}
   OnGrabbed:
     m_PersistentCalls:
       m_Calls: []
@@ -5572,6 +5575,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DClimbable
   speedMultiplier: 1
+  labelUI: {fileID: 0}
 --- !u!1 &1638704172
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 using UnityEditor;
 
 namespace U3D.Editor
@@ -15,11 +17,11 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 new CreatorTool("🟢 Add Audio List", "Play random audio clips from a list through one AudioSource", ApplyAudioList, true),
-                new CreatorTool("🚧 Add Video Player Object", "Stream videos from URLs in your world", () => Debug.Log("Applied Video Player Object"), true),
-                new CreatorTool("🚧 Add Audio Trigger", "Sounds that play on player interaction", () => Debug.Log("Applied Audio Trigger"), true),
-                new CreatorTool("🚧 Add Screenshare Object", "Share desktop screens within your experience", () => Debug.Log("Applied Screenshare Object"), true),
-                new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => Debug.Log("Applied Image Gallery"), true),
-                new CreatorTool("🚧 Add Text Display", "Dynamic text that can be updated", () => Debug.Log("Applied Text Display"), true)
+                new CreatorTool("🟢 Add Worldspace UI", "World space canvas that faces camera with proximity fade", CreateWorldspaceUI),
+                new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
+                new CreatorTool("🚧 Add Video Player", "Stream videos from URLs in your world", () => { }),
+                new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => { }),
+                new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
             };
         }
 
@@ -53,10 +55,70 @@ namespace U3D.Editor
             }
 
             Undo.RecordObject(selected, "Add AudioList Component");
-            AudioList audioList = selected.AddComponent<AudioList>();
+            selected.AddComponent<AudioList>();
 
-            Debug.Log($"AudioList component added to {selected.name}");
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void CreateWorldspaceUI()
+        {
+            GameObject canvasObj = new GameObject("Worldspace UI Canvas");
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+
+            canvasObj.AddComponent<CanvasGroup>();
+            canvasObj.AddComponent<GraphicRaycaster>();
+            canvasObj.AddComponent<U3DBillboardUI>();
+
+            RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(400, 300);
+            canvasRect.localScale = Vector3.one * 0.01f;
+
+            var uiResources = new DefaultControls.Resources();
+            GameObject panelObj = DefaultControls.CreatePanel(uiResources);
+            panelObj.name = "Panel";
+            panelObj.transform.SetParent(canvasObj.transform, false);
+            panelObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform panelRect = panelObj.GetComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+
+            Image panelImage = panelObj.GetComponent<Image>();
+            if (panelImage != null)
+                panelImage.color = new Color(1f, 1f, 1f, 0.5f);
+
+            var tmpResources = new TMP_DefaultControls.Resources();
+            GameObject textObj = TMP_DefaultControls.CreateText(tmpResources);
+            textObj.name = "Text (TMP)";
+            textObj.transform.SetParent(panelObj.transform, false);
+            textObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.5f, 0.5f);
+            textRect.anchorMax = new Vector2(0.5f, 0.5f);
+            textRect.sizeDelta = new Vector2(350, 250);
+            textRect.anchoredPosition = Vector2.zero;
+
+            TextMeshProUGUI tmpText = textObj.GetComponent<TextMeshProUGUI>();
+            if (tmpText != null)
+            {
+                tmpText.text = "Worldspace UI Text";
+                tmpText.fontSize = 18;
+                tmpText.color = Color.white;
+                tmpText.alignment = TextAlignmentOptions.Center;
+            }
+
+            if (SceneView.lastActiveSceneView != null)
+                canvasObj.transform.position = SceneView.lastActiveSceneView.pivot;
+
+            Selection.activeGameObject = canvasObj;
+            EditorGUIUtility.PingObject(canvasObj);
+
+            EditorUtility.SetDirty(canvasObj);
         }
     }
 }
