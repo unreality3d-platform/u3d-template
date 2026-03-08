@@ -123,6 +123,8 @@ namespace U3D
                     tracker.Initialize(this);
                 }
 
+                if (labelUI != null && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
+                    labelUI.gameObject.SetActive(false);
                 onSpawned?.Invoke(instance.gameObject);
             }
             else
@@ -160,12 +162,14 @@ namespace U3D
             if (Runner != null && Object != null && Object.HasStateAuthority)
             {
                 NetworkActiveCount = Mathf.Max(0, NetworkActiveCount - 1);
+                if (labelUI != null) labelUI.gameObject.SetActive(true);
                 if (respawnWhenDestroyed && NetworkActiveCount < maxInstances)
                     ExecuteNetworkedSpawn();
             }
             else
             {
                 _localActiveCount = Mathf.Max(0, _localActiveCount - 1);
+                if (labelUI != null) labelUI.gameObject.SetActive(true);
                 if (respawnWhenDestroyed && _localActiveCount < maxInstances)
                     SpawnLocal();
             }

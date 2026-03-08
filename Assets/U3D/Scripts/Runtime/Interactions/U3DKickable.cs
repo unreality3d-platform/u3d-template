@@ -536,6 +536,7 @@ namespace U3D
                     NetworkIsKicked = true;
                     NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
                 }
+                if (labelUI != null) labelUI.gameObject.SetActive(false);
                 OnKicked?.Invoke();
             }
             else
@@ -554,6 +555,7 @@ namespace U3D
                 NetworkIsPhysicsActive = false;
             }
 
+            if (labelUI != null) labelUI.gameObject.SetActive(true);
             OnSleep?.Invoke();
         }
 
@@ -666,6 +668,7 @@ namespace U3D
                 NetworkIsPhysicsActive = false;
             }
 
+            if (labelUI != null) labelUI.gameObject.SetActive(true);
             OnWorldBoundsReset?.Invoke();
         }
 

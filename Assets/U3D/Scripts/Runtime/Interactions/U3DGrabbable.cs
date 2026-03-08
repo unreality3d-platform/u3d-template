@@ -343,6 +343,7 @@ namespace U3D
             transform.localPosition = grabOffset;
 
             OnGrabbed?.Invoke();
+            if (labelUI != null) labelUI.gameObject.SetActive(false);
         }
 
         public void Release()
@@ -391,6 +392,7 @@ namespace U3D
                 ClearPlayerReferences();
 
             OnReleased?.Invoke();
+            if (labelUI != null) labelUI.gameObject.SetActive(true);
         }
 
         private void OnRemoteGrab()
