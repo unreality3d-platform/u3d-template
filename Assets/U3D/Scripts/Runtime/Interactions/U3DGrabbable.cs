@@ -39,7 +39,7 @@ namespace U3D
         [Tooltip("Offset from the hand position")]
         [SerializeField] private Vector3 grabOffset = Vector3.zero;
 
-        [Tooltip("Can this object be grabbed while another is held?")]
+        [Tooltip("Allow multiple players to hold this object simultaneously. When disabled, grabbing steals from whoever currently holds it.")]
         [SerializeField] private bool allowMultiGrab = false;
 
         [Header("Events")]
@@ -99,7 +99,7 @@ namespace U3D
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
 
-        // Static tracking for single grab mode
+        // Static tracking for single grab mode - per client
         private static U3DGrabbable currentlyGrabbed;
 
         public enum GrabState : byte
@@ -120,7 +120,6 @@ namespace U3D
             col = GetComponent<Collider>();
             originalParent = transform.parent;
 
-            // Check if this object has networking support
             networkObject = GetComponent<NetworkObject>();
             isNetworked = networkObject != null;
         }
@@ -136,7 +135,6 @@ namespace U3D
         {
             UpdatePlayerProximity();
 
-            // Check aim only for distance grabbing
             if (maxGrabDistance > 0f && !IsCurrentlyGrabbed() && Time.time - lastAimCheckTime > 0.1f)
             {
                 lastAimCheckTime = Time.time;
@@ -146,7 +144,6 @@ namespace U3D
             // NOTE: Direct input handling removed - U3DInteractionManager handles input
             // via IU3DInteractable.OnInteract() to prevent double-input issues
 
-            // Timeout authority requests to prevent hanging
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
                 Debug.LogWarning($"Authority request timeout for {name}");
@@ -157,11 +154,9 @@ namespace U3D
 
         private void CheckForInputConflicts()
         {
-            // Check for other interaction components and auto-remap if needed
             var kickable = GetComponent<U3DKickable>();
             if (kickable != null && kickable.KickKey == grabKey)
             {
-                // If kickable uses the same key, remap grabbable to F
                 if (grabKey == KeyCode.R)
                 {
                     grabKey = KeyCode.F;
@@ -173,31 +168,30 @@ namespace U3D
         public override void Spawned()
         {
             if (!isNetworked) return;
-            // Reset network state on spawn
             NetworkGrabState = (byte)GrabState.Free;
             NetworkIsGrabbed = false;
             NetworkGrabbedBy = PlayerRef.None;
         }
 
-        // Reliable authority change handling
         public void OnStateAuthorityChanged()
         {
             if (!isNetworked) return;
 
             if (Object.HasStateAuthority && isRequestingAuthority)
             {
-                // Successfully got authority
+                // Successfully got authority - perform the grab now
+                // This fires for both the free-object case and the steal-from-player case
                 isRequestingAuthority = false;
                 PerformGrab();
             }
             else if (!Object.HasStateAuthority && localGrabState == GrabState.Grabbed)
             {
-                // Lost authority while grabbed - force release
+                // Another player stole authority while we were holding this object
+                // Force a local release so our hand doesn't keep tracking a stolen object
                 PerformLocalRelease();
             }
         }
 
-        // Networked property change detection
         public override void Render()
         {
             base.Render();
@@ -209,7 +203,6 @@ namespace U3D
             if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D
                 && isNetworked && !Object.HasStateAuthority)
             {
-                // Smoothly interpolate toward the hand's position/rotation
                 transform.position = Vector3.Lerp(
                     transform.position,
                     handTransform.position + handTransform.TransformVector(grabOffset),
@@ -224,73 +217,86 @@ namespace U3D
             }
         }
 
-        // Deterministic grab attempt
         public void Grab()
         {
             if (!CanAttemptGrab()) return;
 
             if (!isNetworked)
             {
-                // Non-networked mode - immediate grab
                 PerformGrab();
                 return;
             }
 
-            // Networked mode - proper authority handling
             if (Object.HasStateAuthority)
             {
-                // Already have authority - grab immediately
+                // We already own this object - grab immediately
                 PerformGrab();
             }
-            else if (NetworkGrabState == (byte)GrabState.Free && !isRequestingAuthority)
+            else if (!isRequestingAuthority)
             {
-                // Request authority for free object
+                // Request authority whether the object is free or held by another player.
+                // If held by another player and allowMultiGrab is false, OnStateAuthorityChanged
+                // will fire a PerformLocalRelease() on their client when they lose authority.
                 RequestGrabAuthority();
             }
-            else
+        }
+
+        private bool CanAttemptGrab()
+        {
+            // Never grab something we're already holding
+            if (localGrabState == GrabState.Grabbed) return false;
+
+            // When multi-grab is disabled and someone else is holding this object,
+            // we still allow the attempt - it becomes a steal via authority transfer.
+            // We only block if WE are the ones already holding it (checked above).
+            // Multi-grab: if another player holds it and allowMultiGrab is false,
+            // we proceed with the steal. If allowMultiGrab is true, we also proceed.
+            // Either way, we don't block here - the authority system handles the outcome.
+
+            if (playerTransform == null)
             {
-                // Object is not available
-                OnGrabFailed?.Invoke();
+                FindPlayer();
+                if (playerTransform == null) return false;
             }
+
+            float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
+            if (distanceToPlayer < minGrabDistance || distanceToPlayer > maxGrabDistance)
+                return false;
+
+            if (maxGrabDistance > minGrabDistance && playerCamera != null)
+                return CheckAimingAtObject();
+
+            return true;
         }
 
         private void RequestGrabAuthority()
         {
             if (isRequestingAuthority) return;
 
-            // Set network state to prevent other grab attempts
-            if (Object.HasStateAuthority || NetworkGrabState == (byte)GrabState.Free)
-            {
-                NetworkGrabState = (byte)GrabState.Requesting;
-                isRequestingAuthority = true;
-                authorityRequestTime = Time.time;
+            isRequestingAuthority = true;
+            authorityRequestTime = Time.time;
 
-                // Request state authority
-                Object.RequestStateAuthority();
-            }
-            else
-            {
-                OnGrabFailed?.Invoke();
-            }
+            // Set grab state to Requesting so other players see this is contested.
+            // If the object is currently Free we can set this directly; if it's Grabbed
+            // by another player, we don't have authority to change network state yet -
+            // the authority transfer itself will resolve that via OnStateAuthorityChanged.
+            if (!NetworkIsGrabbed)
+                NetworkGrabState = (byte)GrabState.Requesting;
+
+            Object.RequestStateAuthority();
         }
 
         private void PerformGrab()
         {
-            // Single grab mode - release any currently grabbed object
+            // Release whatever this client was previously holding
             if (currentlyGrabbed != null && currentlyGrabbed != this)
-            {
                 currentlyGrabbed.Release();
-            }
 
-            // Find player if needed
             if (playerTransform == null)
-            {
                 FindPlayer();
-            }
 
             if (handTransform == null)
             {
-                // As a safety net, make sure there's always a hand anchor
                 FindHandBone();
                 if (handTransform == null) return;
             }
@@ -307,23 +313,18 @@ namespace U3D
                 networkRb3D.SyncParent = false;
             }
 
-            // Update network state
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkGrabState = (byte)GrabState.Grabbed;
                 NetworkIsGrabbed = true;
                 if (Runner != null && Runner.LocalPlayer != null)
-                {
                     NetworkGrabbedBy = Runner.LocalPlayer;
-                }
             }
 
-            // Update local state
             localGrabState = GrabState.Grabbed;
             currentlyGrabbed = this;
             isRequestingAuthority = false;
 
-            // Handle physics
             if (throwable != null)
             {
                 // Throwable manages its own physics
@@ -334,7 +335,6 @@ namespace U3D
                 rb.useGravity = false;
             }
 
-            // Parent to hand and set offset
             transform.SetParent(handTransform);
             transform.localPosition = grabOffset;
 
@@ -345,7 +345,6 @@ namespace U3D
         {
             if (localGrabState != GrabState.Grabbed) return;
 
-            // For networked objects, only release if we have authority
             if (isNetworked && !Object.HasStateAuthority) return;
 
             PerformRelease();
@@ -353,7 +352,6 @@ namespace U3D
 
         private void PerformRelease()
         {
-            // Update network state
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkGrabState = (byte)GrabState.Free;
@@ -361,11 +359,8 @@ namespace U3D
                 NetworkGrabbedBy = PlayerRef.None;
             }
 
-            // --- re-enable Fusion's parent syncing after release ---
             if (networkRb3D != null)
-            {
                 networkRb3D.SyncParent = true;
-            }
 
             PerformLocalRelease();
         }
@@ -374,66 +369,51 @@ namespace U3D
         {
             localGrabState = GrabState.Free;
             if (currentlyGrabbed == this)
-            {
                 currentlyGrabbed = null;
-            }
 
-            // Unparent and restore physics
             PerformDirectUnparenting();
 
-            // Handle physics restoration
             if (throwable != null)
             {
                 // Let throwable component handle physics via OnObjectReleased callback
             }
             else if (hasRigidbody && hasStoredOriginalPhysicsState)
             {
-                // For non-throwable objects, restore original state
                 rb.isKinematic = originalWasKinematic;
                 rb.useGravity = originalUsedGravity;
             }
 
-            // Clear references if not in range
             if (!isInRange)
-            {
                 ClearPlayerReferences();
-            }
 
             OnReleased?.Invoke();
         }
 
-        // Handle remote player grabs
         private void OnRemoteGrab()
         {
-            // Visual feedback for remote grab
             OnGrabbed?.Invoke();
         }
 
         private void OnRemoteRelease()
         {
-            // Visual feedback for remote release
             OnReleased?.Invoke();
         }
 
         private void PerformDirectParenting()
         {
-            // Set collider to trigger and change layer while grabbed
             col.isTrigger = true;
             int originalLayer = gameObject.layer;
             SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
             PlayerPrefs.SetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", originalLayer);
 
-            // Parent to hand
             transform.SetParent(handTransform);
             transform.localPosition = grabOffset;
         }
 
         private void PerformDirectUnparenting()
         {
-            // Unparent first
             transform.SetParent(originalParent);
 
-            // Restore collider and layer settings
             col.isTrigger = false;
             int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
             SetLayerRecursively(gameObject, originalLayer);
@@ -444,50 +424,19 @@ namespace U3D
         {
             obj.layer = layer;
             foreach (Transform child in obj.transform)
-            {
                 SetLayerRecursively(child.gameObject, layer);
-            }
-        }
-
-        private bool CanAttemptGrab()
-        {
-            // Check if object is already grabbed
-            if (IsCurrentlyGrabbed()) return false;
-
-            // Check if we can grab from current position
-            if (playerTransform == null)
-            {
-                FindPlayer();
-                if (playerTransform == null) return false;
-            }
-
-            float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-            if (distanceToPlayer < minGrabDistance || distanceToPlayer > maxGrabDistance)
-            {
-                return false;
-            }
-
-            // For distance grabbing, check if looking at object
-            if (maxGrabDistance > minGrabDistance && playerCamera != null)
-            {
-                return CheckAimingAtObject();
-            }
-
-            return true;
         }
 
         private bool IsCurrentlyGrabbed()
         {
             if (isNetworked && Object != null && Object.IsValid)
-            {
                 return NetworkIsGrabbed || NetworkGrabState == (byte)GrabState.Grabbed;
-            }
+
             return localGrabState == GrabState.Grabbed;
         }
 
         private void FindPlayer()
         {
-            // Just grab the first available U3DPlayerController in the scene
             playerController = FindAnyObjectByType<U3DPlayerController>();
 
             if (playerController != null)
@@ -498,7 +447,6 @@ namespace U3D
             }
             else
             {
-                // No player found, clear references
                 playerTransform = null;
                 playerCamera = null;
                 handTransform = null;
@@ -524,7 +472,6 @@ namespace U3D
                 }
             }
 
-            // Safe fallback - use player root with offset
             if (handTransform == null)
             {
                 GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
@@ -552,52 +499,32 @@ namespace U3D
             isInRange = distanceToPlayer >= minGrabDistance && distanceToPlayer <= maxGrabDistance;
 
             if (isInRange && !wasInRange)
-            {
                 OnEnterGrabRange?.Invoke();
-            }
             else if (!isInRange && wasInRange)
-            {
                 OnExitGrabRange?.Invoke();
-            }
         }
 
         private void CheckIfAimedAt()
         {
             bool wasAimedAt = isAimedAt;
             isAimedAt = CheckAimingAtObject();
-
-            if (isAimedAt && !wasAimedAt)
-            {
-                // OnAimEnter event if needed
-            }
-            else if (!isAimedAt && wasAimedAt)
-            {
-                // OnAimExit event if needed
-            }
         }
 
         private bool CheckAimingAtObject()
         {
             if (playerCamera == null || maxGrabDistance <= 0f || playerTransform == null)
-            {
                 return false;
-            }
 
             float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
             if (avatarDistance < minGrabDistance || avatarDistance > maxGrabDistance)
-            {
                 return false;
-            }
 
-            // Check if we're in third person mode
             bool isThirdPerson = playerController != null && !playerController.IsFirstPerson;
 
             if (isThirdPerson)
             {
-                // Third person: Check if object is in front of the avatar
-                // Use avatar's forward direction, not camera (which is behind the player)
                 Vector3 avatarToObject = transform.position - playerTransform.position;
-                avatarToObject.y = 0f; // Flatten to horizontal plane
+                avatarToObject.y = 0f;
 
                 Vector3 avatarForward = playerTransform.forward;
                 avatarForward.y = 0f;
@@ -606,14 +533,12 @@ namespace U3D
                 if (avatarToObject.magnitude > 0.1f)
                 {
                     float angle = Vector3.Angle(avatarForward, avatarToObject.normalized);
-                    // Allow ~120 degree cone in front of avatar for third person
                     return angle <= 60f;
                 }
-                return true; // Very close, allow grab
+                return true;
             }
             else
             {
-                // First person: Use precise camera-based detection
                 if (useRadiusDetection)
                 {
                     Vector3 cameraToObject = transform.position - playerCamera.transform.position;
@@ -625,20 +550,16 @@ namespace U3D
                         Vector3 directionToObject = cameraToObject.normalized;
                         float angle = Vector3.Angle(cameraForward, directionToObject);
                         float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
-
                         return angle <= maxAllowedAngle;
                     }
                 }
                 else
                 {
                     Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
-                    Vector3 rayDirection = playerCamera.transform.forward;
-                    Ray ray = new Ray(avatarEyeLevel, rayDirection);
+                    Ray ray = new Ray(avatarEyeLevel, playerCamera.transform.forward);
 
                     if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance))
-                    {
                         return hit.collider == col;
-                    }
                 }
             }
 
@@ -661,17 +582,14 @@ namespace U3D
             {
                 if (throwable != null)
                 {
-                    // For throwable objects, desired state is physics-ready
                     originalWasKinematic = false;
                     originalUsedGravity = true;
                 }
                 else
                 {
-                    // For non-throwable objects, store designer settings
                     originalWasKinematic = rb.isKinematic;
                     originalUsedGravity = rb.useGravity;
                 }
-
                 hasStoredOriginalPhysicsState = true;
             }
         }
@@ -687,34 +605,33 @@ namespace U3D
         // IU3DInteractable implementation
         public void OnInteract()
         {
-            if (IsCurrentlyGrabbed())
-            {
+            if (IsCurrentlyGrabbed() && localGrabState == GrabState.Grabbed)
                 Release();
-            }
-            else if (CanAttemptGrab())
-            {
+            else
                 Grab();
-            }
         }
 
-        public void OnPlayerEnterRange()
-        {
-            // Handled by UpdatePlayerProximity
-        }
-
-        public void OnPlayerExitRange()
-        {
-            // Handled by UpdatePlayerProximity
-        }
+        public void OnPlayerEnterRange() { }
+        public void OnPlayerExitRange() { }
 
         public bool CanInteract()
         {
-            return CanAttemptGrab() || IsCurrentlyGrabbed();
+            // Always interactable - either to grab or to steal from another player
+            if (localGrabState == GrabState.Grabbed) return true;
+
+            if (playerTransform == null)
+            {
+                FindPlayer();
+                if (playerTransform == null) return false;
+            }
+
+            float dist = Vector3.Distance(transform.position, playerTransform.position);
+            return dist >= minGrabDistance && dist <= maxGrabDistance;
         }
 
         public int GetInteractionPriority()
         {
-            if (IsCurrentlyGrabbed()) return 60;
+            if (localGrabState == GrabState.Grabbed) return 60;
             if (minGrabDistance <= 0f) return 50;
             return 40;
         }
@@ -722,7 +639,9 @@ namespace U3D
         public string GetInteractionPrompt()
         {
             if (isRequestingAuthority) return "Requesting...";
-            return IsCurrentlyGrabbed() ? $"Release ({grabKey})" : $"Grab ({grabKey})";
+            if (localGrabState == GrabState.Grabbed) return $"Release ({grabKey})";
+            if (NetworkIsGrabbed && isNetworked) return $"Take ({grabKey})";
+            return $"Grab ({grabKey})";
         }
 
         // Public properties
@@ -738,9 +657,6 @@ namespace U3D
 
         private void OnDestroy()
         {
-            // During teardown (especially DestroyImmediate), components may already be
-            // destroyed in arbitrary order. Do not call Release() - perform null-safe
-            // local cleanup only to avoid NullReferenceException on col, networkRb3D, etc.
             if (localGrabState == GrabState.Grabbed)
             {
                 localGrabState = GrabState.Free;
