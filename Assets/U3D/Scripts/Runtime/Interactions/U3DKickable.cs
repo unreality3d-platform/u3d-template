@@ -38,6 +38,10 @@ namespace U3D
         [Tooltip("Ground-level detection radius for foot collision")]
         [SerializeField] private float kickDetectionRadius = 1.2f;
 
+        [Header("Optional Label")]
+        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        public U3DBillboardUI labelUI;
+
         [Header("Events")]
         [Tooltip("Called when object is kicked")]
         public UnityEvent OnKicked;
@@ -125,14 +129,8 @@ namespace U3D
             networkRigidbody = GetComponent<NetworkRigidbody3D>();
             hasNetworkRb3D = networkRigidbody != null;
             col = GetComponent<Collider>();
-
             networkObject = GetComponent<NetworkObject>();
             isNetworked = networkObject != null;
-
-            if (!isNetworked)
-            {
-                Debug.Log($"U3DKickable on '{name}' running in non-networked mode");
-            }
         }
 
         public override void Spawned()

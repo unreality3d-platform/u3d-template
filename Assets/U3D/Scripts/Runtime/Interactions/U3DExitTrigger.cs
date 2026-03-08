@@ -30,6 +30,10 @@ namespace U3D
         [Tooltip("Also detect other objects with required tag")]
         [SerializeField] private bool detectTaggedObjects = true;
 
+        [Header("Optional Label")]
+        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this trigger. Edit the text on that object directly.")]
+        public U3DBillboardUI labelUI;
+
         [Header("Events")]
         [Tooltip("Called when trigger is exited")]
         public UnityEvent OnExitTrigger;
@@ -96,7 +100,6 @@ namespace U3D
                 {
                     shouldTrigger = true;
                     isPlayer = true;
-                    Debug.Log($"U3D Player exited trigger: {gameObject.name}");
                 }
             }
 
@@ -107,7 +110,6 @@ namespace U3D
                 {
                     shouldTrigger = true;
                     isPlayer = requiredTag == "Player";
-                    Debug.Log($"Tagged object ({requiredTag}) exited trigger: {gameObject.name}");
                 }
             }
 
@@ -115,7 +117,6 @@ namespace U3D
             if (!shouldTrigger && string.IsNullOrEmpty(requiredTag) && !detectU3DPlayer)
             {
                 shouldTrigger = true;
-                Debug.Log($"Object exited trigger: {gameObject.name}");
             }
 
             if (shouldTrigger)
@@ -146,8 +147,6 @@ namespace U3D
             {
                 OnPlayerExit?.Invoke();
             }
-
-            Debug.Log($"Exit trigger executed on {gameObject.name} by {triggerObject.name}");
         }
 
         // Public methods for external control
@@ -163,8 +162,6 @@ namespace U3D
                 hasTriggered = false;
                 lastTriggerTime = 0f;
             }
-
-            Debug.Log($"Exit trigger reset: {gameObject.name}");
         }
 
         public void SetCooldownTime(float newCooldownTime)

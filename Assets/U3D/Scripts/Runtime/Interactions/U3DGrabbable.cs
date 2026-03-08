@@ -42,6 +42,10 @@ namespace U3D
         [Tooltip("Allow multiple players to hold this object simultaneously. When disabled, grabbing steals from whoever currently holds it.")]
         [SerializeField] private bool allowMultiGrab = false;
 
+        [Header("Optional Label")]
+        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        public U3DBillboardUI labelUI;
+
         [Header("Events")]
         [Tooltip("Called when object is grabbed")]
         public UnityEvent OnGrabbed;

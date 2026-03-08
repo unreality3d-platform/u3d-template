@@ -12,30 +12,17 @@ namespace U3D.Editor
         public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
 
-        // Networking preferences
-        private static bool addNetworkObjectToGrabbable = true;
-        private static bool addNetworkObjectToThrowable = true;
-        private static bool addNetworkObjectToKickable = true;
-        private static bool addNetworkObjectToEnterTrigger = true;
-        private static bool addNetworkObjectToExitTrigger = true;
-        private static bool addNetworkObjectToParentTrigger = true;
-
-        // Object Spawner preferences
-        private static GameObject objectSpawnerPrefab = null;
-        private static bool objectSpawnerNetworked = false;
-
         public InteractionToolsCategory()
         {
             tools = new List<CreatorTool>
             {
+                new CreatorTool("🟢 Add Object Spawner", "Spawns a prefab at this location. Add NetworkObject to your prefab for all players to see it.", ApplyObjectSpawner, true),
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
-                new CreatorTool("🟢 Make Parent Trigger", "Player follows this object when inside trigger area (moving platforms, vehicles)", ApplyParentTrigger, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
-                new CreatorTool("🟢 Add Object Spawner", "Spawn a prefab at this location when the scene starts", ApplyObjectSpawner, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
                 new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
@@ -62,80 +49,7 @@ namespace U3D.Editor
 
             foreach (var tool in tools)
             {
-                DrawToolWithNetworkingOption(tool);
-            }
-        }
-
-        private void DrawToolWithNetworkingOption(CreatorTool tool)
-        {
-            ProjectToolsTab.DrawCategoryTool(tool);
-
-            if (tool.title == "🟢 Make Grabbable")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToGrabbable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToGrabbable);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Make Throwable")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToThrowable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToThrowable);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Make Kickable")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToKickable = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToKickable);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Make Enter Trigger")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToEnterTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToEnterTrigger);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Make Exit Trigger")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToExitTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToExitTrigger);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Make Parent Trigger")
-            {
-                EditorGUI.indentLevel++;
-                addNetworkObjectToParentTrigger = EditorGUILayout.Toggle("NetworkObject for multiplayer", addNetworkObjectToParentTrigger);
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
-            }
-            else if (tool.title == "🟢 Add Object Spawner")
-            {
-                EditorGUI.indentLevel++;
-
-                objectSpawnerPrefab = (GameObject)EditorGUILayout.ObjectField(
-                    "Prefab to spawn",
-                    objectSpawnerPrefab,
-                    typeof(GameObject),
-                    false
-                );
-
-                objectSpawnerNetworked = EditorGUILayout.Toggle("Visible to all players", objectSpawnerNetworked);
-
-                if (objectSpawnerNetworked)
-                {
-                    EditorGUILayout.HelpBox("Prefab must have a NetworkObject component.", MessageType.Info);
-                }
-                else
-                {
-                    EditorGUILayout.HelpBox("Spawned object will only be visible to the local player.", MessageType.Warning);
-                }
-
-                EditorGUI.indentLevel--;
-                EditorGUILayout.Space(5);
+                ProjectToolsTab.DrawCategoryTool(tool);
             }
         }
 
@@ -148,34 +62,40 @@ namespace U3D.Editor
                 if (selected != null)
                 {
                     bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
-                    throwableTool.description = hasGrabbable ? "Objects can be thrown around" : "Select a Grabbable object";
+                    throwableTool.description = hasGrabbable
+                        ? "Objects can be thrown around"
+                        : "Select a Grabbable object first";
                     throwableTool.requiresSelection = true;
                 }
                 else
                 {
-                    throwableTool.description = "Select a Grabbable object";
+                    throwableTool.description = "Select a Grabbable object first";
                     throwableTool.requiresSelection = true;
                 }
             }
         }
 
-        private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
+        private static void ApplyObjectSpawner()
         {
-            var so = new SerializedObject(networkObject);
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                // Create a new empty GameObject at the scene origin when nothing is selected
+                selected = new GameObject("Object Spawner");
+                Undo.RegisterCreatedObjectUndo(selected, "Add Object Spawner");
+                Selection.activeGameObject = selected;
+            }
 
-            var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
-            if (allowOverrideProp != null)
-                allowOverrideProp.boolValue = true;
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
 
-            var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
-            if (destroyOnLeaveProp != null)
-                destroyOnLeaveProp.boolValue = false;
+            if (selected.GetComponent<U3DObjectSpawner>() == null)
+                selected.AddComponent<U3DObjectSpawner>();
 
-            var isMasterClientProp = so.FindProperty("_isMasterClientObject");
-            if (isMasterClientProp != null)
-                isMasterClientProp.boolValue = false;
-
-            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(selected);
         }
 
         private static void ApplyGrabbable()
@@ -190,7 +110,7 @@ namespace U3D.Editor
             if (!selected.GetComponent<Collider>())
                 selected.AddComponent<BoxCollider>();
 
-            if (addNetworkObjectToGrabbable && !selected.GetComponent<NetworkObject>())
+            if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
@@ -213,11 +133,11 @@ namespace U3D.Editor
 
             if (selected.GetComponent<U3DGrabbable>() == null)
             {
-                Debug.LogWarning("Object must have U3DGrabbable component first!");
+                Debug.LogWarning("U3DObjectSpawner: Object must have U3DGrabbable before applying Throwable.");
                 return;
             }
 
-            if (addNetworkObjectToThrowable && !selected.GetComponent<NetworkObject>())
+            if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
@@ -277,7 +197,7 @@ namespace U3D.Editor
             if (!selected.GetComponent<Collider>())
                 selected.AddComponent<BoxCollider>();
 
-            if (addNetworkObjectToKickable && !selected.GetComponent<NetworkObject>())
+            if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
@@ -325,130 +245,6 @@ namespace U3D.Editor
             EditorUtility.SetDirty(selected);
         }
 
-        private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
-        {
-            var so = new SerializedObject(networkRigidbody);
-
-            var syncParentProp = so.FindProperty("_syncParent");
-            if (syncParentProp != null)
-                syncParentProp.boolValue = false;
-
-            var syncModeProp = so.FindProperty("_syncMode");
-            if (syncModeProp != null)
-                syncModeProp.intValue = 1;
-
-            var syncScaleProp = so.FindProperty("_syncScale");
-            if (syncScaleProp != null)
-                syncScaleProp.boolValue = true;
-
-            var interpolationTargetProp = so.FindProperty("_interpolationTarget");
-            if (interpolationTargetProp != null)
-                interpolationTargetProp.objectReferenceValue = null;
-
-            so.ApplyModifiedProperties();
-        }
-
-        private static void ConfigureNetworkRigidbody3DViaReflection(Component networkRigidbody)
-        {
-            if (networkRigidbody == null) return;
-
-            var so = new SerializedObject(networkRigidbody);
-
-            var syncParentProp = so.FindProperty("_syncParent");
-            if (syncParentProp != null)
-                syncParentProp.boolValue = false;
-
-            var syncModeProp = so.FindProperty("_syncMode");
-            if (syncModeProp != null)
-                syncModeProp.intValue = 1;
-
-            var syncScaleProp = so.FindProperty("_syncScale");
-            if (syncScaleProp != null)
-                syncScaleProp.boolValue = true;
-
-            var interpolationTargetProp = so.FindProperty("_interpolationTarget");
-            if (interpolationTargetProp != null)
-                interpolationTargetProp.objectReferenceValue = null;
-
-            so.ApplyModifiedProperties();
-        }
-
-        private static void EnsureClimbableLayerExists()
-        {
-            SerializedObject tagManager = new SerializedObject(
-                AssetDatabase.LoadMainAssetAtPath("ProjectSettings/TagManager.asset")
-            );
-            SerializedProperty layers = tagManager.FindProperty("layers");
-
-            if (layers == null || layers.arraySize <= U3DClimbable.CLIMBABLE_LAYER) return;
-
-            SerializedProperty layerProp = layers.GetArrayElementAtIndex(U3DClimbable.CLIMBABLE_LAYER);
-
-            if (string.IsNullOrEmpty(layerProp.stringValue))
-            {
-                layerProp.stringValue = U3DClimbable.CLIMBABLE_LAYER_NAME;
-                tagManager.ApplyModifiedProperties();
-            }
-            else if (layerProp.stringValue != U3DClimbable.CLIMBABLE_LAYER_NAME)
-            {
-                Debug.LogWarning(
-                    $"Layer {U3DClimbable.CLIMBABLE_LAYER} is already named '{layerProp.stringValue}'. " +
-                    $"U3DClimbingController expects it to be '{U3DClimbable.CLIMBABLE_LAYER_NAME}'. " +
-                    $"Update climbableLayerMask on the player prefab if using a different layer."
-                );
-            }
-        }
-
-        private static void SetLayerRecursive(GameObject obj, int layer)
-        {
-            obj.layer = layer;
-            foreach (Transform child in obj.transform)
-                SetLayerRecursive(child.gameObject, layer);
-        }
-
-        private static void ApplyClimbable()
-        {
-            GameObject selected = Selection.activeGameObject;
-            if (selected == null)
-            {
-                Debug.LogWarning("Please select an object first");
-                return;
-            }
-
-            EnsureClimbableLayerExists();
-
-            if (!selected.GetComponent<Collider>())
-                selected.AddComponent<BoxCollider>();
-
-            SetLayerRecursive(selected, U3DClimbable.CLIMBABLE_LAYER);
-
-            if (selected.GetComponent<U3DClimbable>() == null)
-                selected.AddComponent<U3DClimbable>();
-
-            EditorUtility.SetDirty(selected);
-        }
-
-        private static void ApplyObjectSpawner()
-        {
-            GameObject selected = Selection.activeGameObject;
-            if (selected == null)
-            {
-                Debug.LogWarning("Please select an object first");
-                return;
-            }
-
-            U3DObjectSpawner spawner = selected.GetComponent<U3DObjectSpawner>();
-            if (spawner == null)
-                spawner = selected.AddComponent<U3DObjectSpawner>();
-
-            if (objectSpawnerPrefab != null)
-                spawner.prefabToSpawn = objectSpawnerPrefab;
-
-            spawner.networked = objectSpawnerNetworked;
-
-            EditorUtility.SetDirty(selected);
-        }
-
         private static void ApplyEnterTrigger()
         {
             GameObject selected = Selection.activeGameObject;
@@ -463,7 +259,7 @@ namespace U3D.Editor
                 collider = selected.AddComponent<BoxCollider>();
             collider.isTrigger = true;
 
-            if (addNetworkObjectToEnterTrigger && !selected.GetComponent<NetworkObject>())
+            if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
@@ -489,7 +285,7 @@ namespace U3D.Editor
                 collider = selected.AddComponent<BoxCollider>();
             collider.isTrigger = true;
 
-            if (addNetworkObjectToExitTrigger && !selected.GetComponent<NetworkObject>())
+            if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 ConfigureNetworkObjectForSharedMode(networkObject);
@@ -501,7 +297,7 @@ namespace U3D.Editor
             EditorUtility.SetDirty(selected);
         }
 
-        private static void ApplyParentTrigger()
+        private static void ApplyClimbable()
         {
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
@@ -510,21 +306,91 @@ namespace U3D.Editor
                 return;
             }
 
-            Collider collider = selected.GetComponent<Collider>();
-            if (collider == null)
-                collider = selected.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
+            EnsureClimbableLayerExists();
 
-            if (addNetworkObjectToParentTrigger && !selected.GetComponent<NetworkObject>())
-            {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedMode(networkObject);
-            }
+            if (!selected.GetComponent<Collider>())
+                selected.AddComponent<BoxCollider>();
 
-            if (selected.GetComponent<U3DParentTrigger>() == null)
-                selected.AddComponent<U3DParentTrigger>();
+            SetLayerRecursive(selected, U3DClimbable.CLIMBABLE_LAYER);
+
+            if (selected.GetComponent<U3DClimbable>() == null)
+                selected.AddComponent<U3DClimbable>();
 
             EditorUtility.SetDirty(selected);
+        }
+
+        // ========== SHARED HELPERS ==========
+
+        private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
+        {
+            var so = new SerializedObject(networkObject);
+
+            var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
+            if (allowOverrideProp != null)
+                allowOverrideProp.boolValue = true;
+
+            var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
+            if (destroyOnLeaveProp != null)
+                destroyOnLeaveProp.boolValue = false;
+
+            var isMasterClientProp = so.FindProperty("_isMasterClientObject");
+            if (isMasterClientProp != null)
+                isMasterClientProp.boolValue = false;
+
+            so.ApplyModifiedProperties();
+        }
+
+#if FUSION_ADDONS_PHYSICS
+        private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
+        {
+            var so = new SerializedObject(networkRigidbody);
+
+            var syncParentProp = so.FindProperty("_syncParent");
+            if (syncParentProp != null)
+                syncParentProp.boolValue = false;
+
+            var syncModeProp = so.FindProperty("_syncMode");
+            if (syncModeProp != null)
+                syncModeProp.intValue = 0;
+
+            so.ApplyModifiedProperties();
+        }
+#endif
+
+        private static void ConfigureNetworkRigidbody3DViaReflection(Component networkRigidbody)
+        {
+            if (networkRigidbody == null) return;
+            var so = new SerializedObject(networkRigidbody);
+
+            var syncParentProp = so.FindProperty("_syncParent");
+            if (syncParentProp != null)
+                syncParentProp.boolValue = false;
+
+            var syncModeProp = so.FindProperty("_syncMode");
+            if (syncModeProp != null)
+                syncModeProp.intValue = 0;
+
+            so.ApplyModifiedProperties();
+        }
+
+        private static void EnsureClimbableLayerExists()
+        {
+            int layer = LayerMask.NameToLayer(U3DClimbable.CLIMBABLE_LAYER_NAME);
+            if (layer == -1)
+            {
+                Debug.LogWarning(
+                    $"Layer '{U3DClimbable.CLIMBABLE_LAYER_NAME}' not found in project settings. " +
+                    $"U3DClimbingController expects it to be '{U3DClimbable.CLIMBABLE_LAYER_NAME}'. " +
+                    $"Update climbableLayerMask on the player prefab if using a different layer."
+                );
+            }
+        }
+
+        private static void SetLayerRecursive(GameObject obj, int layer)
+        {
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+                SetLayerRecursive(child.gameObject, layer);
         }
     }
 }

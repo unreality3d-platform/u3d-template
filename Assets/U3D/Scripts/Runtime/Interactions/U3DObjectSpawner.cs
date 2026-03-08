@@ -1,56 +1,62 @@
 ﻿using UnityEngine;
 using UnityEngine.Events;
-
-#if FUSION_WEAVER
 using Fusion;
-#endif
 
 namespace U3D
 {
     /// <summary>
     /// Spawns a prefab at this object's position and rotation.
-    /// Supports local-only (Instantiate) and networked (Fusion runner.Spawn) modes.
+    /// All spawns are networked via Fusion so every player sees the result.
     /// Place this component on any GameObject to define where and what spawns.
+    /// The prefab must have a NetworkObject component for all players to see it.
+    /// Without NetworkObject on the prefab, only the local player will see it.
     /// </summary>
-    public class U3DObjectSpawner : MonoBehaviour
+    public class U3DObjectSpawner : NetworkBehaviour
     {
         [Header("What to Spawn")]
-        [Tooltip("The prefab that will be spawned at this location.")]
+        [Tooltip("The prefab to spawn at this location. Add a NetworkObject component to your prefab so all players see it. Without NetworkObject, only the local player will see the spawned object.")]
         public GameObject prefabToSpawn;
 
         [Header("Spawn Behavior")]
-        [Tooltip("Spawn the object automatically when the scene starts.")]
+        [Tooltip("Spawn automatically when the scene starts.")]
         public bool spawnOnStart = true;
 
-        [Tooltip("Automatically respawn the object if it is destroyed.")]
+        [Tooltip("Respawn automatically when the spawned object is destroyed.")]
         public bool respawnWhenDestroyed = false;
 
         [Tooltip("Maximum number of spawned objects that can exist at once. New spawns are blocked when this limit is reached.")]
         public int maxInstances = 1;
 
-        [Header("Multiplayer")]
-        [Tooltip("Spawn via Fusion NetworkRunner so all players see the object. " +
-                 "Requires the prefab to have a NetworkObject component. " +
-                 "When disabled, the object is only visible to the local player.")]
-        public bool networked = false;
+        [Header("Optional Label")]
+        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this spawner. Edit the text on that object directly.")]
+        public U3DBillboardUI labelUI;
 
         [Header("Events")]
         public UnityEvent<GameObject> onSpawned;
         public UnityEvent onSpawnFailed;
 
-        private int _activeCount = 0;
-        private GameObject _lastSpawned;
+        [Networked] private int NetworkActiveCount { get; set; }
 
-#if FUSION_WEAVER
-        private NetworkRunner _runner;
-#endif
+        private int _localActiveCount = 0;
 
-        void Start()
+        public override void Spawned()
         {
-            if (spawnOnStart)
+            if (Object.HasStateAuthority && spawnOnStart)
                 Spawn();
         }
 
+        void Start()
+        {
+            // Non-networked fallback: if there is no runner (e.g. editor Play mode without Fusion),
+            // fall back to local spawn so the component still works during solo testing.
+            if (Runner == null && spawnOnStart)
+                SpawnLocal();
+        }
+
+        /// <summary>
+        /// Call this from any UnityEvent, trigger, or script to request a spawn.
+        /// Non-host clients automatically forward the request to the host via RPC.
+        /// </summary>
         public void Spawn()
         {
             if (prefabToSpawn == null)
@@ -60,59 +66,56 @@ namespace U3D
                 return;
             }
 
-            if (_activeCount >= maxInstances)
+            if (Runner == null)
+            {
+                SpawnLocal();
+                return;
+            }
+
+            int activeCount = Object != null ? NetworkActiveCount : _localActiveCount;
+            if (activeCount >= maxInstances)
             {
                 onSpawnFailed?.Invoke();
                 return;
             }
 
-            if (networked)
-                SpawnNetworked();
-            else
-                SpawnLocal();
-        }
-
-        private void SpawnLocal()
-        {
-            var instance = Instantiate(prefabToSpawn, transform.position, transform.rotation);
-            _activeCount++;
-            _lastSpawned = instance;
-
-            if (respawnWhenDestroyed)
+            if (Object.HasStateAuthority)
             {
-                var tracker = instance.AddComponent<U3DSpawnTracker>();
-                tracker.Initialize(this);
+                ExecuteNetworkedSpawn();
             }
-
-            onSpawned?.Invoke(instance);
+            else
+            {
+                // Non-host client: ask the host to spawn
+                RPC_RequestSpawn();
+            }
         }
 
-        private void SpawnNetworked()
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_RequestSpawn()
         {
-#if FUSION_WEAVER
-            if (_runner == null)
-                _runner = FindAnyObjectByType<NetworkRunner>();
-
-            if (_runner == null || !_runner.IsRunning)
+            if (NetworkActiveCount >= maxInstances)
             {
-                Debug.LogWarning($"U3DObjectSpawner on '{name}': Networked spawn requested but no active NetworkRunner found. Falling back to local spawn.");
-                SpawnLocal();
                 return;
             }
 
+            ExecuteNetworkedSpawn();
+        }
+
+        private void ExecuteNetworkedSpawn()
+        {
             var networkObject = prefabToSpawn.GetComponent<NetworkObject>();
             if (networkObject == null)
             {
-                Debug.LogWarning($"U3DObjectSpawner on '{name}': Networked spawn requires the prefab to have a NetworkObject component. Falling back to local spawn.");
+                // Prefab has no NetworkObject - warn and fall back to local spawn
+                Debug.LogWarning($"U3DObjectSpawner on '{name}': Prefab has no NetworkObject component. Only the local player will see this object. Add NetworkObject to your prefab for all players to see it.");
                 SpawnLocal();
                 return;
             }
 
-            var instance = _runner.Spawn(prefabToSpawn, transform.position, transform.rotation);
+            var instance = Runner.Spawn(prefabToSpawn, transform.position, transform.rotation);
             if (instance != null)
             {
-                _activeCount++;
-                _lastSpawned = instance.gameObject;
+                NetworkActiveCount++;
 
                 if (respawnWhenDestroyed)
                 {
@@ -124,13 +127,29 @@ namespace U3D
             }
             else
             {
-                Debug.LogWarning($"U3DObjectSpawner on '{name}': Fusion Spawn returned null.");
+                Debug.LogWarning($"U3DObjectSpawner on '{name}': Runner.Spawn returned null.");
                 onSpawnFailed?.Invoke();
             }
-#else
-            Debug.LogWarning($"U3DObjectSpawner on '{name}': Networked spawn requested but Fusion is not available. Falling back to local spawn.");
-            SpawnLocal();
-#endif
+        }
+
+        private void SpawnLocal()
+        {
+            if (_localActiveCount >= maxInstances)
+            {
+                onSpawnFailed?.Invoke();
+                return;
+            }
+
+            var instance = Instantiate(prefabToSpawn, transform.position, transform.rotation);
+            _localActiveCount++;
+
+            if (respawnWhenDestroyed)
+            {
+                var tracker = instance.AddComponent<U3DSpawnTracker>();
+                tracker.Initialize(this);
+            }
+
+            onSpawned?.Invoke(instance);
         }
 
         /// <summary>
@@ -138,19 +157,25 @@ namespace U3D
         /// </summary>
         public void OnTrackedInstanceDestroyed()
         {
-            _activeCount = Mathf.Max(0, _activeCount - 1);
-
-            if (respawnWhenDestroyed && _activeCount < maxInstances)
-                Spawn();
+            if (Runner != null && Object != null && Object.HasStateAuthority)
+            {
+                NetworkActiveCount = Mathf.Max(0, NetworkActiveCount - 1);
+                if (respawnWhenDestroyed && NetworkActiveCount < maxInstances)
+                    ExecuteNetworkedSpawn();
+            }
+            else
+            {
+                _localActiveCount = Mathf.Max(0, _localActiveCount - 1);
+                if (respawnWhenDestroyed && _localActiveCount < maxInstances)
+                    SpawnLocal();
+            }
         }
 
         void OnDrawGizmos()
         {
-            // Cyan diamond - distinct from player spawn point green sphere
             Gizmos.color = new Color(0f, 0.8f, 1f, 0.6f);
             DrawDiamond(transform.position, 0.4f);
 
-            // Forward direction arrow
             Gizmos.color = new Color(0f, 0.8f, 1f, 0.9f);
             Vector3 arrowStart = transform.position + Vector3.up * 0.1f;
             Gizmos.DrawRay(arrowStart, transform.forward * 1.5f);
@@ -167,7 +192,6 @@ namespace U3D
             Gizmos.color = Color.cyan;
             DrawDiamond(transform.position, 0.55f);
 
-            // Label hint line upward
             Gizmos.color = new Color(0f, 1f, 1f, 0.4f);
             Gizmos.DrawLine(transform.position, transform.position + Vector3.up * 1.2f);
         }
@@ -191,7 +215,7 @@ namespace U3D
     }
 
     /// <summary>
-    /// Internal helper. Attached to spawned instances to notify the spawner on destruction.
+    /// Internal helper attached to spawned instances to notify the spawner on destruction.
     /// Not intended for direct use by creators.
     /// </summary>
     public class U3DSpawnTracker : MonoBehaviour
