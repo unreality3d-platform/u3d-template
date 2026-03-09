@@ -3,12 +3,19 @@ using UnityEngine;
 namespace U3D
 {
     /// <summary>
-    /// Billboard UI component that faces the camera and fades based on proximity.
+    /// Worldspace UI component with proximity fade and optional camera-facing billboard behavior.
     /// Attach to a World Space Canvas or any parent transform containing UI elements.
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
     public class U3DBillboardUI : MonoBehaviour
     {
+        [Header("Billboard Settings")]
+        [Tooltip("Face the camera. Disable to keep the canvas at a fixed rotation.")]
+        public bool faceCamera = true;
+
+        [Tooltip("Lock Y-axis rotation (prevents tilting when camera looks up/down)")]
+        public bool lockYAxis = true;
+
         [Header("Proximity Settings")]
         [Tooltip("Distance at which UI becomes fully hidden")]
         [Min(0.1f)]
@@ -23,9 +30,6 @@ namespace U3D
         [Min(0.1f)]
         public float fadeSpeed = 5f;
 
-        [Tooltip("Lock Y-axis rotation (prevents tilting when camera looks up/down)")]
-        public bool lockYAxis = true;
-
         private CanvasGroup canvasGroup;
         private Camera targetCamera;
         private float targetAlpha;
@@ -34,9 +38,7 @@ namespace U3D
         {
             canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
-            {
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();
-            }
         }
 
         void Start()
@@ -52,7 +54,9 @@ namespace U3D
                 if (targetCamera == null) return;
             }
 
-            UpdateBillboardRotation();
+            if (faceCamera)
+                UpdateBillboardRotation();
+
             UpdateProximityFade();
         }
 
@@ -66,14 +70,10 @@ namespace U3D
             Vector3 directionToCamera = targetCamera.transform.position - transform.position;
 
             if (lockYAxis)
-            {
                 directionToCamera.y = 0f;
-            }
 
             if (directionToCamera.sqrMagnitude > 0.001f)
-            {
                 transform.rotation = Quaternion.LookRotation(-directionToCamera);
-            }
         }
 
         void UpdateProximityFade()
@@ -102,13 +102,10 @@ namespace U3D
         void OnValidate()
         {
             if (showDistance >= hideDistance)
-            {
                 showDistance = hideDistance - 0.5f;
-            }
+
             if (showDistance < 0.1f)
-            {
                 showDistance = 0.1f;
-            }
         }
     }
 }
