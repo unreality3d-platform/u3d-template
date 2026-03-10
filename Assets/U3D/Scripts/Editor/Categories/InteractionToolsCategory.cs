@@ -25,8 +25,6 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Add Click Trigger", "Execute actions when player clicks this object", ApplyClickTrigger, true),
-                new CreatorTool("🚧 Make 1x Trigger", "Trigger that fires once", () => { }, true),
-                new CreatorTool("🚧 Make Toggle", "Switch between two states", () => { }, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
                 new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
