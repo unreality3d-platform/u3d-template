@@ -4,17 +4,14 @@ using Fusion;
 
 namespace U3D
 {
-    /// <summary>
-    /// Enhanced trigger component for player enter events
-    /// Supports both networked and non-networked modes
-    /// Integrates with U3D player detection system
-    /// Based on Unity 6.1+ standards with Fusion 2 compatibility
-    /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DEnterTrigger : NetworkBehaviour
     {
         [Header("Trigger Configuration")]
-        [Tooltip("Only trigger for objects with this tag (leave empty for any object)")]
+        [Tooltip("Only fire for objects with a specific tag")]
+        [SerializeField] private bool requireTag = false;
+
+        [Tooltip("Tag required to fire this trigger")]
         [SerializeField] private string requiredTag = "Player";
 
         [Tooltip("Should this trigger only work once?")]
@@ -23,111 +20,47 @@ namespace U3D
         [Tooltip("Delay before trigger can fire again (seconds)")]
         [SerializeField] private float cooldownTime = 0f;
 
-        [Header("Player Detection")]
-        [Tooltip("Detect U3D player specifically")]
-        [SerializeField] private bool detectU3DPlayer = true;
-
-        [Tooltip("Also detect other objects with required tag")]
-        [SerializeField] private bool detectTaggedObjects = true;
-
-        [Header("Optional Label")]
-        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this trigger. Edit the text on that object directly.")]
-        public U3DBillboardUI labelUI;
-
         [Header("Events")]
-        [Tooltip("Called when trigger is entered")]
         public UnityEvent OnEnterTrigger;
 
-        [Tooltip("Called when U3D player specifically enters")]
-        public UnityEvent OnPlayerEnter;
-
-        [Tooltip("Called when any valid object enters")]
-        public UnityEvent OnObjectEnter;
-
-        // Network state
         [Networked] public bool NetworkHasTriggered { get; set; }
         [Networked] public float NetworkLastTriggerTime { get; set; }
 
-        // Local state
         private bool hasTriggered = false;
         private float lastTriggerTime = 0f;
-        private Collider triggerCollider;
         private bool isNetworked = false;
 
         private void Awake()
         {
-            triggerCollider = GetComponent<Collider>();
-            triggerCollider.isTrigger = true;
-
-            // Check if networked
+            GetComponent<Collider>().isTrigger = true;
             isNetworked = GetComponent<NetworkObject>() != null;
         }
 
         private void OnTriggerEnter(Collider other)
         {
-            // Check cooldown
             float currentTime = Time.time;
-            float timeSinceLastTrigger = isNetworked ?
-                currentTime - NetworkLastTriggerTime :
-                currentTime - lastTriggerTime;
+            float timeSinceLastTrigger = isNetworked
+                ? currentTime - NetworkLastTriggerTime
+                : currentTime - lastTriggerTime;
 
             if (cooldownTime > 0f && timeSinceLastTrigger < cooldownTime)
-            {
                 return;
-            }
 
-            // Check if already triggered and set to trigger once
             bool alreadyTriggered = isNetworked ? NetworkHasTriggered : hasTriggered;
             if (triggerOnce && alreadyTriggered)
-            {
                 return;
-            }
 
-            // Authority check for networked objects
             if (isNetworked && !Object.HasStateAuthority)
-            {
                 return;
-            }
 
-            bool shouldTrigger = false;
-            bool isPlayer = false;
+            if (requireTag && !other.CompareTag(requiredTag))
+                return;
 
-            // Check for U3D player
-            if (detectU3DPlayer)
-            {
-                U3DPlayerController playerController = other.GetComponent<U3DPlayerController>();
-                if (playerController != null)
-                {
-                    shouldTrigger = true;
-                    isPlayer = true;
-                }
-            }
-
-            // Check for tagged objects
-            if (!shouldTrigger && detectTaggedObjects && !string.IsNullOrEmpty(requiredTag))
-            {
-                if (other.CompareTag(requiredTag))
-                {
-                    shouldTrigger = true;
-                    isPlayer = requiredTag == "Player";
-                }
-            }
-
-            // Check for any object if no specific requirements
-            if (!shouldTrigger && string.IsNullOrEmpty(requiredTag) && !detectU3DPlayer)
-            {
-                shouldTrigger = true;
-            }
-
-            if (shouldTrigger)
-            {
-                ExecuteTrigger(isPlayer, other.gameObject);
-            }
+            ExecuteTrigger();
         }
 
-        private void ExecuteTrigger(bool isPlayer, GameObject triggerObject)
+        private void ExecuteTrigger()
         {
-            // Update state
             if (isNetworked)
             {
                 NetworkHasTriggered = triggerOnce ? true : NetworkHasTriggered;
@@ -139,17 +72,9 @@ namespace U3D
                 lastTriggerTime = Time.time;
             }
 
-            // Fire events
             OnEnterTrigger?.Invoke();
-            OnObjectEnter?.Invoke();
-
-            if (isPlayer)
-            {
-                OnPlayerEnter?.Invoke();
-            }
         }
 
-        // Public methods for external control
         public void ResetTrigger()
         {
             if (isNetworked && Object.HasStateAuthority)
@@ -164,45 +89,22 @@ namespace U3D
             }
         }
 
-        public void SetCooldownTime(float newCooldownTime)
-        {
-            cooldownTime = Mathf.Max(0f, newCooldownTime);
-        }
+        public void SetCooldownTime(float newCooldownTime) => cooldownTime = Mathf.Max(0f, newCooldownTime);
+        public void SetTriggerOnce(bool value) => triggerOnce = value;
 
-        public void SetTriggerOnce(bool triggerOnce)
-        {
-            this.triggerOnce = triggerOnce;
-        }
-
-        // Public properties
         public bool HasTriggered => isNetworked ? NetworkHasTriggered : hasTriggered;
         public float LastTriggerTime => isNetworked ? NetworkLastTriggerTime : lastTriggerTime;
         public bool IsOnCooldown => Time.time - LastTriggerTime < cooldownTime;
         public bool IsNetworked => isNetworked;
 
-        // Override for non-networked compatibility
         public override void Spawned()
         {
             if (!isNetworked) return;
-            // Network initialization if needed
         }
 
         private void OnValidate()
         {
-            if (cooldownTime < 0f)
-            {
-                cooldownTime = 0f;
-            }
-
-            // Ensure we have a trigger collider
-            if (Application.isPlaying)
-            {
-                Collider col = GetComponent<Collider>();
-                if (col != null && !col.isTrigger)
-                {
-                    Debug.LogWarning($"U3DEnterTrigger on {gameObject.name} requires a trigger collider");
-                }
-            }
+            if (cooldownTime < 0f) cooldownTime = 0f;
         }
     }
 }

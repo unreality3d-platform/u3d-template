@@ -9,34 +9,14 @@ namespace U3D
     public class U3DClickTrigger : NetworkBehaviour
     {
         [Header("Trigger Configuration")]
-        [Tooltip("Only trigger for objects with this tag (leave empty for any object)")]
-        [SerializeField] private string requiredTag = "Player";
-
         [Tooltip("Should this trigger only work once?")]
         [SerializeField] private bool triggerOnce = false;
 
         [Tooltip("Delay before trigger can fire again (seconds)")]
         [SerializeField] private float cooldownTime = 0f;
 
-        [Header("Player Detection")]
-        [Tooltip("Detect U3D player specifically")]
-        [SerializeField] private bool detectU3DPlayer = true;
-
-        [Tooltip("Also detect other objects with required tag")]
-        [SerializeField] private bool detectTaggedObjects = true;
-
-        [Header("Optional Label")]
-        public U3DBillboardUI labelUI;
-
         [Header("Events")]
-        [Tooltip("Called when this object is clicked")]
         public UnityEvent OnClickTrigger;
-
-        [Tooltip("Called when clicked by the U3D player")]
-        public UnityEvent OnPlayerClick;
-
-        [Tooltip("Called when clicked by any valid object")]
-        public UnityEvent OnObjectClick;
 
         [Networked] public bool NetworkHasTriggered { get; set; }
         [Networked] public float NetworkLastTriggerTime { get; set; }
@@ -79,27 +59,10 @@ namespace U3D
             if (triggerOnce && alreadyTriggered)
                 return;
 
-            bool isPlayer = false;
-
-            if (detectU3DPlayer)
-            {
-                // Local player check: find local NetworkObject or fall back to tag
-                GameObject localPlayer = GameObject.FindWithTag("Player");
-                if (localPlayer != null && localPlayer.GetComponent<U3DPlayerController>() != null)
-                    isPlayer = true;
-            }
-
-            if (!isPlayer && detectTaggedObjects && !string.IsNullOrEmpty(requiredTag))
-            {
-                GameObject localPlayer = GameObject.FindWithTag(requiredTag);
-                if (localPlayer != null)
-                    isPlayer = requiredTag == "Player";
-            }
-
-            ExecuteTrigger(isPlayer);
+            ExecuteTrigger();
         }
 
-        private void ExecuteTrigger(bool isPlayer)
+        private void ExecuteTrigger()
         {
             if (isNetworked)
             {
@@ -113,10 +76,6 @@ namespace U3D
             }
 
             OnClickTrigger?.Invoke();
-            OnObjectClick?.Invoke();
-
-            if (isPlayer)
-                OnPlayerClick?.Invoke();
         }
 
         public void ResetTrigger()
@@ -133,15 +92,8 @@ namespace U3D
             }
         }
 
-        public void SetCooldownTime(float newCooldownTime)
-        {
-            cooldownTime = Mathf.Max(0f, newCooldownTime);
-        }
-
-        public void SetTriggerOnce(bool value)
-        {
-            triggerOnce = value;
-        }
+        public void SetCooldownTime(float newCooldownTime) => cooldownTime = Mathf.Max(0f, newCooldownTime);
+        public void SetTriggerOnce(bool value) => triggerOnce = value;
 
         public bool HasTriggered => isNetworked ? NetworkHasTriggered : hasTriggered;
         public float LastTriggerTime => isNetworked ? NetworkLastTriggerTime : lastTriggerTime;
@@ -155,8 +107,7 @@ namespace U3D
 
         private void OnValidate()
         {
-            if (cooldownTime < 0f)
-                cooldownTime = 0f;
+            if (cooldownTime < 0f) cooldownTime = 0f;
         }
     }
 }
