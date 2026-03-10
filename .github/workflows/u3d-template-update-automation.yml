@@ -220,20 +220,10 @@ jobs:
           8. Click **Import**
           9. **Verify** your template version updated in Creator Dashboard
 
-          ### Multiple Updates (If You're Behind)
-          If you have multiple updates to apply:
-
-          1. **Check all available releases** on this page
-          2. **Apply updates from OLDEST to NEWEST by date/time**
-          3. **Apply each update individually** using steps above
-          4. **Check version** in Creator Dashboard after each update
-          5. **Test your project** after each update
-
           ## Important Notes
 
           - **Always backup** your entire project folder before updating
           - **Check your current version** in Creator Dashboard first
-          - **Don't skip update versions** -- apply them chronologically
           - **Uncheck your custom files** during import to preserve your work
           - **Test thoroughly** after each update
 
