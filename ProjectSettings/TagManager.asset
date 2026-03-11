@@ -6,6 +6,7 @@ TagManager:
   tags:
   - SpawnPoint
   - PlayerSpawnPoint
+  - Weight
   layers:
   - Default
   - TransparentFX

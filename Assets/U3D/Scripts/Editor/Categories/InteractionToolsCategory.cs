@@ -18,13 +18,14 @@ namespace U3D.Editor
             {
                 new CreatorTool("🟢 Add Object Spawner", "Spawns a prefab at this location. Add NetworkObject to your prefab for all players to see it.", ApplyObjectSpawner, true),
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
-                new CreatorTool("🟢 Make Throwable", "Objects can be thrown around", ApplyThrowable, true),
+                new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Add Click Trigger", "Execute actions when player clicks this object", ApplyClickTrigger, true),
+                new CreatorTool("🟢 Add Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
                 new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
@@ -47,8 +48,6 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Interaction Tools", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Add interactive behaviors to your objects. Select an object first, then click Apply.", MessageType.Info);
             EditorGUILayout.Space(10);
-
-            UpdateThrowableDescription();
 
             bool inMovementSection = false;
 
@@ -80,28 +79,6 @@ namespace U3D.Editor
                 || title == "🚧 Add Scene Portal"
                 || title == "🚧 Add 1-Way Portal"
                 || title == "🚧 Add 2-Way Portal";
-        }
-
-        private void UpdateThrowableDescription()
-        {
-            var throwableTool = tools.Find(t => t.title == "🟢 Make Throwable");
-            if (throwableTool != null)
-            {
-                GameObject selected = Selection.activeGameObject;
-                if (selected != null)
-                {
-                    bool hasGrabbable = selected.GetComponent<U3DGrabbable>() != null;
-                    throwableTool.description = hasGrabbable
-                        ? "Objects can be thrown around"
-                        : "Select a Grabbable object first";
-                    throwableTool.requiresSelection = true;
-                }
-                else
-                {
-                    throwableTool.description = "Select a Grabbable object first";
-                    throwableTool.requiresSelection = true;
-                }
-            }
         }
 
         private static void ApplyObjectSpawner()
@@ -155,15 +132,15 @@ namespace U3D.Editor
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
             {
-                Debug.LogWarning("Please select a Grabbable object first");
+                Debug.LogWarning("Please select an object first");
                 return;
             }
 
+            if (!selected.GetComponent<Collider>())
+                selected.AddComponent<BoxCollider>();
+
             if (selected.GetComponent<U3DGrabbable>() == null)
-            {
-                Debug.LogWarning("U3DObjectSpawner: Object must have U3DGrabbable before applying Throwable.");
-                return;
-            }
+                selected.AddComponent<U3DGrabbable>();
 
             if (!selected.GetComponent<NetworkObject>())
             {
@@ -347,6 +324,32 @@ namespace U3D.Editor
 
             if (selected.GetComponent<U3DClickTrigger>() == null)
                 selected.AddComponent<U3DClickTrigger>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyTriggerZone()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+                collider = selected.AddComponent<BoxCollider>();
+            collider.isTrigger = true;
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (selected.GetComponent<U3DTriggerZone>() == null)
+                selected.AddComponent<U3DTriggerZone>();
 
             EditorUtility.SetDirty(selected);
         }

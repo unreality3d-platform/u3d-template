@@ -102,6 +102,7 @@ namespace U3D
         private bool originalWasKinematic;
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
+        private Coroutine _releaseCollisionCoroutine;
 
         // Static tracking for single grab mode - per client
         private static U3DGrabbable currentlyGrabbed;
@@ -407,6 +408,12 @@ namespace U3D
 
         private void PerformDirectParenting()
         {
+            if (_releaseCollisionCoroutine != null)
+            {
+                StopCoroutine(_releaseCollisionCoroutine);
+                _releaseCollisionCoroutine = null;
+            }
+
             col.isTrigger = true;
             int originalLayer = gameObject.layer;
             SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
@@ -420,10 +427,34 @@ namespace U3D
         {
             transform.SetParent(originalParent);
 
-            col.isTrigger = false;
+            // Restore layer before re-enabling collider
             int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
             SetLayerRecursively(gameObject, originalLayer);
             PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
+
+            col.isTrigger = false;
+
+            // Brief collision ignore so the re-enabled collider doesn't push the player
+            // on the frame(s) immediately after release while still overlapping.
+            if (playerController != null)
+            {
+                CharacterController cc = playerController.GetComponent<CharacterController>();
+                if (cc != null)
+                {
+                    if (_releaseCollisionCoroutine != null)
+                        StopCoroutine(_releaseCollisionCoroutine);
+                    _releaseCollisionCoroutine = StartCoroutine(IgnorePlayerCollisionBriefly(cc));
+                }
+            }
+        }
+
+        private System.Collections.IEnumerator IgnorePlayerCollisionBriefly(CharacterController cc)
+        {
+            Physics.IgnoreCollision(col, cc, true);
+            yield return new WaitForSeconds(0.15f);
+            if (col != null && cc != null)
+                Physics.IgnoreCollision(col, cc, false);
+            _releaseCollisionCoroutine = null;
         }
 
         private void SetLayerRecursively(GameObject obj, int layer)
