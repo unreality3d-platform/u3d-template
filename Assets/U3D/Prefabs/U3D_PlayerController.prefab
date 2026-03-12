@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 2225516339197213350}
   - component: {fileID: 3321024275304622891}
   - component: {fileID: 1254594525101098963}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: PlayerCamera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
@@ -213,15 +213,15 @@ GameObject:
   - component: {fileID: 2981476027813993288}
   - component: {fileID: 2927287290641100187}
   - component: {fileID: 227767514918744194}
+  - component: {fileID: 3303798439634689199}
   - component: {fileID: 4392417217393934379}
   - component: {fileID: 8590291952775574450}
   - component: {fileID: 6674612337431982079}
   - component: {fileID: 3563563381108832062}
   - component: {fileID: 8322012935390943905}
-  - component: {fileID: 3303798439634689199}
   - component: {fileID: 713224546979306075}
   - component: {fileID: 1203855082904727053}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: U3D_PlayerController
   m_TagString: Player
   m_Icon: {fileID: 3936346786652291628, guid: 0000000000000000d000000000000000, type: 0}
@@ -391,6 +391,29 @@ MonoBehaviour:
   _NetworkLeftHandRot: {x: 0, y: 0, z: 0, w: 0}
   _NetworkRightHandPos: {x: 0, y: 0, z: 0}
   _NetworkRightHandRot: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &3303798439634689199
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8488662624428376917}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 2829484168
+  ObjectInterest: 1
+  Flags: 524289
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 227767514918744194}
+  - {fileID: 4392417217393934379}
+  - {fileID: 8590291952775574450}
+  - {fileID: 6674612337431982079}
+  - {fileID: 1203855082904727053}
+  ForceRemoteRenderTimeframe: 0
 --- !u!114 &4392417217393934379
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -760,29 +783,6 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 1, z: 0}
---- !u!114 &3303798439634689199
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8488662624428376917}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  SortKey: 2829484168
-  ObjectInterest: 1
-  Flags: 524289
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 227767514918744194}
-  - {fileID: 4392417217393934379}
-  - {fileID: 8590291952775574450}
-  - {fileID: 6674612337431982079}
-  - {fileID: 1203855082904727053}
-  ForceRemoteRenderTimeframe: 0
 --- !u!114 &713224546979306075
 MonoBehaviour:
   m_ObjectHideFlags: 0

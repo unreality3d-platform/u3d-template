@@ -206,16 +206,8 @@ public class U3DPlayerController : NetworkBehaviour
     private float _lastSnapTurnTime = 0f;
     private const float VR_MOVEMENT_SPEED_MULTIPLIER = 1.0f;
 
-    // ==================== MOVING PLATFORM STATE ====================
-    // NOTE FOR CREATORS: Any platform the player rides must have its Animator
-    // Update Mode set to "Animate Physics" so its transform advances in the
-    // same fixed timestep the player controller samples it.
-    private Transform _platformTransform;
-    private Vector3 _lastPlatformPosition;
-    private Quaternion _lastPlatformRotation;
-    private int _notGroundedTicks = 0;
-    private const int PLATFORM_UNGROUND_TOLERANCE = 2;
-    // ==================== END MOVING PLATFORM STATE ====================
+    // Rideable support
+    private U3D.U3DRideableController _currentRideable;
 
     // Mouse sensitivity calculation methods
     void CalculateRuntimeSensitivity()
@@ -571,8 +563,18 @@ public class U3DPlayerController : NetworkBehaviour
             }
             else
             {
-                // Apply platform carry delta before player-driven movement
-                HandlePlatformMovement();
+                // Apply rideable carry delta before player-driven movement
+                if (_currentRideable != null)
+                {
+                    _currentRideable.GetTickDelta(out Vector3 posDelta, out float yawDelta);
+                    transform.position += posDelta;
+                    if (Mathf.Abs(yawDelta) > 0.001f)
+                    {
+                        transform.Rotate(Vector3.up, yawDelta, Space.World);
+                        cameraYaw += yawDelta;
+                    }
+                    Physics.SyncTransforms();
+                }
 
                 HandleMovementFusion(input);
 
@@ -656,90 +658,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         playerCamera.transform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
-
-    // ==================== MOVING PLATFORM SUPPORT ====================
-
-    /// <summary>
-    /// Samples the platform under the player each fixed tick and carries the player
-    /// with any translation or rotation the platform performed since the last tick.
-    /// Must be called after HandleGroundCheck() and before HandleMovementFusion().
-    /// </summary>
-    void HandlePlatformMovement()
-    {
-        if (!_isLocalPlayer || isFlying || NetworkIsClimbing) return;
-
-        if (isGrounded)
-        {
-            _notGroundedTicks = 0;
-
-            // Raycast straight down from the controller's feet
-            Vector3 rayOrigin = transform.position + Vector3.up * 0.05f;
-            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit,
-                characterController.skinWidth + groundCheckDistance + 0.1f,
-                ~LayerMask.GetMask("Ignore Raycast", "Player")))
-            {
-                Transform hitTransform = hit.collider.transform.root != null
-                    ? hit.collider.transform.root
-                    : hit.collider.transform;
-
-                if (hitTransform != _platformTransform)
-                {
-                    // Stepped onto a new surface — record its current state without applying delta
-                    _platformTransform = hitTransform;
-                    _lastPlatformPosition = hitTransform.position;
-                    _lastPlatformRotation = hitTransform.rotation;
-                }
-                else if (_platformTransform != null)
-                {
-                    // Same platform as last tick — compute and apply the delta
-                    Vector3 positionDelta = _platformTransform.position - _lastPlatformPosition;
-
-                    // Rotation delta: rotate player around platform's current position
-                    Quaternion rotationDelta = _platformTransform.rotation * Quaternion.Inverse(_lastPlatformRotation);
-                    float yawDelta = rotationDelta.eulerAngles.y;
-                    // Normalise to [-180, 180] to avoid large wrap-around spins
-                    if (yawDelta > 180f) yawDelta -= 360f;
-
-                    // Carry translation
-                    if (positionDelta.sqrMagnitude > 0.00001f)
-                    {
-                        characterController.Move(positionDelta);
-                    }
-
-                    // Carry yaw rotation
-                    if (Mathf.Abs(yawDelta) > 0.001f)
-                    {
-                        transform.Rotate(Vector3.up, yawDelta, Space.World);
-                        cameraYaw += yawDelta;
-                        NetworkRotation = transform.rotation;
-                    }
-
-                    // Sync networked position after carrying
-                    NetworkPosition = transform.position;
-
-                    // Store updated platform state for next tick
-                    _lastPlatformPosition = _platformTransform.position;
-                    _lastPlatformRotation = _platformTransform.rotation;
-                }
-            }
-            else
-            {
-                // Grounded but raycast missed (edge case) — clear platform reference
-                _platformTransform = null;
-            }
-        }
-        else
-        {
-            _notGroundedTicks++;
-
-            if (_notGroundedTicks >= PLATFORM_UNGROUND_TOLERANCE)
-            {
-                _platformTransform = null;
-            }
-        }
-    }
-
-    // ==================== END MOVING PLATFORM SUPPORT ====================
 
     // ==================== VR/WebXR MODE HANDLING ====================
 
@@ -1481,9 +1399,7 @@ public class U3DPlayerController : NetworkBehaviour
             }
 
             velocity = Vector3.zero;
-
-            // Clear platform reference on teleport to avoid carrying stale delta
-            _platformTransform = null;
+            _currentRideable = null;
         }
     }
 
@@ -1756,9 +1672,7 @@ public class U3DPlayerController : NetworkBehaviour
             }
 
             velocity = Vector3.zero;
-
-            // Clear platform reference on manual position set
-            _platformTransform = null;
+            _currentRideable = null;
         }
         catch (System.Exception e)
         {
@@ -1800,5 +1714,18 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetClimbDetachVelocity(Vector3 detachVelocity)
     {
         velocity = detachVelocity;
+    }
+
+    public void MountRideable(U3D.U3DRideableController rideable)
+    {
+        if (!_isLocalPlayer) return;
+        _currentRideable = rideable;
+    }
+
+    public void DismountRideable(U3D.U3DRideableController rideable)
+    {
+        if (!_isLocalPlayer) return;
+        if (_currentRideable == rideable)
+            _currentRideable = null;
     }
 }

@@ -33,7 +33,7 @@ namespace U3D.Editor
                 new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true),
                 // ── Movement ──
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
-                new CreatorTool("🚧 Make Rideable", "Players can stand on top and will be moved with the object", () => { }, true),
+                new CreatorTool("🟢 Make Rideable", "Players can stand on top and will be moved with the object", ApplyMakeRideable, true),
                 new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
                 new CreatorTool("🚧 Add Scene Portal", "Portal to load a different scene", () => { }, true),
                 new CreatorTool("🚧 Add 1-Way Portal", "Portal for one-direction travel within scene", () => { }, true),
@@ -74,7 +74,7 @@ namespace U3D.Editor
         private static bool IsMovementTool(string title)
         {
             return title == "🚧 Add Seat"
-                || title == "🚧 Make Rideable"
+                || title == "🟢 Make Rideable"
                 || title == "🚧 Make Steerable"
                 || title == "🚧 Add Scene Portal"
                 || title == "🚧 Add 1-Way Portal"
@@ -374,6 +374,72 @@ namespace U3D.Editor
                 selected.AddComponent<U3DClimbable>();
 
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyMakeRideable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            MakeRideableSetup(selected);
+        }
+
+        private static void MakeRideableSetup(GameObject selected)
+        {
+            Undo.RecordObject(selected, "Make Rideable");
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (selected.GetComponent<U3DRideableController>() == null)
+                selected.AddComponent<U3DRideableController>();
+
+            // Create the trigger zone that detects players entering/exiting the rideable surface
+            GameObject triggerZoneGO = new GameObject("RideableTrigger");
+            Undo.RegisterCreatedObjectUndo(triggerZoneGO, "Make Rideable");
+            triggerZoneGO.transform.SetParent(selected.transform, false);
+            triggerZoneGO.transform.localPosition = Vector3.zero;
+
+            var triggerCollider = triggerZoneGO.AddComponent<BoxCollider>();
+            triggerCollider.isTrigger = true;
+
+            // Size the trigger to the parent's renderers, falling back to a reasonable default
+            Bounds bounds = CalculateLocalBounds(selected);
+            triggerCollider.center = selected.transform.InverseTransformPoint(
+                selected.transform.TransformPoint(bounds.center)
+            ) - triggerZoneGO.transform.localPosition;
+            triggerCollider.size = bounds.size + Vector3.one * 0.2f;
+
+            // Create one default waypoint child so the Creator has something to move immediately
+            GameObject waypointGO = new GameObject("Waypoint_0");
+            Undo.RegisterCreatedObjectUndo(waypointGO, "Make Rideable");
+            waypointGO.transform.SetParent(selected.transform, false);
+            waypointGO.transform.localPosition = Vector3.zero;
+
+            EditorUtility.SetDirty(selected);
+            Selection.activeGameObject = selected;
+        }
+
+        private static Bounds CalculateLocalBounds(GameObject go)
+        {
+            var renderers = go.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+                return new Bounds(Vector3.zero, Vector3.one);
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                bounds.Encapsulate(renderers[i].bounds);
+
+            // Convert world bounds center to local space
+            bounds.center = go.transform.InverseTransformPoint(bounds.center);
+            return bounds;
         }
 
         // ========== SHARED HELPERS ==========
