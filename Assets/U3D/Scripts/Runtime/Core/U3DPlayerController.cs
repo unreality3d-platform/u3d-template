@@ -25,18 +25,16 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private bool enableCameraCollision = true;
     [HideInInspector][SerializeField] private bool enableSmoothTransitions = true;
 
-    // Platform-aware mouse sensitivity system
     [Header("Mouse Sensitivity Settings")]
-    [SerializeField] private float baseMouseSensitivity = 1.0f; // Base sensitivity for desktop
-    [SerializeField] private float webglSensitivityMultiplier = 0.25f; // WebGL reduction factor
-    [SerializeField] private float mobileSensitivityMultiplier = 0.8f; // Mobile adjustment
-    [SerializeField] private float userSensitivityMultiplier = 1.0f; // User preference (saved)
+    [SerializeField] private float baseMouseSensitivity = 1.0f;
+    [SerializeField] private float webglSensitivityMultiplier = 0.25f;
+    [SerializeField] private float mobileSensitivityMultiplier = 0.8f;
+    [SerializeField] private float userSensitivityMultiplier = 1.0f;
     [SerializeField] private bool enableMouseSmoothing = true;
     [SerializeField] private float mouseSmoothingAmount = 0.1f;
 
-    // Legacy compatibility (calculated at runtime)
-    [HideInInspector] private float mouseSensitivity; // Calculated from base + platform + user
-    [HideInInspector] private float cameraOrbitSensitivity; // Calculated from base + platform + user
+    [HideInInspector] private float mouseSensitivity;
+    [HideInInspector] private float cameraOrbitSensitivity;
 
     [HideInInspector][SerializeField] private float lookUpLimit = 80f;
     [HideInInspector][SerializeField] private float lookDownLimit = -80f;
@@ -53,38 +51,34 @@ public class U3DPlayerController : NetworkBehaviour
     [Header("Smooth Camera Transition")]
     [SerializeField]
     private AnimationCurve cameraDistanceCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),     // First person: no distance
-        new Keyframe(1f, 5f)      // Third person: full distance
+        new Keyframe(0f, 0f),
+        new Keyframe(1f, 5f)
     );
     [SerializeField]
     private AnimationCurve cameraHeightCurve = new AnimationCurve(
-        new Keyframe(0f, 1.5f),   // First person at eye level (1.5 units)
-        new Keyframe(1f, 1.5f)    // Third person also at eye level (1.5 units)
+        new Keyframe(0f, 1.5f),
+        new Keyframe(1f, 1.5f)
     );
     [SerializeField] private float transitionTime = 1.5f;
 
     private U3DInteractionManager _interactionManager;
 
-    // Runtime sensitivity calculation
     private float _runtimeMouseSensitivity;
     private float _runtimeOrbitSensitivity;
     private RuntimePlatform _currentPlatform;
 
-    // Camera transition state
-    private float currentTransitionValue = 0f; // 0 = first person, 1 = third person
+    private float currentTransitionValue = 0f;
     private float targetTransitionValue = 0f;
     private bool isTransitioning = false;
     private Vector3 originalFirstPersonPosition;
 
-    // Camera pivot system
     private Transform cameraPivot;
-    private float cameraYaw = 0f;  // Horizontal orbit angle
-    private float cameraPitchAdvanced = 0f;  // Vertical orbit angle (separate from existing cameraPitch)
+    private float cameraYaw = 0f;
+    private float cameraPitchAdvanced = 0f;
     private bool isLeftMouseDragging = false;
     private bool isRightMouseDragging = false;
     private bool isBothMouseForward = false;
 
-    // Advanced movement state
     private bool advancedModeActive = false;
 
     [Header("Advanced Movement")]
@@ -118,7 +112,6 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][SerializeField] private float defaultFOV = 60f;
     [HideInInspector][SerializeField] private float zoomSpeed = 5f;
 
-    // Core Networked Properties for Animation System (HIDDEN from Creator users)
     [HideInInspector][Networked] public Vector3 NetworkPosition { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRotation { get; set; }
     [HideInInspector][Networked] public bool NetworkIsMoving { get; set; }
@@ -129,11 +122,9 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public bool NetworkIsInteracting { get; set; }
     [HideInInspector][Networked] public bool NetworkIsJumping { get; set; }
 
-    // Environmental states (set by external trigger systems) - HIDDEN from inspector
     [HideInInspector][Networked] public bool NetworkIsSwimming { get; set; }
     [HideInInspector][Networked] public bool NetworkIsClimbing { get; set; }
 
-    // VR/WebXR Networked Properties (for cross-platform multiplayer)
     [HideInInspector][Networked] public bool NetworkIsInVR { get; set; }
     [HideInInspector][Networked] public Vector3 NetworkHeadPosition { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkHeadRotation { get; set; }
@@ -142,18 +133,15 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Vector3 NetworkRightHandPos { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
 
-    // Mouse input smoothing (add after existing camera state variables)
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
     private Queue<float> _mouseTimeBuffer = new Queue<float>();
-    private const float MOUSE_SMOOTHING_WINDOW = 0.015f; // 15ms smoothing window
+    private const float MOUSE_SMOOTHING_WINDOW = 0.015f;
     private Vector2 _smoothedMouseInput = Vector2.zero;
 
-    // Core Components
     private CharacterController characterController;
     private PlayerInput playerInput;
     private Camera playerCamera;
 
-    // Movement State
     private Vector3 velocity;
     private Vector2 moveInput;
     private Vector2 lookInput;
@@ -165,7 +153,6 @@ public class U3DPlayerController : NetworkBehaviour
     private bool isAutoRunning;
     private bool isZooming;
 
-    // Camera State
     private float cameraPitch;
     private bool isFirstPerson = true;
     private Vector3 firstPersonPosition;
@@ -178,29 +165,21 @@ public class U3DPlayerController : NetworkBehaviour
     private int _spawnFrameCount = 0;
     private const int SPAWN_PROTECTION_FRAMES = 5;
 
-    // Network State
     private bool _isLocalPlayer;
     private float _lastNetworkSendTime;
     private Vector3 _lastSentPosition;
     private Quaternion _lastSentRotation;
     private bool _justTeleported = false;
 
-    // WebGL cursor management
     private U3DWebGLCursorManager _cursorManager;
-
-    // FUSION INPUT TRACKING
     private NetworkButtons _buttonsPrevious;
-
-    // No local input actions - NetworkManager handles all input
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
-    // VR/WebXR State
     private bool _isInVRMode = false;
     private Transform _leftHandVisual;
     private Transform _rightHandVisual;
     private U3D.XR.U3DWebXRManager _webXRManager;
 
-    // VR Movement Settings
     private const float VR_SNAP_TURN_ANGLE = 45f;
     private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
     private float _lastSnapTurnTime = 0f;
@@ -209,7 +188,6 @@ public class U3DPlayerController : NetworkBehaviour
     // Rideable support
     private U3D.U3DRideableController _currentRideable;
 
-    // Mouse sensitivity calculation methods
     void CalculateRuntimeSensitivity()
     {
         _currentPlatform = Application.platform;
@@ -221,12 +199,10 @@ public class U3DPlayerController : NetworkBehaviour
             case RuntimePlatform.WebGLPlayer:
                 platformMultiplier = webglSensitivityMultiplier;
                 break;
-
             case RuntimePlatform.IPhonePlayer:
             case RuntimePlatform.Android:
                 platformMultiplier = mobileSensitivityMultiplier;
                 break;
-
             default:
                 platformMultiplier = 1.0f;
                 break;
@@ -246,15 +222,8 @@ public class U3DPlayerController : NetworkBehaviour
         SaveSensitivitySettings();
     }
 
-    public float GetUserSensitivity()
-    {
-        return userSensitivityMultiplier;
-    }
-
-    public float GetEffectiveSensitivity()
-    {
-        return _runtimeMouseSensitivity;
-    }
+    public float GetUserSensitivity() => userSensitivityMultiplier;
+    public float GetEffectiveSensitivity() => _runtimeMouseSensitivity;
 
     void LoadSensitivitySettings()
     {
@@ -278,41 +247,29 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         InitializeComponents();
-
         LoadSensitivitySettings();
         CalculateRuntimeSensitivity();
-
         ConfigurePlayerForNetworking();
 
         _spawnFrameCount = 0;
 
         if (_isLocalPlayer && enableAdvancedCamera && cameraPivot != null)
-        {
             cameraYaw = transform.eulerAngles.y;
-        }
 
         if (_isLocalPlayer)
         {
             _webXRManager = U3D.XR.U3DWebXRManager.Instance;
             if (_webXRManager != null)
-            {
                 _webXRManager.RegisterLocalPlayer(this);
-            }
         }
 
         if (_isLocalPlayer)
         {
             switch (perspectiveMode)
             {
-                case PerspectiveMode.FirstPersonOnly:
-                    SetFirstPerson();
-                    break;
-                case PerspectiveMode.ThirdPersonOnly:
-                    SetThirdPerson();
-                    break;
-                case PerspectiveMode.SmoothScroll:
-                    SetFirstPerson();
-                    break;
+                case PerspectiveMode.FirstPersonOnly: SetFirstPerson(); break;
+                case PerspectiveMode.ThirdPersonOnly: SetThirdPerson(); break;
+                case PerspectiveMode.SmoothScroll: SetFirstPerson(); break;
             }
         }
         else
@@ -326,9 +283,7 @@ public class U3DPlayerController : NetworkBehaviour
         base.Despawned(runner, hasState);
 
         if (_isLocalPlayer && _webXRManager != null)
-        {
             _webXRManager.UnregisterLocalPlayer(this);
-        }
 
         if (_leftHandVisual != null) Destroy(_leftHandVisual.gameObject);
         if (_rightHandVisual != null) Destroy(_rightHandVisual.gameObject);
@@ -343,16 +298,13 @@ public class U3DPlayerController : NetworkBehaviour
         GameObject pivotGO = new GameObject("CameraPivot");
         cameraPivot = pivotGO.transform;
         cameraPivot.SetParent(transform);
-
         cameraPivot.localPosition = firstPersonPosition;
         cameraPivot.localRotation = Quaternion.identity;
 
         if (playerCamera != null)
         {
             playerCamera.transform.SetParent(cameraPivot);
-
             UpdateCameraTransitionPosition();
-
             cameraYaw = transform.eulerAngles.y;
             cameraPitchAdvanced = 0f;
         }
@@ -378,14 +330,10 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         if (isCrouching)
-        {
             targetPosition.y += crouchCameraOffset;
-        }
 
         if (currentTransitionValue > 0.01f && enableCameraCollision)
-        {
             targetPosition = GetCollisionSafeCameraPosition(targetPosition);
-        }
 
         playerCamera.transform.localPosition = targetPosition;
     }
@@ -410,7 +358,6 @@ public class U3DPlayerController : NetworkBehaviour
         playerCamera.fieldOfView = defaultFOV;
 
         InitializeCameraPivot();
-
         LoadPlayerPreferences();
     }
 
@@ -430,9 +377,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (_isLocalPlayer)
         {
             if (playerInput != null)
-            {
                 playerInput.notificationBehavior = PlayerNotifications.InvokeCSharpEvents;
-            }
 
             if (playerCamera != null)
             {
@@ -446,6 +391,7 @@ public class U3DPlayerController : NetworkBehaviour
         {
             if (playerInput != null)
                 playerInput.enabled = false;
+
             if (playerCamera != null)
             {
                 playerCamera.enabled = false;
@@ -476,15 +422,9 @@ public class U3DPlayerController : NetworkBehaviour
 
         switch (perspectiveMode)
         {
-            case PerspectiveMode.FirstPersonOnly:
-                SetFirstPerson();
-                break;
-            case PerspectiveMode.ThirdPersonOnly:
-                SetThirdPerson();
-                break;
-            case PerspectiveMode.SmoothScroll:
-                SetFirstPerson();
-                break;
+            case PerspectiveMode.FirstPersonOnly: SetFirstPerson(); break;
+            case PerspectiveMode.ThirdPersonOnly: SetThirdPerson(); break;
+            case PerspectiveMode.SmoothScroll: SetFirstPerson(); break;
         }
     }
 
@@ -496,16 +436,11 @@ public class U3DPlayerController : NetworkBehaviour
     private System.Collections.IEnumerator DelayedNametagCreation()
     {
         while (!GetComponent<NetworkObject>() || !GetComponent<NetworkObject>().IsValid)
-        {
             yield return null;
-        }
 
         yield return new WaitForSeconds(0.1f);
 
-        if (_isLocalPlayer)
-        {
-            yield break;
-        }
+        if (_isLocalPlayer) yield break;
 
         var nametagAnchor = new GameObject("NametagAnchor");
         nametagAnchor.transform.SetParent(transform);
@@ -518,25 +453,18 @@ public class U3DPlayerController : NetworkBehaviour
     bool IsCursorLocked()
     {
         if (_isInVRMode) return true;
-
-        if (_cursorManager != null)
-        {
-            return _cursorManager.IsCursorLocked;
-        }
-
+        if (_cursorManager != null) return _cursorManager.IsCursorLocked;
         return Cursor.lockState == CursorLockMode.Locked;
     }
 
     public void RefreshInputActionsFromNetworkManager(U3D.Networking.U3DFusionNetworkManager networkManager)
     {
         if (!_isLocalPlayer) return;
-
         _networkManager = networkManager;
     }
 
     public override void FixedUpdateNetwork()
     {
-        // Force spawn position on first tick to override Fusion state sync
         if (_spawnFrameCount == 0 && _isLocalPlayer)
         {
             Vector3 spawnPos = NetworkPosition;
@@ -563,31 +491,21 @@ public class U3DPlayerController : NetworkBehaviour
             }
             else
             {
-                // Apply rideable carry delta before player-driven movement
-                if (_currentRideable != null)
-                {
-                    _currentRideable.GetTickDelta(out Vector3 posDelta, out float yawDelta);
-                    transform.position += posDelta;
-                    if (Mathf.Abs(yawDelta) > 0.001f)
-                    {
-                        transform.Rotate(Vector3.up, yawDelta, Space.World);
-                        cameraYaw += yawDelta;
-                    }
-                    Physics.SyncTransforms();
-                }
-
                 HandleMovementFusion(input);
 
                 if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
-                {
                     HandleLookFusionFixed(input);
-                }
             }
 
             HandleButtonInputsFusion(input);
             HandleTeleportFusion(input);
             HandleCameraPositioning();
-            ApplyGravityFixed();
+
+            // Parenting handles vertical carry — only apply gravity when not riding
+            if (_currentRideable == null)
+                ApplyGravityFixed();
+            else
+                NetworkPosition = transform.position;
         }
     }
 
@@ -596,15 +514,12 @@ public class U3DPlayerController : NetworkBehaviour
         if (_isLocalPlayer)
         {
             if (!_isInVRMode)
-            {
                 HandleLocalCameraRender();
-            }
+
             HandleZoom();
 
             if (_justTeleported)
-            {
                 _justTeleported = false;
-            }
 
             return;
         }
@@ -612,9 +527,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (NetworkRotation == Quaternion.identity ||
             float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
             float.IsNaN(NetworkRotation.z) || float.IsNaN(NetworkRotation.w))
-        {
             return;
-        }
 
         if (_justTeleported)
         {
@@ -626,36 +539,24 @@ public class U3DPlayerController : NetworkBehaviour
         float rotationDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
 
         if (positionDifference > 0.1f)
-        {
             transform.position = Vector3.Lerp(transform.position, NetworkPosition, Time.deltaTime * 15f);
-        }
 
         if (rotationDifference > 0.5f && rotationDifference < 180f)
-        {
             transform.rotation = Quaternion.Slerp(transform.rotation, NetworkRotation, Time.deltaTime * 12f);
-        }
 
         if (playerCamera != null)
-        {
             playerCamera.transform.localRotation = Quaternion.Euler(NetworkCameraPitch, 0f, 0f);
-        }
 
         if (NetworkIsInVR)
-        {
             UpdateRemoteVRVisuals();
-        }
         else
-        {
             HideHandVisuals();
-        }
     }
 
     void HandleLocalCameraRender()
     {
         if (!enableMovement || !_isLocalPlayer || playerCamera == null) return;
-
         if (!IsCursorLocked()) return;
-
         playerCamera.transform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
 
@@ -669,22 +570,14 @@ public class U3DPlayerController : NetworkBehaviour
         _isInVRMode = enabled;
         NetworkIsInVR = enabled;
 
-        if (enabled && !wasInVR)
-        {
-            EnterVRMode();
-        }
-        else if (!enabled && wasInVR)
-        {
-            ExitVRMode();
-        }
+        if (enabled && !wasInVR) EnterVRMode();
+        else if (!enabled && wasInVR) ExitVRMode();
     }
 
     private void EnterVRMode()
     {
         if (_cursorManager != null)
-        {
             _cursorManager.SetVRMode(true);
-        }
 
         CreateHandVisuals();
 
@@ -720,9 +613,7 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         if (_cursorManager != null)
-        {
             _cursorManager.SetVRMode(false);
-        }
     }
 
     private void CreateHandVisuals()
@@ -760,8 +651,7 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (Mathf.Abs(snapTurnInput) > 0.1f)
         {
-            float turnSpeed = 90f;
-            float turnDelta = snapTurnInput * turnSpeed * Runner.DeltaTime;
+            float turnDelta = snapTurnInput * 90f * Runner.DeltaTime;
             transform.Rotate(Vector3.up, turnDelta);
             NetworkRotation = transform.rotation;
             cameraYaw += turnDelta;
@@ -779,26 +669,19 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         Vector3 moveDirection = (forward * vrMoveInput.y + right * vrMoveInput.x).normalized;
-
         float currentSpeed = GetCurrentSpeed() * VR_MOVEMENT_SPEED_MULTIPLIER;
 
         isSprinting = input.Buttons.IsSet(U3DInputButtons.Sprint);
         if (isSprinting)
-        {
             currentSpeed = runSpeed * VR_MOVEMENT_SPEED_MULTIPLIER;
-        }
 
         Vector3 moveVelocity = moveDirection * currentSpeed;
 
         if (isFlying)
         {
             Vector3 flyDirection = moveDirection;
-
-            if (input.Buttons.IsSet(U3DInputButtons.Jump))
-                flyDirection += Vector3.up;
-            if (input.Buttons.IsSet(U3DInputButtons.Crouch))
-                flyDirection += Vector3.down;
-
+            if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
+            if (input.Buttons.IsSet(U3DInputButtons.Crouch)) flyDirection += Vector3.down;
             characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
         else
@@ -839,9 +722,7 @@ public class U3DPlayerController : NetworkBehaviour
     private void UpdateRemoteVRVisuals()
     {
         if (_leftHandVisual == null || _rightHandVisual == null)
-        {
             CreateHandVisuals();
-        }
 
         if (_leftHandVisual != null)
         {
@@ -883,41 +764,29 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         if (isGrounded && velocity.y <= 0 && NetworkIsJumping)
-        {
             NetworkIsJumping = false;
-        }
     }
 
     void HandleMovementFusion(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
-
         if (NetworkIsClimbing) return;
 
         moveInput = input.MovementInput;
 
         Vector2 advancedMovement = HandleAdvancedKeyboardMovement(input);
 
-        if (isBothMouseForward)
-        {
-            advancedMovement.y = 1f;
-        }
-
-        if (isAutoRunning)
-        {
-            advancedMovement.y = 1f;
-        }
+        if (isBothMouseForward) advancedMovement.y = 1f;
+        if (isAutoRunning) advancedMovement.y = 1f;
 
         Vector2 finalMovement = (advancedMovement.magnitude > 0.1f) ? advancedMovement : moveInput;
 
         if (enableAdvancedCamera && cameraPivot != null)
         {
             bool isStartingToMove = (finalMovement.magnitude > 0.1f && !NetworkIsMoving);
-
             if (isStartingToMove && !isRightMouseDragging)
             {
-                float targetYaw = cameraYaw;
-                transform.rotation = Quaternion.Euler(0, targetYaw, 0);
+                transform.rotation = Quaternion.Euler(0, cameraYaw, 0);
                 NetworkRotation = transform.rotation;
             }
         }
@@ -944,18 +813,14 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         Vector3 moveDirection = (forward * finalMovement.y + right * finalMovement.x).normalized;
-
         float currentSpeed = GetCurrentSpeed();
         Vector3 moveVelocity = moveDirection * currentSpeed;
 
         if (isFlying)
         {
             Vector3 flyDirection = moveDirection;
-            if (input.Buttons.IsSet(U3DInputButtons.Jump))
-                flyDirection += Vector3.up;
-            if (input.Buttons.IsSet(U3DInputButtons.Crouch))
-                flyDirection += Vector3.down;
-
+            if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
+            if (input.Buttons.IsSet(U3DInputButtons.Crouch)) flyDirection += Vector3.down;
             characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
         else
@@ -973,9 +838,7 @@ public class U3DPlayerController : NetworkBehaviour
         Vector2 advancedMovement = Vector2.zero;
 
         if (moveInput.y != 0)
-        {
             advancedMovement.y = moveInput.y;
-        }
 
         if (enableAdvancedCamera)
         {
@@ -986,29 +849,19 @@ public class U3DPlayerController : NetworkBehaviour
                     float turnDelta = -characterTurnSpeed * Runner.DeltaTime;
                     transform.Rotate(Vector3.up, turnDelta);
                     NetworkRotation = transform.rotation;
-
-                    if (cameraPivot != null)
-                    {
-                        cameraYaw += turnDelta;
-                    }
+                    if (cameraPivot != null) cameraYaw += turnDelta;
                 }
                 if (input.TurnRight)
                 {
                     float turnDelta = characterTurnSpeed * Runner.DeltaTime;
                     transform.Rotate(Vector3.up, turnDelta);
                     NetworkRotation = transform.rotation;
-
-                    if (cameraPivot != null)
-                    {
-                        cameraYaw += turnDelta;
-                    }
+                    if (cameraPivot != null) cameraYaw += turnDelta;
                 }
             }
 
-            if (input.StrafeLeft)
-                advancedMovement.x = -1f;
-            if (input.StrafeRight)
-                advancedMovement.x = 1f;
+            if (input.StrafeLeft) advancedMovement.x = -1f;
+            if (input.StrafeRight) advancedMovement.x = 1f;
         }
         else
         {
@@ -1021,7 +874,6 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleLookFusionFixed(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
-
         if (!IsCursorLocked()) return;
 
         Vector2 rawLookInput = input.LookInput;
@@ -1048,9 +900,7 @@ public class U3DPlayerController : NetworkBehaviour
             if (_mouseInputBuffer.Count > 0)
             {
                 foreach (Vector2 sample in _mouseInputBuffer)
-                {
                     smoothedLookInput += sample;
-                }
                 smoothedLookInput /= _mouseInputBuffer.Count;
             }
 
@@ -1072,11 +922,8 @@ public class U3DPlayerController : NetworkBehaviour
             {
                 if (Mathf.Abs(finalLookInput.x) > 0.01f)
                 {
-                    float yawDelta = finalLookInput.x;
-                    transform.Rotate(Vector3.up, yawDelta);
-
-                    cameraYaw += yawDelta;
-
+                    transform.Rotate(Vector3.up, finalLookInput.x);
+                    cameraYaw += finalLookInput.x;
                     NetworkRotation = transform.rotation;
                 }
 
@@ -1088,9 +935,7 @@ public class U3DPlayerController : NetworkBehaviour
                 }
 
                 if (cameraPivot != null)
-                {
                     cameraPivot.localRotation = Quaternion.Euler(cameraPitchAdvanced, 0f, 0f);
-                }
             }
             else
             {
@@ -1139,14 +984,10 @@ public class U3DPlayerController : NetworkBehaviour
         {
             if (Mathf.Abs(processedInput.x) > 0.01f)
             {
-                float yawDelta = processedInput.x;
-                transform.Rotate(Vector3.up, yawDelta);
-
-                cameraYaw += yawDelta;
-
+                transform.Rotate(Vector3.up, processedInput.x);
+                cameraYaw += processedInput.x;
                 NetworkRotation = transform.rotation;
             }
-
             if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 cameraPitchAdvanced -= processedInput.y;
@@ -1158,14 +999,10 @@ public class U3DPlayerController : NetworkBehaviour
         {
             if (Mathf.Abs(processedInput.x) > 0.01f)
             {
-                float yawDelta = processedInput.x;
-                transform.Rotate(Vector3.up, yawDelta);
-
-                cameraYaw += yawDelta;
-
+                transform.Rotate(Vector3.up, processedInput.x);
+                cameraYaw += processedInput.x;
                 NetworkRotation = transform.rotation;
             }
-
             if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 cameraPitchAdvanced -= processedInput.y;
@@ -1176,29 +1013,21 @@ public class U3DPlayerController : NetworkBehaviour
         else if (isLeftMouseDragging && !isRightMouseDragging)
         {
             if (Mathf.Abs(processedInput.x) > 0.01f)
-            {
                 cameraYaw += processedInput.x;
-            }
-
             if (Mathf.Abs(processedInput.y) > 0.01f)
             {
                 cameraPitchAdvanced -= processedInput.y;
                 cameraPitchAdvanced = Mathf.Clamp(cameraPitchAdvanced, lookDownLimit, lookUpLimit);
             }
-
             NetworkCameraPitch = cameraPitchAdvanced;
         }
 
         if (cameraPivot != null)
         {
             if (isLeftMouseDragging && !isRightMouseDragging)
-            {
                 cameraPivot.rotation = Quaternion.Euler(cameraPitchAdvanced, cameraYaw, 0f);
-            }
             else
-            {
                 cameraPivot.localRotation = Quaternion.Euler(cameraPitchAdvanced, 0f, 0f);
-            }
         }
     }
 
@@ -1210,9 +1039,7 @@ public class U3DPlayerController : NetworkBehaviour
         var released = input.Buttons.GetReleased(_buttonsPrevious);
 
         if (enableJumping && pressed.IsSet(U3DInputButtons.Jump))
-        {
             HandleJumpFusionFixed();
-        }
 
         if (enableSprintToggle && pressed.IsSet(U3DInputButtons.Sprint))
         {
@@ -1241,7 +1068,6 @@ public class U3DPlayerController : NetworkBehaviour
         {
             isCrouching = false;
             NetworkIsCrouching = false;
-
             characterController.height = 2f;
             characterController.center = new Vector3(0, 1f, 0);
         }
@@ -1250,27 +1076,19 @@ public class U3DPlayerController : NetworkBehaviour
         {
             isFlying = !isFlying;
             NetworkIsFlying = isFlying;
-
             velocity = Vector3.zero;
         }
 
         if (pressed.IsSet(U3DInputButtons.AutoRunToggle))
-        {
             isAutoRunning = !isAutoRunning;
-        }
 
         if (pressed.IsSet(U3DInputButtons.Interact))
         {
             NetworkIsInteracting = true;
-
             if (_interactionManager != null)
-            {
                 _interactionManager.OnPlayerInteract();
-            }
             else
-            {
                 Debug.LogWarning("No interaction manager found - interaction ignored");
-            }
         }
 
         isZooming = input.Buttons.IsSet(U3DInputButtons.Zoom);
@@ -1279,13 +1097,9 @@ public class U3DPlayerController : NetworkBehaviour
         if (perspectiveMode == PerspectiveMode.SmoothScroll && Mathf.Abs(input.PerspectiveScroll) > 0.1f)
         {
             if (input.PerspectiveScroll > 0.1f && !isFirstPerson)
-            {
                 SetFirstPerson();
-            }
             else if (input.PerspectiveScroll < -0.1f && isFirstPerson)
-            {
                 SetThirdPerson();
-            }
         }
 
         _buttonsPrevious = input.Buttons;
@@ -1294,32 +1108,20 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleJumpFusionFixed()
     {
         if (NetworkIsClimbing) return;
-
-        if (isFlying)
-        {
-            return;
-        }
+        if (isFlying) return;
 
         if (isGrounded || jumpCount < additionalJumps.Length + 1)
         {
             float jumpForce;
             if (jumpCount == 0)
-            {
                 jumpForce = Mathf.Sqrt(jumpHeight * -2f * gravity);
-            }
             else if (jumpCount <= additionalJumps.Length)
-            {
-                float jumpHeightValue = additionalJumps[jumpCount - 1];
-                jumpForce = Mathf.Sqrt(jumpHeightValue * -2f * gravity);
-            }
+                jumpForce = Mathf.Sqrt(additionalJumps[jumpCount - 1] * -2f * gravity);
             else
-            {
                 return;
-            }
 
             velocity.y = jumpForce;
             jumpCount++;
-
             NetworkIsJumping = true;
         }
     }
@@ -1329,12 +1131,8 @@ public class U3DPlayerController : NetworkBehaviour
         if (!enableTeleport || !_isLocalPlayer) return;
 
         var pressed = input.Buttons.GetPressed(_buttonsPrevious);
-        bool teleportPressed = pressed.IsSet(U3DInputButtons.Teleport);
-
-        if (teleportPressed)
-        {
+        if (pressed.IsSet(U3DInputButtons.Teleport))
             PerformTeleport();
-        }
     }
 
     public void PerformTeleport()
@@ -1347,7 +1145,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         Vector3 screenCenter = new Vector3(Screen.width / 2, Screen.height / 2, 0);
         Ray ray = playerCamera.ScreenPointToRay(screenCenter);
-
         RaycastHit[] allHits = Physics.RaycastAll(ray, 100f);
 
         RaycastHit bestHit = new RaycastHit();
@@ -1356,17 +1153,10 @@ public class U3DPlayerController : NetworkBehaviour
 
         foreach (RaycastHit hit in allHits)
         {
-            if (hit.collider.transform == transform ||
-                hit.collider.transform.IsChildOf(transform))
-            {
+            if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform))
                 continue;
-            }
-
             if (hit.collider.isTrigger)
-            {
                 continue;
-            }
-
             if (hit.distance < closestDistance)
             {
                 bestHit = hit;
@@ -1378,35 +1168,34 @@ public class U3DPlayerController : NetworkBehaviour
         if (foundHit)
         {
             Vector3 teleportPos = bestHit.point;
-
             float playerHeight = characterController != null ? characterController.height : 2f;
             teleportPos.y += (playerHeight * 0.5f) + 0.1f;
 
             _justTeleported = true;
+            _currentRideable = null;
+
+            // Unparent before teleporting
+            if (transform.parent != null)
+            {
+                characterController.enabled = false;
+                transform.SetParent(null, true);
+                characterController.enabled = true;
+            }
 
             NetworkPosition = teleportPos;
             NetworkRotation = transform.rotation;
 
-            if (characterController != null && characterController.enabled)
-            {
-                characterController.enabled = false;
-                transform.position = teleportPos;
-                characterController.enabled = true;
-            }
-            else
-            {
-                transform.position = teleportPos;
-            }
+            characterController.enabled = false;
+            transform.position = teleportPos;
+            characterController.enabled = true;
 
             velocity = Vector3.zero;
-            _currentRideable = null;
         }
     }
 
     void HandleCameraPositioning()
     {
         if (!_isLocalPlayer) return;
-
         if (_isInVRMode) return;
 
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
@@ -1418,7 +1207,6 @@ public class U3DPlayerController : NetworkBehaviour
                     targetTransitionValue,
                     Runner.DeltaTime / transitionTime
                 );
-
                 isTransitioning = true;
             }
             else
@@ -1434,14 +1222,10 @@ public class U3DPlayerController : NetworkBehaviour
             Vector3 targetPosition = isFirstPerson ? firstPersonPosition : thirdPersonPosition;
 
             if (isCrouching)
-            {
                 targetPosition.y += crouchCameraOffset;
-            }
 
             if (enableCameraCollision && !isFirstPerson)
-            {
                 targetPosition = GetCollisionSafeCameraPosition(targetPosition);
-            }
 
             playerCamera.transform.localPosition = Vector3.Lerp(
                 playerCamera.transform.localPosition,
@@ -1454,7 +1238,6 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleZoom()
     {
         if (!enableViewZoom || !_isLocalPlayer) return;
-
         playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, Time.deltaTime * zoomSpeed);
     }
 
@@ -1464,21 +1247,14 @@ public class U3DPlayerController : NetworkBehaviour
 
         Vector3 cameraWorldTarget;
         if (cameraPivot != null)
-        {
             cameraWorldTarget = pivotWorldPosition + cameraPivot.rotation * desiredPosition;
-        }
         else
-        {
             cameraWorldTarget = transform.TransformPoint(desiredPosition);
-        }
 
         Vector3 direction = (cameraWorldTarget - pivotWorldPosition).normalized;
         float maxDistance = Vector3.Distance(pivotWorldPosition, cameraWorldTarget);
 
-        if (maxDistance < 0.1f)
-        {
-            return desiredPosition;
-        }
+        if (maxDistance < 0.1f) return desiredPosition;
 
         int layerMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("Player"));
 
@@ -1488,14 +1264,9 @@ public class U3DPlayerController : NetworkBehaviour
             Vector3 safeWorldPosition = pivotWorldPosition + direction * safeDistance;
 
             if (cameraPivot != null)
-            {
-                Vector3 localOffset = Quaternion.Inverse(cameraPivot.rotation) * (safeWorldPosition - pivotWorldPosition);
-                return localOffset;
-            }
+                return Quaternion.Inverse(cameraPivot.rotation) * (safeWorldPosition - pivotWorldPosition);
             else
-            {
                 return transform.InverseTransformPoint(safeWorldPosition);
-            }
         }
 
         return desiredPosition;
@@ -1506,47 +1277,35 @@ public class U3DPlayerController : NetworkBehaviour
         if (isFlying || isGrounded || NetworkIsClimbing || !_isLocalPlayer) return;
 
         velocity.y += gravity * Runner.DeltaTime;
-
-        Vector3 gravityMovement = new Vector3(0, velocity.y, 0) * Runner.DeltaTime;
-        characterController.Move(gravityMovement);
+        characterController.Move(new Vector3(0, velocity.y, 0) * Runner.DeltaTime);
     }
 
     float GetCurrentSpeed()
     {
-        if (isSprinting)
-            return runSpeed;
-        else if (isCrouching)
-            return walkSpeed * 0.5f;
-        else
-            return walkSpeed;
+        if (isSprinting) return runSpeed;
+        else if (isCrouching) return walkSpeed * 0.5f;
+        else return walkSpeed;
     }
 
     void SetFirstPerson()
     {
         isFirstPerson = true;
         currentCameraDistance = 0f;
-
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
-        {
             targetTransitionValue = 0f;
-        }
     }
 
     void SetThirdPerson()
     {
         isFirstPerson = false;
         currentCameraDistance = thirdPersonDistance;
-
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
-        {
             targetTransitionValue = 1f;
-        }
     }
 
     void LoadPlayerPreferences()
     {
         lookInverted = PlayerPrefs.GetInt("U3D_LookInverted", 0) == 1;
-
         LoadSensitivitySettings();
     }
 
@@ -1557,10 +1316,7 @@ public class U3DPlayerController : NetworkBehaviour
         PlayerPrefs.Save();
     }
 
-    public bool GetMouseSmoothing()
-    {
-        return enableMouseSmoothing;
-    }
+    public bool GetMouseSmoothing() => enableMouseSmoothing;
 
     public void SetMouseSmoothingAmount(float amount)
     {
@@ -1569,32 +1325,18 @@ public class U3DPlayerController : NetworkBehaviour
         PlayerPrefs.Save();
     }
 
-    public float GetMouseSmoothingAmount()
-    {
-        return mouseSmoothingAmount;
-    }
-
-    public void SetLookInverted(bool inverted)
-    {
-        lookInverted = inverted;
-    }
-
-    public bool IsWebGLPlatform()
-    {
-        return Application.platform == RuntimePlatform.WebGLPlayer;
-    }
+    public float GetMouseSmoothingAmount() => mouseSmoothingAmount;
+    public void SetLookInverted(bool inverted) { lookInverted = inverted; }
+    public bool IsWebGLPlatform() => Application.platform == RuntimePlatform.WebGLPlayer;
 
     public float GetPlatformSensitivityMultiplier()
     {
         switch (Application.platform)
         {
-            case RuntimePlatform.WebGLPlayer:
-                return webglSensitivityMultiplier;
+            case RuntimePlatform.WebGLPlayer: return webglSensitivityMultiplier;
             case RuntimePlatform.IPhonePlayer:
-            case RuntimePlatform.Android:
-                return mobileSensitivityMultiplier;
-            default:
-                return 1.0f;
+            case RuntimePlatform.Android: return mobileSensitivityMultiplier;
+            default: return 1.0f;
         }
     }
 
@@ -1602,23 +1344,16 @@ public class U3DPlayerController : NetworkBehaviour
     {
         switch (Application.platform)
         {
-            case RuntimePlatform.WebGLPlayer:
-                return "WebGL";
-            case RuntimePlatform.IPhonePlayer:
-                return "iOS";
-            case RuntimePlatform.Android:
-                return "Android";
+            case RuntimePlatform.WebGLPlayer: return "WebGL";
+            case RuntimePlatform.IPhonePlayer: return "iOS";
+            case RuntimePlatform.Android: return "Android";
             case RuntimePlatform.WindowsPlayer:
-            case RuntimePlatform.WindowsEditor:
-                return "Windows";
+            case RuntimePlatform.WindowsEditor: return "Windows";
             case RuntimePlatform.OSXPlayer:
-            case RuntimePlatform.OSXEditor:
-                return "macOS";
+            case RuntimePlatform.OSXEditor: return "macOS";
             case RuntimePlatform.LinuxPlayer:
-            case RuntimePlatform.LinuxEditor:
-                return "Linux";
-            default:
-                return "Desktop";
+            case RuntimePlatform.LinuxEditor: return "Linux";
+            default: return "Desktop";
         }
     }
 
@@ -1657,22 +1392,24 @@ public class U3DPlayerController : NetworkBehaviour
 
         try
         {
+            _currentRideable = null;
+
+            // Unparent before repositioning
+            if (transform.parent != null)
+            {
+                characterController.enabled = false;
+                transform.SetParent(null, true);
+                characterController.enabled = true;
+            }
+
             NetworkPosition = position;
             NetworkRotation = transform.rotation;
 
-            if (characterController != null && characterController.enabled)
-            {
-                characterController.enabled = false;
-                transform.position = position;
-                characterController.enabled = true;
-            }
-            else
-            {
-                transform.position = position;
-            }
+            characterController.enabled = false;
+            transform.position = position;
+            characterController.enabled = true;
 
             velocity = Vector3.zero;
-            _currentRideable = null;
         }
         catch (System.Exception e)
         {
@@ -1683,14 +1420,12 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetRotation(float yRotation)
     {
         if (!_isLocalPlayer) return;
-
         transform.rotation = Quaternion.Euler(0, yRotation, 0);
     }
 
     public void SetCameraPitch(float pitch)
     {
         if (!_isLocalPlayer) return;
-
         cameraPitch = pitch;
     }
 
@@ -1704,11 +1439,7 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
         NetworkIsClimbing = isClimbing;
-
-        if (isClimbing)
-        {
-            velocity = Vector3.zero;
-        }
+        if (isClimbing) velocity = Vector3.zero;
     }
 
     public void SetClimbDetachVelocity(Vector3 detachVelocity)
@@ -1719,13 +1450,26 @@ public class U3DPlayerController : NetworkBehaviour
     public void MountRideable(U3D.U3DRideableController rideable)
     {
         if (!_isLocalPlayer) return;
+
         _currentRideable = rideable;
+        velocity = Vector3.zero;
+
+        characterController.enabled = false;
+        transform.SetParent(rideable.transform, true);
+        characterController.enabled = true;
     }
 
     public void DismountRideable(U3D.U3DRideableController rideable)
     {
         if (!_isLocalPlayer) return;
-        if (_currentRideable == rideable)
-            _currentRideable = null;
+        if (_currentRideable != rideable) return;
+
+        _currentRideable = null;
+
+        characterController.enabled = false;
+        transform.SetParent(null, true);
+        characterController.enabled = true;
+
+        NetworkPosition = transform.position;
     }
 }
