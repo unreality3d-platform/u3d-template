@@ -394,7 +394,12 @@ namespace U3D.Editor
             if (selected.GetComponent<U3DRideableController>() == null)
                 selected.AddComponent<U3DRideableController>();
 
-            // Create the trigger zone child with relay component for player detection
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
             GameObject triggerZoneGO = new GameObject("RideableTrigger");
             Undo.RegisterCreatedObjectUndo(triggerZoneGO, "Make Rideable");
             triggerZoneGO.transform.SetParent(selected.transform, false);
@@ -402,15 +407,11 @@ namespace U3D.Editor
 
             var triggerCollider = triggerZoneGO.AddComponent<BoxCollider>();
             triggerCollider.isTrigger = true;
-            // Center Y=1 and Size Y=3 in local space places the trigger flush with the
-            // platform surface and extends it upward to fully enclose a standing player
             triggerCollider.center = new Vector3(0f, 1f, 0f);
             triggerCollider.size = new Vector3(1f, 3f, 1f);
 
-            // Relay component — OnTriggerEnter/Exit must live on the same GO as the collider
             triggerZoneGO.AddComponent<U3DRideableTrigger>();
 
-            // Create Waypoint_0 at scene root so it never moves with the platform
             GameObject waypointGO = new GameObject("Waypoint_0");
             Undo.RegisterCreatedObjectUndo(waypointGO, "Make Rideable");
             waypointGO.transform.position = selected.transform.position;
@@ -424,20 +425,18 @@ namespace U3D.Editor
         private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
         {
             var so = new SerializedObject(networkObject);
-
-            var allowOverrideProp = so.FindProperty("_allowStateAuthorityOverride");
-            if (allowOverrideProp != null)
-                allowOverrideProp.boolValue = true;
-
-            var destroyOnLeaveProp = so.FindProperty("_destroyWhenStateAuthorityLeaves");
-            if (destroyOnLeaveProp != null)
-                destroyOnLeaveProp.boolValue = false;
-
-            var isMasterClientProp = so.FindProperty("_isMasterClientObject");
-            if (isMasterClientProp != null)
-                isMasterClientProp.boolValue = false;
-
-            so.ApplyModifiedProperties();
+            var flagsProp = so.FindProperty("Flags");
+            if (flagsProp != null)
+            {
+                flagsProp.intValue = (int)(
+                    NetworkObjectFlags.AllowStateAuthorityOverride
+                );
+                so.ApplyModifiedProperties();
+            }
+            else
+            {
+                Debug.LogWarning("Could not find Flags property on NetworkObject — Shared Mode flags not configured");
+            }
         }
 
 #if FUSION_ADDONS_PHYSICS

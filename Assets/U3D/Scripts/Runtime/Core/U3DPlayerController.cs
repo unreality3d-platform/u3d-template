@@ -506,6 +506,8 @@ public class U3DPlayerController : NetworkBehaviour
             // Parenting handles vertical carry — only apply gravity when not riding
             if (_currentRideable == null)
                 ApplyGravityFixed();
+            else
+                NetworkPosition = transform.position;
         }
     }
 

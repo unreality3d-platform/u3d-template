@@ -278,7 +278,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b0c6fc7f757e99045b0450e94aa1a7cb, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DKickable
   kickForce: 8
   upwardKickBoost: 1.5
   maxKickVelocity: 15
@@ -286,7 +286,7 @@ MonoBehaviour:
   kickKey: 114
   maxKickDistance: 1.5
   kickDetectionRadius: 1.2
-  labelUI: {fileID: 1231411592}
+  labelUI: {fileID: 0}
   OnKicked:
     m_PersistentCalls:
       m_Calls: []
@@ -327,7 +327,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0a591d221a634417e9827eb58e17de84, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: Fusion.Addons.Physics::Fusion.Addons.Physics.NetworkRigidbody3D
   _stateAuthorityChangeErrorCorrectionDelta: 0
   SyncScale: 0
   SyncParent: 1
@@ -365,7 +365,7 @@ Rigidbody:
   m_IsKinematic: 1
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!114 &42306064
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -377,10 +377,10 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
   SortKey: 17312380
   ObjectInterest: 1
-  Flags: 262145
+  Flags: 524289
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 42306062}
@@ -1316,6 +1316,7 @@ GameObject:
   - component: {fileID: 333147174}
   - component: {fileID: 333147173}
   - component: {fileID: 333147176}
+  - component: {fileID: 333147177}
   m_Layer: 0
   m_Name: Orange Cube
   m_TagString: Untagged
@@ -1438,9 +1439,27 @@ MonoBehaviour:
   - {fileID: 1973434442}
   loopMode: 0
   speed: 3
-  pauseAtWaypoint: 0
+  pauseAtWaypoint: 1
   rotationAxis: {x: 0, y: 1, z: 0}
   rotationSpeed: 45
+--- !u!114 &333147177
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 333147171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
+  SortKey: 935693216
+  ObjectInterest: 1
+  Flags: 524289
+  NestedObjects: []
+  NetworkedBehaviours: []
+  ForceRemoteRenderTimeframe: 0
 --- !u!1 &333160441
 GameObject:
   m_ObjectHideFlags: 0
