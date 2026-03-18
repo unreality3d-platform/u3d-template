@@ -1,5 +1,4 @@
-﻿using Fusion;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace U3D
 {
@@ -16,8 +15,7 @@ namespace U3D
         PingPong
     }
 
-    [RequireComponent(typeof(NetworkObject))]
-    public class U3DRideableController : NetworkBehaviour
+    public class U3DRideableController : MonoBehaviour
     {
         [Header("Movement")]
         [SerializeField] private RideableMovementMode movementMode = RideableMovementMode.Waypoints;
@@ -30,27 +28,16 @@ namespace U3D
         [SerializeField] private Vector3 rotationAxis = Vector3.up;
         [SerializeField] private float rotationSpeed = 45f;
 
-        [Networked] private Vector3 NetworkedPosition { get; set; }
-        [Networked] private Quaternion NetworkedRotation { get; set; }
-
-        private Vector3 _previousPosition;
-        private Quaternion _previousRotation;
-
-        // World-space waypoint positions cached at spawn — waypoints are children so
-        // their transform.position would drift with the parent during movement.
+        // World-space waypoint positions cached at Start — waypoints live outside
+        // the platform hierarchy so their positions never drift during movement.
         private Vector3[] _waypointPositions;
 
         private int _currentWaypointIndex;
         private float _pauseTimer;
         private bool _pingPongForward = true;
 
-        public override void Spawned()
+        private void Start()
         {
-            NetworkedPosition = transform.position;
-            NetworkedRotation = transform.rotation;
-            _previousPosition = transform.position;
-            _previousRotation = transform.rotation;
-
             CacheWaypointPositions();
         }
 
@@ -75,32 +62,18 @@ namespace U3D
             }
         }
 
-        public override void FixedUpdateNetwork()
+        private void FixedUpdate()
         {
-            _previousPosition = transform.position;
-            _previousRotation = transform.rotation;
-
-            if (HasStateAuthority)
+            switch (movementMode)
             {
-                switch (movementMode)
-                {
-                    case RideableMovementMode.Waypoints:
-                        TickWaypoints();
-                        break;
-                    case RideableMovementMode.Rotation:
-                        TickRotation();
-                        break;
-                    case RideableMovementMode.Static:
-                        break;
-                }
-
-                NetworkedPosition = transform.position;
-                NetworkedRotation = transform.rotation;
-            }
-            else
-            {
-                transform.position = NetworkedPosition;
-                transform.rotation = NetworkedRotation;
+                case RideableMovementMode.Waypoints:
+                    TickWaypoints();
+                    break;
+                case RideableMovementMode.Rotation:
+                    TickRotation();
+                    break;
+                case RideableMovementMode.Static:
+                    break;
             }
         }
 
@@ -110,13 +83,13 @@ namespace U3D
 
             if (_pauseTimer > 0f)
             {
-                _pauseTimer -= Runner.DeltaTime;
+                _pauseTimer -= Time.fixedDeltaTime;
                 return;
             }
 
             Vector3 target = _waypointPositions[_currentWaypointIndex];
             Vector3 toTarget = target - transform.position;
-            float distanceThisFrame = speed * Runner.DeltaTime;
+            float distanceThisFrame = speed * Time.fixedDeltaTime;
 
             if (toTarget.magnitude <= distanceThisFrame)
             {
@@ -163,31 +136,8 @@ namespace U3D
 
         private void TickRotation()
         {
-            float angle = rotationSpeed * Runner.DeltaTime;
+            float angle = rotationSpeed * Time.fixedDeltaTime;
             transform.Rotate(rotationAxis.normalized, angle, Space.Self);
-        }
-
-        public void GetTickDelta(out Vector3 posDelta, out float yawDelta)
-        {
-            posDelta = transform.position - _previousPosition;
-
-            float prevYaw = _previousRotation.eulerAngles.y;
-            float currYaw = transform.rotation.eulerAngles.y;
-            yawDelta = Mathf.DeltaAngle(prevYaw, currYaw);
-        }
-
-        private void OnTriggerEnter(Collider other)
-        {
-            var player = other.GetComponentInParent<U3DPlayerController>();
-            if (player == null) return;
-            player.MountRideable(this);
-        }
-
-        private void OnTriggerExit(Collider other)
-        {
-            var player = other.GetComponentInParent<U3DPlayerController>();
-            if (player == null) return;
-            player.DismountRideable(this);
         }
     }
 }

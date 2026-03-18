@@ -491,7 +491,9 @@ public class U3DPlayerController : NetworkBehaviour
             }
             else
             {
-                HandleMovementFusion(input);
+                // Skip movement processing while riding — parenting handles position
+                if (_currentRideable == null)
+                    HandleMovementFusion(input);
 
                 if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
                     HandleLookFusionFixed(input);
@@ -504,8 +506,6 @@ public class U3DPlayerController : NetworkBehaviour
             // Parenting handles vertical carry — only apply gravity when not riding
             if (_currentRideable == null)
                 ApplyGravityFixed();
-            else
-                NetworkPosition = transform.position;
         }
     }
 
@@ -816,6 +816,10 @@ public class U3DPlayerController : NetworkBehaviour
         float currentSpeed = GetCurrentSpeed();
         Vector3 moveVelocity = moveDirection * currentSpeed;
 
+        // Any intentional movement input dismounts the player
+        if (_currentRideable != null && moveVelocity.magnitude > 0.1f)
+            DismountRideable(_currentRideable);
+
         if (isFlying)
         {
             Vector3 flyDirection = moveDirection;
@@ -1109,6 +1113,10 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (NetworkIsClimbing) return;
         if (isFlying) return;
+
+        // Jumping dismounts the player
+        if (_currentRideable != null)
+            DismountRideable(_currentRideable);
 
         if (isGrounded || jumpCount < additionalJumps.Length + 1)
         {
@@ -1456,7 +1464,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         characterController.enabled = false;
         transform.SetParent(rideable.transform, true);
-        characterController.enabled = true;
     }
 
     public void DismountRideable(U3D.U3DRideableController rideable)
@@ -1466,10 +1473,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         _currentRideable = null;
 
-        characterController.enabled = false;
         transform.SetParent(null, true);
         characterController.enabled = true;
 
         NetworkPosition = transform.position;
     }
+
+    public bool IsRiding(U3D.U3DRideableController rideable) => _currentRideable == rideable;
 }

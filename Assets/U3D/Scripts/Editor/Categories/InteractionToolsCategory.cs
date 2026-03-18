@@ -314,7 +314,6 @@ namespace U3D.Editor
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
                 selected.AddComponent<BoxCollider>();
-            // isTrigger intentionally not set — collider must be solid for raycast
 
             if (!selected.GetComponent<NetworkObject>())
             {
@@ -392,16 +391,10 @@ namespace U3D.Editor
         {
             Undo.RecordObject(selected, "Make Rideable");
 
-            if (!selected.GetComponent<NetworkObject>())
-            {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedMode(networkObject);
-            }
-
             if (selected.GetComponent<U3DRideableController>() == null)
                 selected.AddComponent<U3DRideableController>();
 
-            // Create the trigger zone that detects players entering/exiting the rideable surface
+            // Create the trigger zone child with relay component for player detection
             GameObject triggerZoneGO = new GameObject("RideableTrigger");
             Undo.RegisterCreatedObjectUndo(triggerZoneGO, "Make Rideable");
             triggerZoneGO.transform.SetParent(selected.transform, false);
@@ -409,37 +402,21 @@ namespace U3D.Editor
 
             var triggerCollider = triggerZoneGO.AddComponent<BoxCollider>();
             triggerCollider.isTrigger = true;
+            // Center Y=1 and Size Y=3 in local space places the trigger flush with the
+            // platform surface and extends it upward to fully enclose a standing player
+            triggerCollider.center = new Vector3(0f, 1f, 0f);
+            triggerCollider.size = new Vector3(1f, 3f, 1f);
 
-            // Size the trigger to the parent's renderers, falling back to a reasonable default
-            Bounds bounds = CalculateLocalBounds(selected);
-            triggerCollider.center = selected.transform.InverseTransformPoint(
-                selected.transform.TransformPoint(bounds.center)
-            ) - triggerZoneGO.transform.localPosition;
-            triggerCollider.size = bounds.size + Vector3.one * 0.2f;
+            // Relay component — OnTriggerEnter/Exit must live on the same GO as the collider
+            triggerZoneGO.AddComponent<U3DRideableTrigger>();
 
-            // Create one default waypoint child so the Creator has something to move immediately
+            // Create Waypoint_0 at scene root so it never moves with the platform
             GameObject waypointGO = new GameObject("Waypoint_0");
             Undo.RegisterCreatedObjectUndo(waypointGO, "Make Rideable");
-            waypointGO.transform.SetParent(selected.transform, false);
-            waypointGO.transform.localPosition = Vector3.zero;
+            waypointGO.transform.position = selected.transform.position;
 
             EditorUtility.SetDirty(selected);
             Selection.activeGameObject = selected;
-        }
-
-        private static Bounds CalculateLocalBounds(GameObject go)
-        {
-            var renderers = go.GetComponentsInChildren<Renderer>();
-            if (renderers.Length == 0)
-                return new Bounds(Vector3.zero, Vector3.one);
-
-            Bounds bounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                bounds.Encapsulate(renderers[i].bounds);
-
-            // Convert world bounds center to local space
-            bounds.center = go.transform.InverseTransformPoint(bounds.center);
-            return bounds;
         }
 
         // ========== SHARED HELPERS ==========
