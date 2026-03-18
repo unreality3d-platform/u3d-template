@@ -491,7 +491,18 @@ public class U3DPlayerController : NetworkBehaviour
             }
             else
             {
-                // Skip movement processing while riding — parenting handles position
+                // Any movement intent dismounts the player
+                if (_currentRideable != null)
+                {
+                    bool wantsDismount = input.MovementInput.magnitude > 0.1f
+                        || input.BothMouseHeld
+                        || input.Buttons.GetPressed(_buttonsPrevious).IsSet(U3DInputButtons.Fly)
+                        || input.Buttons.GetPressed(_buttonsPrevious).IsSet(U3DInputButtons.AutoRunToggle);
+
+                    if (wantsDismount)
+                        DismountRideable(_currentRideable);
+                }
+
                 if (_currentRideable == null)
                     HandleMovementFusion(input);
 
@@ -817,10 +828,6 @@ public class U3DPlayerController : NetworkBehaviour
         Vector3 moveDirection = (forward * finalMovement.y + right * finalMovement.x).normalized;
         float currentSpeed = GetCurrentSpeed();
         Vector3 moveVelocity = moveDirection * currentSpeed;
-
-        // Any intentional movement input dismounts the player
-        if (_currentRideable != null && moveVelocity.magnitude > 0.1f)
-            DismountRideable(_currentRideable);
 
         if (isFlying)
         {
@@ -1182,10 +1189,11 @@ public class U3DPlayerController : NetworkBehaviour
             teleportPos.y += (playerHeight * 0.5f) + 0.1f;
 
             _justTeleported = true;
-            _currentRideable = null;
 
-            // Unparent before teleporting
-            if (transform.parent != null)
+            // Dismount if riding — must re-enable CC before teleport
+            if (_currentRideable != null)
+                DismountRideable(_currentRideable);
+            else if (transform.parent != null)
             {
                 characterController.enabled = false;
                 transform.SetParent(null, true);
@@ -1463,6 +1471,7 @@ public class U3DPlayerController : NetworkBehaviour
 
         _currentRideable = rideable;
         velocity = Vector3.zero;
+        NetworkIsMoving = false;
 
         characterController.enabled = false;
         transform.SetParent(rideable.transform, true);
