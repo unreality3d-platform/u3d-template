@@ -16,7 +16,7 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Add Audio List", "Play random audio clips from a list through one AudioSource", ApplyAudioList, true),
+                new CreatorTool("🟢 Add Audio Playlist", "Play random audio clips from a list through an AudioSource", ApplyAudioList, true),
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas that faces camera with proximity fade", CreateWorldspaceUI),
                 new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
                 new CreatorTool("🚧 Add Video Player", "Stream videos from URLs in your world", () => { }),
@@ -48,14 +48,14 @@ namespace U3D.Editor
                 return;
             }
 
-            if (selected.GetComponent<AudioList>() != null)
+            if (selected.GetComponent<U3DAudioPlaylist>() != null)
             {
-                Debug.LogWarning("Object already has an AudioList component");
+                Debug.LogWarning("Object already has an AudioPlaylist component");
                 return;
             }
 
             Undo.RecordObject(selected, "Add AudioList Component");
-            selected.AddComponent<AudioList>();
+            selected.AddComponent<U3DAudioPlaylist>();
 
             EditorUtility.SetDirty(selected);
         }
