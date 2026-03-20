@@ -14,13 +14,13 @@ This repository contains the complete Unity 6+ template project that powers the 
 
 ## Requirements
 
-**Unity 6+** with the **WebGL Build Support** module installed (Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support).
+**Unity 6** with the **WebGL Build Support** module installed (Unity Hub → Installs → Your Unity Version → Add Modules → WebGL Build Support).
 
 For publishing, you need **Git** and a **GitHub account** (free). New to GitHub? The in-editor setup walks you through it. A **PayPal email** is optional for enabling the platform's donation and pay-gate tools.
 
 ## What's Included
 
-The template ships as a complete, pre-configured Unity 6+ project with multiplayer networking, one-click interactivity tools, automated publishing, VR support, and optional PayPal transaction tools with a voluntary 95/5% creator-first split.
+The template ships as a complete, pre-configured Unity 6 LTS project with multiplayer networking, one-click interactivity tools, automated publishing, VR support, and optional PayPal transaction tools with a voluntary 95/5% creator-first split.
 
 For the full feature list and development roadmap, see [unreality3d.com](https://unreality3d.com/#roadmap).
 
