@@ -23,8 +23,8 @@ namespace U3D
         [SerializeField][Range(0.1f, 5f)] private float fadeDuration = 1f;
         [SerializeField] private bool fadeOutOnStop = true;
 
-        [Header("Sequential Playback")]
-        [SerializeField] private bool loopSequence = false;
+        [Header("Looping")]
+        [SerializeField] private bool loopPlayback = false;
 
         private AudioSource _sourceA;
         private AudioSource _sourceB;
@@ -74,15 +74,15 @@ namespace U3D
             _playbackCoroutine = StartCoroutine(SequenceCoroutine());
         }
 
-        public void StartAmbientLoop()
+        public void PlayShuffled()
         {
             if (!ValidateSetup()) return;
             StopPlaybackImmediate();
 
-            _playbackCoroutine = StartCoroutine(AmbientLoopCoroutine());
+            _playbackCoroutine = StartCoroutine(ShuffledCoroutine());
         }
 
-        public void Stop()
+        public void StopPlaylist()
         {
             if (_playbackCoroutine != null)
             {
@@ -152,38 +152,42 @@ namespace U3D
                         yield return new WaitForSeconds(gapBetweenClips);
                 }
             }
-            while (loopSequence && _isPlaying);
+            while (loopPlayback && _isPlaying);
 
             _isPlaying = false;
         }
 
         // ───────────────────────────────────────────
-        // Ambient Loop (Shuffled Continuous)
+        // Shuffled Playback
         // ───────────────────────────────────────────
 
-        private IEnumerator AmbientLoopCoroutine()
+        private IEnumerator ShuffledCoroutine()
         {
             _isPlaying = true;
             List<int> shuffledIndices = new List<int>();
 
-            while (_isPlaying)
+            do
             {
-                if (shuffledIndices.Count == 0)
-                    shuffledIndices = GetShuffledIndices();
+                shuffledIndices = GetShuffledIndices();
 
-                int index = shuffledIndices[0];
-                shuffledIndices.RemoveAt(0);
+                for (int i = 0; i < shuffledIndices.Count; i++)
+                {
+                    if (!_isPlaying) yield break;
 
-                AudioClip clip = audioClips[index];
-                if (clip == null) continue;
+                    AudioClip clip = audioClips[shuffledIndices[i]];
+                    if (clip == null) continue;
 
-                yield return StartCoroutine(PlayClipCoroutine(clip));
+                    yield return StartCoroutine(PlayClipCoroutine(clip));
 
-                if (!_isPlaying) yield break;
+                    if (!_isPlaying) yield break;
 
-                if (gapBetweenClips > 0f)
-                    yield return new WaitForSeconds(gapBetweenClips);
+                    if (gapBetweenClips > 0f && i < shuffledIndices.Count - 1)
+                        yield return new WaitForSeconds(gapBetweenClips);
+                }
             }
+            while (loopPlayback && _isPlaying);
+
+            _isPlaying = false;
         }
 
         // ───────────────────────────────────────────
