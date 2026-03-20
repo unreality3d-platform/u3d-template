@@ -291,6 +291,11 @@ namespace U3D
                 NetworkIsThrown = false;
             }
 
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                networkRigidbody.enabled = false;
+            }
+
             SetPhysicsState(PhysicsState.Grabbed);
 
             if (playerCamera == null || playerTransform == null)
@@ -302,6 +307,11 @@ namespace U3D
         private void OnObjectReleased()
         {
             if (isNetworked && !Object.HasStateAuthority) return;
+
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                networkRigidbody.enabled = true;
+            }
 
             if (dropOnRelease)
             {

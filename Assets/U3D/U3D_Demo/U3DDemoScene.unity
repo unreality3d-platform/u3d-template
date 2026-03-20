@@ -6092,11 +6092,11 @@ GameObject:
   - component: {fileID: 1246158078}
   - component: {fileID: 1246158077}
   - component: {fileID: 1246158085}
-  - component: {fileID: 1246158084}
-  - component: {fileID: 1246158083}
-  - component: {fileID: 1246158082}
-  - component: {fileID: 1246158081}
-  - component: {fileID: 1246158080}
+  - component: {fileID: 1246158090}
+  - component: {fileID: 1246158089}
+  - component: {fileID: 1246158088}
+  - component: {fileID: 1246158087}
+  - component: {fileID: 1246158086}
   m_Layer: 0
   m_Name: Red Cube
   m_TagString: Weight
@@ -6176,7 +6176,28 @@ Transform:
   m_Children: []
   m_Father: {fileID: 703688350}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1246158080
+--- !u!65 &1246158085
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &1246158086
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -6188,9 +6209,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fc3500da3d5d83f46a3b0ac942babcd1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DThrowable
-  throwForce: 1
-  upwardThrowBoost: 0
-  maxThrowVelocity: 1
+  throwForce: 10
+  upwardThrowBoost: 2
+  maxThrowVelocity: 20
   minThrowVelocity: 1
   dropOnRelease: 1
   OnThrown:
@@ -6213,7 +6234,7 @@ MonoBehaviour:
   boundsCheckInterval: 1
   _NetworkIsThrown: 0
   _NetworkIsPhysicsActive: 0
---- !u!114 &1246158081
+--- !u!114 &1246158087
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -6236,7 +6257,7 @@ MonoBehaviour:
     Position: 0.01
     Rotation: 0.01
     Scale: 0.01
---- !u!54 &1246158082
+--- !u!54 &1246158088
 Rigidbody:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -6259,11 +6280,32 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 0
-  m_IsKinematic: 1
+  m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 2
---- !u!114 &1246158083
+--- !u!114 &1246158089
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1246158075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
+  SortKey: 2004075165
+  ObjectInterest: 1
+  Flags: 524289
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 1246158090}
+  - {fileID: 1246158087}
+  - {fileID: 1246158086}
+  ForceRemoteRenderTimeframe: 0
+--- !u!114 &1246158090
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -6301,48 +6343,6 @@ MonoBehaviour:
       m_Calls: []
   _NetworkIsGrabbed: 0
   _NetworkGrabState: 0
---- !u!114 &1246158084
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1246158075}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
-  SortKey: 261778754
-  ObjectInterest: 1
-  Flags: 524289
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 1246158083}
-  - {fileID: 1246158081}
-  - {fileID: 1246158080}
-  ForceRemoteRenderTimeframe: 0
---- !u!65 &1246158085
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1246158075}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1246222148
 GameObject:
   m_ObjectHideFlags: 0
