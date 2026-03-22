@@ -237,7 +237,8 @@ namespace U3D
         /// <summary>
         /// Apply push velocity each tick while push mode is active.
         /// Direction: camera forward projected horizontal, normalized (consistent with Kickable/Throwable).
-        /// Magnitude: player's actual horizontal movement speed (no artificial push speed).
+        /// Magnitude: player's current movement speed from GetCurrentSpeed() (walk/sprint/crouch).
+        /// PlayerController.Velocity only tracks gravity — use NetworkIsMoving + CurrentSpeed instead.
         /// </summary>
         private void ApplyPushVelocity()
         {
@@ -247,12 +248,12 @@ namespace U3D
                 if (playerCamera == null || playerController == null) return;
             }
 
-            // Get player horizontal movement speed
-            Vector3 playerVelocity = playerController.Velocity;
-            float playerHorizontalSpeed = new Vector2(playerVelocity.x, playerVelocity.z).magnitude;
-
             // Player standing still = no force applied
-            if (playerHorizontalSpeed < 0.1f) return;
+            if (!playerController.NetworkIsMoving) return;
+
+            // Use the intended movement speed (walk 4, sprint 8, crouch 2)
+            float playerSpeed = playerController.CurrentSpeed;
+            if (playerSpeed < 0.1f) return;
 
             // Camera forward projected onto horizontal plane (same as Kickable/Throwable)
             Vector3 pushDirection = playerCamera.transform.forward;
@@ -261,9 +262,18 @@ namespace U3D
 
             if (pushDirection.sqrMagnitude < 0.01f) return;
 
+            // In networked mode, NetworkRigidbody3D manages kinematic state but may not
+            // have flipped it yet after our physics state change. Force it non-kinematic
+            // so velocity assignment works. Safe because we only reach here with authority.
+            if (rb.isKinematic)
+            {
+                rb.isKinematic = false;
+                rb.useGravity = true;
+            }
+
             // Apply velocity: camera direction * player movement speed
             // Rigidbody mass (set by Push Resistance) naturally resists this
-            Vector3 pushVelocity = pushDirection * playerHorizontalSpeed;
+            Vector3 pushVelocity = pushDirection * playerSpeed;
 
             // Preserve existing Y velocity (gravity, falling off edges)
             rb.linearVelocity = new Vector3(pushVelocity.x, rb.linearVelocity.y, pushVelocity.z);
