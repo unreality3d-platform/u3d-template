@@ -42,6 +42,10 @@ namespace U3D
         [Tooltip("Allow multiple players to hold this object simultaneously. When disabled, grabbing steals from whoever currently holds it.")]
         [SerializeField] private bool allowMultiGrab = false;
 
+        [Header("Starting State")]
+        [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming grabbable. Use this for objects spawned above ground level. When a Throwable component is also present, use Throwable's Start Active toggle instead.")]
+        [SerializeField] private bool startActive = false;
+
         [Header("Optional Label")]
         [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this object. Edit the text on that object directly.")]
         public U3DBillboardUI labelUI;
@@ -103,6 +107,7 @@ namespace U3D
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
         private Coroutine _releaseCollisionCoroutine;
+        private Coroutine _startActiveSettleCoroutine;
 
         // Static tracking for single grab mode - per client
         private static U3DGrabbable currentlyGrabbed;
@@ -134,6 +139,43 @@ namespace U3D
             RecordSpawnPosition();
             StoreOriginalPhysicsState();
             CheckForInputConflicts();
+            ApplyStartActiveState();
+        }
+
+        /// <summary>
+        /// When Start Active is enabled and no Throwable is present, activate gravity
+        /// so the object falls to the ground, then settle back to original physics state.
+        /// When a Throwable is present, Throwable's own Start Active handles this.
+        /// </summary>
+        private void ApplyStartActiveState()
+        {
+            if (!startActive) return;
+            if (throwable != null) return;
+            if (!hasRigidbody) return;
+
+            rb.isKinematic = false;
+            rb.useGravity = true;
+
+            _startActiveSettleCoroutine = StartCoroutine(WaitForStartActiveSettle());
+        }
+
+        private System.Collections.IEnumerator WaitForStartActiveSettle()
+        {
+            yield return new WaitForSeconds(1.5f);
+
+            while (rb != null && !rb.IsSleeping() &&
+                   (rb.linearVelocity.magnitude > 0.3f || rb.angularVelocity.magnitude > 0.3f))
+            {
+                yield return new WaitForSeconds(0.5f);
+            }
+
+            if (rb != null && localGrabState == GrabState.Free)
+            {
+                rb.isKinematic = originalWasKinematic;
+                rb.useGravity = originalUsedGravity;
+            }
+
+            _startActiveSettleCoroutine = null;
         }
 
         private void Update()
@@ -293,6 +335,13 @@ namespace U3D
 
         private void PerformGrab()
         {
+            // Stop any start-active settle coroutine
+            if (_startActiveSettleCoroutine != null)
+            {
+                StopCoroutine(_startActiveSettleCoroutine);
+                _startActiveSettleCoroutine = null;
+            }
+
             // Release whatever this client was previously holding
             if (currentlyGrabbed != null && currentlyGrabbed != this)
                 currentlyGrabbed.Release();
@@ -694,6 +743,11 @@ namespace U3D
 
         private void OnDestroy()
         {
+            if (_startActiveSettleCoroutine != null)
+            {
+                StopCoroutine(_startActiveSettleCoroutine);
+            }
+
             if (localGrabState == GrabState.Grabbed)
             {
                 localGrabState = GrabState.Free;

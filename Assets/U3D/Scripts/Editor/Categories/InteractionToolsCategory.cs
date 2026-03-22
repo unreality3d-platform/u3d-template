@@ -20,6 +20,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
+                new CreatorTool("🟢 Make Pushable", "Objects can be pushed along surfaces by walking into them", ApplyPushable, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
@@ -246,6 +247,66 @@ namespace U3D.Editor
 
             if (selected.GetComponent<U3DKickable>() == null)
                 selected.AddComponent<U3DKickable>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyPushable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            if (!selected.GetComponent<Collider>())
+                selected.AddComponent<BoxCollider>();
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (!selected.GetComponent<Rigidbody>())
+            {
+                Rigidbody rb = selected.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                rb.mass = 5f;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            }
+
+            if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
+            {
+                try
+                {
+#if FUSION_ADDONS_PHYSICS
+                    if (!selected.GetComponent<NetworkRigidbody3D>())
+                    {
+                        var networkRigidbody = selected.AddComponent<NetworkRigidbody3D>();
+                        ConfigureNetworkRigidbody3DForSharedMode(networkRigidbody);
+                    }
+#else
+                    var networkRigidbody3DType = System.Type.GetType(
+                        "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
+                    );
+                    if (networkRigidbody3DType != null && selected.GetComponent(networkRigidbody3DType) == null)
+                    {
+                        var networkRigidbody = selected.AddComponent(networkRigidbody3DType) as Component;
+                        ConfigureNetworkRigidbody3DViaReflection(networkRigidbody);
+                    }
+#endif
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Error adding NetworkRigidbody3D: {ex.Message}");
+                }
+            }
+
+            if (selected.GetComponent<U3DPushable>() == null)
+                selected.AddComponent<U3DPushable>();
 
             EditorUtility.SetDirty(selected);
         }

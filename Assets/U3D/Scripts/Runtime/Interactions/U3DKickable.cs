@@ -38,6 +38,10 @@ namespace U3D
         [Tooltip("Ground-level detection radius for foot collision")]
         [SerializeField] private float kickDetectionRadius = 1.2f;
 
+        [Header("Starting State")]
+        [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming kickable. Use this for objects spawned above ground level.")]
+        [SerializeField] private bool startActive = false;
+
         [Header("Optional Label")]
         [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this object. Edit the text on that object directly.")]
         public U3DBillboardUI labelUI;
@@ -229,8 +233,19 @@ namespace U3D
 
         private void InitializePhysicsState()
         {
-            // Start in sleeping state (kickable and ready)
-            SetPhysicsState(PhysicsState.Sleeping);
+            if (startActive)
+            {
+                SetPhysicsState(PhysicsState.Active);
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkIsPhysicsActive = true;
+                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                }
+            }
+            else
+            {
+                SetPhysicsState(PhysicsState.Sleeping);
+            }
             StoreOriginalPhysicsState();
         }
 
@@ -448,11 +463,8 @@ namespace U3D
                 return false;
             }
 
-            // Check if already in physics simulation
-            if (currentPhysicsState == PhysicsState.Active)
-            {
-                return false;
-            }
+            // Objects already in motion can be kicked again (re-kick for hockey, soccer, etc.)
+            // No physics state check — if it's in range, it's kickable
 
             // Check networking authority
             if (isNetworked && !Object.HasStateAuthority)

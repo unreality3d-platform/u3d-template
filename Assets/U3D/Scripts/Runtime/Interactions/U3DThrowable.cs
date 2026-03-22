@@ -31,6 +31,10 @@ namespace U3D
         [Tooltip("Drop straight down on release instead of throwing")]
         [SerializeField] private bool dropOnRelease = false;
 
+        [Header("Starting State")]
+        [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming throwable. Use this for objects spawned above ground level.")]
+        [SerializeField] private bool startActive = false;
+
         [Header("Events")]
         [Tooltip("Called when object is thrown")]
         public UnityEvent OnThrown;
@@ -146,7 +150,19 @@ namespace U3D
 
         private void InitializePhysicsState()
         {
-            SetPhysicsState(PhysicsState.Sleeping);
+            if (startActive)
+            {
+                SetPhysicsState(PhysicsState.Active);
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkIsPhysicsActive = true;
+                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                }
+            }
+            else
+            {
+                SetPhysicsState(PhysicsState.Sleeping);
+            }
         }
 
         public void OnStateAuthorityChanged()
@@ -417,7 +433,7 @@ namespace U3D
 
             if (grabbable != null && grabbable.IsGrabbed) return;
 
-            if (NetworkIsThrown && NetworkIsPhysicsActive)
+            if (NetworkIsPhysicsActive)
             {
                 bool shouldSleep = false;
 
