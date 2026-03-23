@@ -220,7 +220,6 @@ GameObject:
   - component: {fileID: 3563563381108832062}
   - component: {fileID: 8322012935390943905}
   - component: {fileID: 713224546979306075}
-  - component: {fileID: 1203855082904727053}
   m_Layer: 3
   m_Name: U3D_PlayerController
   m_TagString: Player
@@ -412,7 +411,6 @@ MonoBehaviour:
   - {fileID: 4392417217393934379}
   - {fileID: 8590291952775574450}
   - {fileID: 6674612337431982079}
-  - {fileID: 1203855082904727053}
   ForceRemoteRenderTimeframe: 0
 --- !u!114 &4392417217393934379
 MonoBehaviour:
@@ -800,27 +798,3 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   debugMode: 1
---- !u!114 &1203855082904727053
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8488662624428376917}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 704118a52a5f6914e899f4ea09ce9400, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: U3D.Runtime::U3DClimbingController
-  climbableLayerMask:
-    serializedVersion: 2
-    m_Bits: 64
-  climbCheckDistance: 0.8
-  climbCheckRadius: 0.4
-  climbCheckOffset: {x: 0, y: 0.8, z: 0}
-  climbUpSpeed: 3
-  climbDownSpeed: 3
-  climbLateralSpeed: 2.5
-  surfaceStickDistance: 0.05
-  reattachCooldown: 0.3
-  _NetworkIsClimbing: 0

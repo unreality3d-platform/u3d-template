@@ -166,6 +166,7 @@ public class U3DPlayerController : NetworkBehaviour
     private const int SPAWN_PROTECTION_FRAMES = 5;
 
     private bool _isLocalPlayer;
+    private bool _jumpPressedThisFrame;
     private float _lastNetworkSendTime;
     private Vector3 _lastSentPosition;
     private Quaternion _lastSentRotation;
@@ -482,6 +483,9 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (GetInput<U3DNetworkInputData>(out var input))
         {
+            var pressedThisFrame = input.Buttons.GetPressed(_buttonsPrevious);
+            _jumpPressedThisFrame = pressedThisFrame.IsSet(U3DInputButtons.Jump);
+
             HandleGroundCheck();
 
             if (_isInVRMode)
@@ -1399,6 +1403,9 @@ public class U3DPlayerController : NetworkBehaviour
     public bool IsLocalPlayer => _isLocalPlayer;
     public bool IsJumping => NetworkIsJumping;
     public bool IsInVRMode => _isInVRMode;
+    public Vector2 MoveInput => moveInput;
+    public bool JumpPressedThisFrame => _jumpPressedThisFrame;
+    public CharacterController CharacterController => characterController;
 
     public void SetPosition(Vector3 position)
     {

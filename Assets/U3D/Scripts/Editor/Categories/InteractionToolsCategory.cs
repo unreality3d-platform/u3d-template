@@ -540,8 +540,8 @@ namespace U3D.Editor
             {
                 Debug.LogWarning(
                     $"Layer '{U3DClimbable.CLIMBABLE_LAYER_NAME}' not found in project settings. " +
-                    $"U3DClimbingController expects it to be '{U3DClimbable.CLIMBABLE_LAYER_NAME}'. " +
-                    $"Update climbableLayerMask on the player prefab if using a different layer."
+                    $"U3DClimbable uses layer {U3DClimbable.CLIMBABLE_LAYER} ('{U3DClimbable.CLIMBABLE_LAYER_NAME}') for organization. " +
+                    $"Add this layer in Edit > Project Settings > Tags and Layers."
                 );
             }
         }

@@ -304,15 +304,12 @@ public class U3DAvatarAnimationController : NetworkBehaviour
     {
         var newState = NetworkAnimationState;
 
-        // Sync with all available player controller states
         newState.IsCrouching = playerController.NetworkIsCrouching;
         newState.IsFlying = playerController.NetworkIsFlying;
         newState.IsGrounded = playerController.IsGrounded;
         newState.IsJumping = playerController.NetworkIsJumping;
-
-        // New core states (add these to PlayerController if not present)
-        newState.IsSwimming = false; // Add this to player controller if swimming is implemented
-        newState.IsClimbing = false; // Add this to player controller if climbing is implemented
+        newState.IsSwimming = playerController.NetworkIsSwimming;
+        newState.IsClimbing = playerController.NetworkIsClimbing;
 
         Vector3 actualVelocity = playerController.Velocity;
         float actualSpeed = new Vector2(actualVelocity.x, actualVelocity.z).magnitude;
@@ -321,9 +318,7 @@ public class U3DAvatarAnimationController : NetworkBehaviour
         newState.IsMoving = isActuallyMoving;
         newState.MoveSpeed = isActuallyMoving ? actualSpeed : 0f;
 
-        // Calculate movement direction
-        Vector3 velocity = playerController.Velocity;
-        Vector3 localVelocity = transform.InverseTransformDirection(velocity);
+        Vector3 localVelocity = transform.InverseTransformDirection(actualVelocity);
         newState.MoveDirection = new Vector2(localVelocity.x, localVelocity.z);
 
         NetworkAnimationState = newState;
