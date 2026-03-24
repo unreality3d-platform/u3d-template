@@ -167,6 +167,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     private bool _isLocalPlayer;
     private bool _jumpPressedThisFrame;
+    private bool _jumpPressedPending;
     private float _lastNetworkSendTime;
     private Vector3 _lastSentPosition;
     private Quaternion _lastSentRotation;
@@ -485,6 +486,8 @@ public class U3DPlayerController : NetworkBehaviour
         {
             var pressedThisFrame = input.Buttons.GetPressed(_buttonsPrevious);
             _jumpPressedThisFrame = pressedThisFrame.IsSet(U3DInputButtons.Jump);
+            if (_jumpPressedThisFrame)
+                _jumpPressedPending = true;
 
             HandleGroundCheck();
 
@@ -787,9 +790,10 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleMovementFusion(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
-        if (NetworkIsClimbing) return;
 
         moveInput = input.MovementInput;
+
+        if (NetworkIsClimbing) return;
 
         Vector2 advancedMovement = HandleAdvancedKeyboardMovement(input);
 
@@ -1404,7 +1408,7 @@ public class U3DPlayerController : NetworkBehaviour
     public bool IsJumping => NetworkIsJumping;
     public bool IsInVRMode => _isInVRMode;
     public Vector2 MoveInput => moveInput;
-    public bool JumpPressedThisFrame => _jumpPressedThisFrame;
+    public bool JumpPressedThisFrame => _jumpPressedPending;
     public CharacterController CharacterController => characterController;
 
     public void SetPosition(Vector3 position)
@@ -1470,6 +1474,11 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetClimbDetachVelocity(Vector3 detachVelocity)
     {
         velocity = detachVelocity;
+    }
+
+    public void ConsumeJumpPress()
+    {
+        _jumpPressedPending = false;
     }
 
     public void MountRideable(U3D.U3DRideableController rideable)

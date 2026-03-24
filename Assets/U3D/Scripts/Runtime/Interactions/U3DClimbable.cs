@@ -46,6 +46,16 @@ namespace U3D
         [Tooltip("Brief cooldown after detaching before re-attach is allowed")]
         [SerializeField] private float reattachCooldown = 0.3f;
 
+        [Header("Ledge Transition")]
+        [Tooltip("When the surface normal is within this many degrees of straight up, the player automatically mantles over the edge. Lower values require the surface to be more horizontal before triggering.")]
+        [SerializeField] private float ledgeAngleThreshold = 45f;
+
+        [Tooltip("How far forward the player is nudged when mantling over a ledge, so they clear the edge geometry")]
+        [SerializeField] private float ledgeForwardNudge = 0.4f;
+
+        [Tooltip("How far upward the player is nudged when mantling over a ledge")]
+        [SerializeField] private float ledgeUpwardNudge = 0.2f;
+
         [Header("Optional Label")]
         [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this surface")]
         public U3DBillboardUI labelUI;
@@ -59,6 +69,9 @@ namespace U3D
 
         [Tooltip("Fires when the player jumps off this surface (before OnClimbEnd)")]
         public UnityEvent OnJumpOff;
+
+        [Tooltip("Fires when the player mantles over the top edge of this surface (before OnClimbEnd)")]
+        public UnityEvent OnLedgeTransition;
 
         [Tooltip("Fires when the player enters climbing range of this surface")]
         public UnityEvent OnPlayerEnterRange;
@@ -191,18 +204,22 @@ namespace U3D
         }
 
         /// <summary>
-        /// Detach on jump press, moving backward while grounded, or losing surface contact.
-        /// Jump detach applies an upward boost so the player doesn't immediately re-attach.
+        /// Detach on jump press, ledge transition, moving backward while grounded,
+        /// or losing surface contact.
         /// </summary>
         void CheckDetach()
         {
             if (playerController.JumpPressedThisFrame)
             {
+                playerController.ConsumeJumpPress();
                 OnJumpOff?.Invoke();
                 Detach();
                 playerController.SetClimbDetachVelocity(new Vector3(0, 2f, 0));
                 return;
             }
+
+            if (CheckLedgeTransition())
+                return;
 
             Vector2 input = playerController.MoveInput;
             if (input.y < -0.1f && playerCharacterController.isGrounded)
@@ -213,6 +230,32 @@ namespace U3D
 
             if (!DetectSurface(out _))
                 Detach();
+        }
+
+        /// <summary>
+        /// Checks whether the surface normal indicates the player has crested the top
+        /// of the wall. If the angle between the surface normal and Vector3.up is less
+        /// than the threshold, the surface is near-horizontal and the player mantles over.
+        /// Returns true if a ledge transition occurred.
+        /// </summary>
+        bool CheckLedgeTransition()
+        {
+            float angleFromUp = Vector3.Angle(climbSurfaceNormal, Vector3.up);
+            if (angleFromUp >= ledgeAngleThreshold)
+                return false;
+
+            Vector3 nudge = playerTransform.forward * ledgeForwardNudge + Vector3.up * ledgeUpwardNudge;
+
+            OnLedgeTransition?.Invoke();
+            Detach();
+
+            playerCharacterController.enabled = false;
+            playerTransform.position += nudge;
+            playerCharacterController.enabled = true;
+
+            playerController.NetworkPosition = playerTransform.position;
+
+            return true;
         }
 
         /// <summary>
@@ -234,7 +277,7 @@ namespace U3D
             if (surfaceUp.sqrMagnitude < 0.01f)
                 surfaceUp = Vector3.up;
 
-            Vector3 surfaceRight = Vector3.Cross(surfaceUp, climbSurfaceNormal).normalized;
+            Vector3 surfaceRight = Vector3.Cross(climbSurfaceNormal, surfaceUp).normalized;
 
             Vector2 input = playerController.MoveInput;
 
@@ -272,7 +315,10 @@ namespace U3D
 
             isClimbing = false;
             detachTime = Time.time;
-            playerController.SetClimbingState(false);
+
+            if (playerController != null)
+                playerController.SetClimbingState(false);
+
             OnClimbEnd?.Invoke();
         }
 
@@ -295,6 +341,9 @@ namespace U3D
 
             if (climbUpSpeed <= 0f)
                 Debug.LogWarning("U3DClimbable: Climb up speed should be positive");
+
+            if (ledgeAngleThreshold < 10f || ledgeAngleThreshold > 80f)
+                Debug.LogWarning("U3DClimbable: Ledge angle threshold outside practical range (10-80 degrees)");
         }
 
         void OnDrawGizmosSelected()
