@@ -574,6 +574,8 @@ namespace U3D
 
         private void OnCollisionEnter(Collision collision)
         {
+            if (isNetworked && Object == null) return;
+
             bool wasActive = isNetworked ?
                 NetworkIsPhysicsActive : (currentPhysicsState == PhysicsState.Active);
 
@@ -733,10 +735,15 @@ namespace U3D
                 return false;
             }
 
-            if (isNetworked && !Object.HasStateAuthority)
+            if (isNetworked)
             {
-                // Allow — we'll request authority in StartPush
-                return true;
+                if (Object == null) return false;
+
+                if (!Object.HasStateAuthority)
+                {
+                    // Allow — we'll request authority in StartPush
+                    return true;
+                }
             }
 
             return true;
