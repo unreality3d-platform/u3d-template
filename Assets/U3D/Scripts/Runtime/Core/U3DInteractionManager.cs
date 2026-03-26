@@ -112,35 +112,40 @@ namespace U3D
 
             Vector3 playerPosition = localPlayerController.transform.position;
 
-            // Use sphere overlap to find all colliders in range
             Collider[] colliders = Physics.OverlapSphere(playerPosition, interactionRange, interactionLayerMask);
 
             foreach (Collider col in colliders)
             {
-                // Get all IU3DInteractable components on this object and its children
-                IU3DInteractable[] interactables = col.GetComponentsInChildren<IU3DInteractable>();
-
-                foreach (IU3DInteractable interactable in interactables)
+                // Search up the hierarchy first (handles child colliders on parent interactables)
+                IU3DInteractable[] parentInteractables = col.GetComponentsInParent<IU3DInteractable>();
+                foreach (IU3DInteractable interactable in parentInteractables)
                 {
-                    if (interactable != null && interactable.CanInteract())
+                    if (interactable != null && interactable.CanInteract() && !nearbyInteractables.Contains(interactable))
+                    {
+                        nearbyInteractables.Add(interactable);
+                    }
+                }
+
+                // Search down the hierarchy (handles interactables on the collider itself or children)
+                IU3DInteractable[] childInteractables = col.GetComponentsInChildren<IU3DInteractable>();
+                foreach (IU3DInteractable interactable in childInteractables)
+                {
+                    if (interactable != null && interactable.CanInteract() && !nearbyInteractables.Contains(interactable))
                     {
                         nearbyInteractables.Add(interactable);
                     }
                 }
             }
 
-            // Update current primary interactable
             IU3DInteractable newPrimary = GetBestInteractable();
 
             if (newPrimary != currentInteractable)
             {
-                // Exit previous
                 if (currentInteractable != null)
                 {
                     currentInteractable.OnPlayerExitRange();
                 }
 
-                // Enter new
                 if (newPrimary != null)
                 {
                     newPrimary.OnPlayerEnterRange();
