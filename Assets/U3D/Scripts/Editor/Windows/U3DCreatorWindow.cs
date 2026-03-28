@@ -73,6 +73,7 @@ namespace U3D.Editor
         {
             InitializeTabs();
             LoadLogo();
+            U3DTemplateUpdateChecker.CheckForUpdateIfNeeded();
             // DON'T initialize styles here - wait for OnGUI when Editor is ready
         }
 
@@ -225,6 +226,7 @@ namespace U3D.Editor
                 if (confirmed)
                 {
                     ProjectStartupConfiguration.ResetTemplateConfiguration();
+                    U3DTemplateUpdateChecker.ForceRecheck();
                 }
             }
 
@@ -303,32 +305,107 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Displays template version info - call this in DrawHeader() after the logo
+        /// Displays template version info with update check status and download button.
+        /// Replaces the original static version label.
         /// </summary>
         void DrawTemplateVersionInfo()
         {
             string templateVersion = GetTemplateVersion();
 
-            if (!string.IsNullOrEmpty(templateVersion))
+            if (string.IsNullOrEmpty(templateVersion))
+                return;
+
+            var versionStyle = new GUIStyle(EditorStyles.miniLabel)
             {
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
+                fontSize = 10,
+                normal = { textColor = new Color(0.7f, 0.7f, 0.7f) },
+                alignment = TextAnchor.MiddleCenter
+            };
 
-                // Create a subtle style for version display
-                var versionStyle = new GUIStyle(EditorStyles.miniLabel)
-                {
-                    fontSize = 10,
-                    normal = { textColor = new Color(0.7f, 0.7f, 0.7f) },
-                    alignment = TextAnchor.MiddleCenter
-                };
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.LabelField($"Template Version: {templateVersion}", versionStyle);
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
 
-                EditorGUILayout.LabelField($"Template Version: {templateVersion}", versionStyle);
+            var status = U3DTemplateUpdateChecker.CurrentStatus;
 
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
+            switch (status)
+            {
+                case U3DTemplateUpdateChecker.UpdateStatus.Unknown:
+                    U3DTemplateUpdateChecker.CheckForUpdateIfNeeded();
+                    break;
 
-                EditorGUILayout.Space(3);
+                case U3DTemplateUpdateChecker.UpdateStatus.Checking:
+                    DrawCenteredMiniLabel("Checking for updates...", new Color(0.6f, 0.6f, 0.6f));
+                    Repaint();
+                    break;
+
+                case U3DTemplateUpdateChecker.UpdateStatus.UpToDate:
+                    DrawCenteredMiniLabel("✓ Up to date", new Color(0.4f, 0.8f, 0.4f));
+                    break;
+
+                case U3DTemplateUpdateChecker.UpdateStatus.UpdateAvailable:
+                    DrawCenteredMiniLabel(
+                        $"Update available: {U3DTemplateUpdateChecker.LatestVersion}",
+                        new Color(1f, 0.8f, 0.2f));
+
+                    if (!U3DTemplateUpdateChecker.IsDownloading)
+                    {
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.FlexibleSpace();
+
+                        if (GUILayout.Button("Download & Install Update", GUILayout.Width(200), GUILayout.Height(24)))
+                        {
+                            _ = U3DTemplateUpdateChecker.DownloadAndInstallUpdate();
+                        }
+
+                        GUILayout.FlexibleSpace();
+                        EditorGUILayout.EndHorizontal();
+                    }
+                    else
+                    {
+                        DrawCenteredMiniLabel("Downloading...", new Color(0.6f, 0.8f, 1f));
+                        Repaint();
+                    }
+                    break;
+
+                case U3DTemplateUpdateChecker.UpdateStatus.CheckFailed:
+                    DrawCenteredMiniLabel(
+                        $"Update check failed: {U3DTemplateUpdateChecker.ErrorMessage}",
+                        new Color(0.8f, 0.4f, 0.4f));
+
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+
+                    if (GUILayout.Button("Retry", GUILayout.Width(60), GUILayout.Height(20)))
+                    {
+                        U3DTemplateUpdateChecker.ForceRecheck();
+                    }
+
+                    GUILayout.FlexibleSpace();
+                    EditorGUILayout.EndHorizontal();
+                    break;
             }
+
+            EditorGUILayout.Space(3);
+        }
+
+        void DrawCenteredMiniLabel(string text, Color color)
+        {
+            var style = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 10,
+                normal = { textColor = color },
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true
+            };
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.LabelField(text, style, GUILayout.MinWidth(200));
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
         }
 
         /// <summary>
