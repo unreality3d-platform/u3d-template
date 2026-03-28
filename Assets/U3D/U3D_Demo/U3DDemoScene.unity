@@ -1776,7 +1776,8 @@ MonoBehaviour:
   ObjectInterest: 1
   Flags: 524289
   NestedObjects: []
-  NetworkedBehaviours: []
+  NetworkedBehaviours:
+  - {fileID: 333147176}
   ForceRemoteRenderTimeframe: 0
 --- !u!1 &333160441
 GameObject:
@@ -5241,12 +5242,12 @@ MonoBehaviour:
   OnWorldBoundsReset:
     m_PersistentCalls:
       m_Calls: []
-  sleepCheckDelay: 2
   sleepVelocityThreshold: 0.5
   maxActiveTime: 10
   worldBoundsFloor: -50
   worldBoundsRadius: 1000
   boundsCheckInterval: 1
+  _NetworkAwaitingMotion: 0
   _NetworkIsThrown: 0
   _NetworkIsPhysicsActive: 0
 --- !u!114 &934474724
@@ -7222,12 +7223,12 @@ MonoBehaviour:
   OnWorldBoundsReset:
     m_PersistentCalls:
       m_Calls: []
-  sleepCheckDelay: 2
   sleepVelocityThreshold: 0.5
   maxActiveTime: 10
   worldBoundsFloor: -50
   worldBoundsRadius: 1000
   boundsCheckInterval: 1
+  _NetworkAwaitingMotion: 0
   _NetworkIsThrown: 0
   _NetworkIsPhysicsActive: 0
 --- !u!114 &1246158087
@@ -7767,7 +7768,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 9054862ee7172884482e798488d1357e, type: 3}
   - {fileID: 8300000, guid: 3b07bd93a816ea24cb0d6f5821c1f986, type: 3}
   - {fileID: 8300000, guid: ae8fdcb8c6456174f89c5bba575354a1, type: 3}
-  audioSource: {fileID: 0}
+  audioSource: {fileID: 1911165253}
   volumeScale: 1
   randomizeVolume: 0
   volumeVariation: 0.1
@@ -12202,6 +12203,34 @@ PrefabInstance:
     - target: {fileID: 2308382319648807920, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_Mode
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_Target
+      value: 
+      objectReference: {fileID: 1285272065}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_CallState
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_MethodName
+      value: PlayRandomOneShot
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_TargetAssemblyTypeName
+      value: U3D.U3DAudioPlaylist, U3D.Runtime
+      objectReference: {fileID: 0}
+    - target: {fileID: 2818961661973024602, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
+      propertyPath: OnEnterTrigger.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_ObjectArgumentAssemblyTypeName
+      value: UnityEngine.Object, UnityEngine
       objectReference: {fileID: 0}
     - target: {fileID: 3117288989254861130, guid: 2fbb3addcbfe0c249a7a8e758c375e57, type: 3}
       propertyPath: m_Name

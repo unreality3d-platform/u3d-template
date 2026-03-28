@@ -133,6 +133,9 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Vector3 NetworkRightHandPos { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
 
+    // --- CHANGE 1: Networked rideable reference for remote player platform sync ---
+    [HideInInspector][Networked] public NetworkBehaviourId NetworkRideableRef { get; set; }
+
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
     private Queue<float> _mouseTimeBuffer = new Queue<float>();
     private const float MOUSE_SMOOTHING_WINDOW = 0.015f;
@@ -189,6 +192,9 @@ public class U3DPlayerController : NetworkBehaviour
 
     // Rideable support
     private U3D.U3DRideableController _currentRideable;
+
+    // Remote rideable tracking — the resolved controller this proxy is parented to
+    private U3D.U3DRideableController _remoteRideable;
 
     void CalculateRuntimeSensitivity()
     {
@@ -544,6 +550,31 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
+        // --- CHANGE 4: Remote player rideable parenting ---
+        // Resolve the networked rideable ref. When the remote player mounts a platform,
+        // parent this proxy to the same platform so it rides along smoothly.
+        // When they dismount, unparent and resume normal world-space interpolation.
+        U3D.U3DRideableController resolvedRideable = null;
+        if (NetworkRideableRef != default)
+            Runner.TryFindBehaviour(NetworkRideableRef, out resolvedRideable);
+
+        if (resolvedRideable != _remoteRideable)
+        {
+            if (resolvedRideable != null)
+            {
+                // Mount: parent to platform, snap to networked position
+                transform.SetParent(resolvedRideable.transform, true);
+                transform.position = NetworkPosition;
+            }
+            else
+            {
+                // Dismount: unparent, snap to networked position to avoid lerp from stale parent-space
+                transform.SetParent(null, true);
+                transform.position = NetworkPosition;
+            }
+            _remoteRideable = resolvedRideable;
+        }
+
         if (NetworkRotation == Quaternion.identity ||
             float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
             float.IsNaN(NetworkRotation.z) || float.IsNaN(NetworkRotation.w))
@@ -555,6 +586,9 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
+        // When riding, the platform carries this transform. NetworkPosition is world-space,
+        // so we still lerp toward it — but the parent motion keeps us in sync with the
+        // platform, eliminating the visual lag that occurred without parenting.
         float positionDifference = Vector3.Distance(transform.position, NetworkPosition);
         float rotationDifference = Quaternion.Angle(transform.rotation, NetworkRotation);
 
@@ -1507,6 +1541,9 @@ public class U3DPlayerController : NetworkBehaviour
 
         characterController.enabled = false;
         transform.SetParent(rideable.transform, true);
+
+        // --- CHANGE 2: Tell remote clients which platform we're on ---
+        NetworkRideableRef = rideable;
     }
 
     public void DismountRideable(U3D.U3DRideableController rideable)
@@ -1520,6 +1557,9 @@ public class U3DPlayerController : NetworkBehaviour
         characterController.enabled = true;
 
         NetworkPosition = transform.position;
+
+        // --- CHANGE 3: Clear the networked ref so remote clients unparent ---
+        NetworkRideableRef = default;
     }
 
     public bool IsRiding(U3D.U3DRideableController rideable) => _currentRideable == rideable;

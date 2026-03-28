@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using Fusion;
 
 namespace U3D
 {
@@ -15,7 +16,7 @@ namespace U3D
         PingPong
     }
 
-    public class U3DRideableController : MonoBehaviour
+    public class U3DRideableController : NetworkBehaviour
     {
         [Header("Movement")]
         [SerializeField] private RideableMovementMode movementMode = RideableMovementMode.Waypoints;
