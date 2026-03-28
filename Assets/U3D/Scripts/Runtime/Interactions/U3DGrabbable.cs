@@ -188,9 +188,6 @@ namespace U3D
                 CheckIfAimedAt();
             }
 
-            // NOTE: Direct input handling removed - U3DInteractionManager handles input
-            // via IU3DInteractable.OnInteract() to prevent double-input issues
-
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
                 Debug.LogWarning($"Authority request timeout for {name}");
@@ -207,7 +204,6 @@ namespace U3D
                 if (grabKey == KeyCode.R)
                 {
                     grabKey = KeyCode.F;
-                    Debug.Log($"U3DGrabbable: Auto-remapped grab key to {grabKey} due to kickable component");
                 }
             }
         }
@@ -226,15 +222,11 @@ namespace U3D
 
             if (Object.HasStateAuthority && isRequestingAuthority)
             {
-                // Successfully got authority - perform the grab now
-                // This fires for both the free-object case and the steal-from-player case
                 isRequestingAuthority = false;
                 PerformGrab();
             }
             else if (!Object.HasStateAuthority && localGrabState == GrabState.Grabbed)
             {
-                // Another player stole authority while we were holding this object
-                // Force a local release so our hand doesn't keep tracking a stolen object
                 PerformLocalRelease();
             }
         }
@@ -243,10 +235,6 @@ namespace U3D
         {
             base.Render();
 
-            // Only smooth-interpolate for remote clients viewing a grabbed object.
-            // The local authority holder sets localPosition directly in PerformGrab() and
-            // does not need interpolation - running it locally causes per-frame float drift
-            // that accumulates into visible position/rotation change across repeated grabs.
             if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D
                 && isNetworked && !Object.HasStateAuthority)
             {
@@ -276,29 +264,17 @@ namespace U3D
 
             if (Object.HasStateAuthority)
             {
-                // We already own this object - grab immediately
                 PerformGrab();
             }
             else if (!isRequestingAuthority)
             {
-                // Request authority whether the object is free or held by another player.
-                // If held by another player and allowMultiGrab is false, OnStateAuthorityChanged
-                // will fire a PerformLocalRelease() on their client when they lose authority.
                 RequestGrabAuthority();
             }
         }
 
         private bool CanAttemptGrab()
         {
-            // Never grab something we're already holding
             if (localGrabState == GrabState.Grabbed) return false;
-
-            // When multi-grab is disabled and someone else is holding this object,
-            // we still allow the attempt - it becomes a steal via authority transfer.
-            // We only block if WE are the ones already holding it (checked above).
-            // Multi-grab: if another player holds it and allowMultiGrab is false,
-            // we proceed with the steal. If allowMultiGrab is true, we also proceed.
-            // Either way, we don't block here - the authority system handles the outcome.
 
             if (playerTransform == null)
             {
@@ -323,10 +299,6 @@ namespace U3D
             isRequestingAuthority = true;
             authorityRequestTime = Time.time;
 
-            // Set grab state to Requesting so other players see this is contested.
-            // If the object is currently Free we can set this directly; if it's Grabbed
-            // by another player, we don't have authority to change network state yet -
-            // the authority transfer itself will resolve that via OnStateAuthorityChanged.
             if (!NetworkIsGrabbed)
                 NetworkGrabState = (byte)GrabState.Requesting;
 
@@ -335,14 +307,12 @@ namespace U3D
 
         private void PerformGrab()
         {
-            // Stop any start-active settle coroutine
             if (_startActiveSettleCoroutine != null)
             {
                 StopCoroutine(_startActiveSettleCoroutine);
                 _startActiveSettleCoroutine = null;
             }
 
-            // Release whatever this client was previously holding
             if (currentlyGrabbed != null && currentlyGrabbed != this)
                 currentlyGrabbed.Release();
 
@@ -355,11 +325,6 @@ namespace U3D
                 if (handTransform == null) return;
             }
 
-            // Teleport the NetworkRigidbody3D to the hand's grab position BEFORE disabling
-            // SyncParent and before parenting. This aligns Fusion's internal interpolation
-            // target with where we're about to place the object, preventing Fusion's
-            // FixedUpdateNetwork tick from reasserting its stale tracked position and
-            // overwriting localPosition = grabOffset on the frame(s) after grab.
             if (networkRb3D != null)
             {
                 Vector3 targetWorldPos = handTransform.TransformPoint(grabOffset);
@@ -414,7 +379,8 @@ namespace U3D
                 NetworkGrabbedBy = PlayerRef.None;
             }
 
-            if (networkRb3D != null)
+            // Only re-enable SyncParent if there's no throwable to manage it
+            if (networkRb3D != null && throwable == null)
                 networkRb3D.SyncParent = true;
 
             PerformLocalRelease();
@@ -476,15 +442,12 @@ namespace U3D
         {
             transform.SetParent(originalParent);
 
-            // Restore layer before re-enabling collider
             int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
             SetLayerRecursively(gameObject, originalLayer);
             PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
 
             col.isTrigger = false;
 
-            // Brief collision ignore so the re-enabled collider doesn't push the player
-            // on the frame(s) immediately after release while still overlapping.
             if (playerController != null)
             {
                 CharacterController cc = playerController.GetComponent<CharacterController>();
@@ -523,7 +486,7 @@ namespace U3D
 
         private void FindPlayer()
         {
-            playerController = FindAnyObjectByType<U3DPlayerController>();
+            playerController = U3DPlayerController.FindLocalPlayer();
 
             if (playerController != null)
             {
@@ -702,7 +665,6 @@ namespace U3D
 
         public bool CanInteract()
         {
-            // Always interactable - either to grab or to steal from another player
             if (localGrabState == GrabState.Grabbed) return true;
 
             if (playerTransform == null)

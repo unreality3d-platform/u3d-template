@@ -105,6 +105,17 @@ namespace U3D
         private float lastRangeCheckTime;
         private Coroutine boundsCheckCoroutine;
 
+        // Authority request management (modeled on U3DGrabbable)
+        private bool isRequestingAuthority = false;
+        private float authorityRequestTime = 0f;
+        private const float AUTHORITY_REQUEST_TIMEOUT = 2f;
+
+        // Deferred kick state — stored when authority is requested, executed on grant
+        private bool hasPendingKick = false;
+        private Vector3 pendingKickDirection;
+        private float pendingKickForce;
+        private bool pendingKickUsesCamera = false;
+
         // Physics state management
         private PhysicsState currentPhysicsState = PhysicsState.Sleeping;
         private PhysicsState lastNetworkPhysicsState = PhysicsState.Sleeping;
@@ -141,32 +152,23 @@ namespace U3D
         {
             if (!isNetworked) return;
 
-            // Initialize network state
             NetworkIsKicked = false;
             NetworkIsPhysicsActive = false;
 
-            // Initialize physics state after network spawn
             InitializePhysicsState();
         }
 
         private void Start()
         {
-            // Find player components
             FindPlayerComponents();
-
-            // Record original spawn position for reset purposes
             RecordOriginalTransform();
 
-            // Initialize physics state for non-networked objects
             if (!isNetworked)
             {
                 InitializePhysicsState();
             }
 
-            // Start world bounds monitoring
             StartBoundsMonitoring();
-
-            // Check for input key conflicts with grabbable
             CheckForInputConflicts();
         }
 
@@ -174,8 +176,14 @@ namespace U3D
         {
             UpdatePlayerProximity();
 
-            // NOTE: Direct input handling removed - U3DInteractionManager handles input
-            // via IU3DInteractable.OnInteract() to prevent double-input issues
+            // Authority request timeout
+            if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
+            {
+                Debug.LogWarning($"U3DKickable: Authority request timeout for {name}");
+                isRequestingAuthority = false;
+                hasPendingKick = false;
+                OnKickFailed?.Invoke();
+            }
         }
 
         /// <summary>
@@ -226,7 +234,6 @@ namespace U3D
                 case KeyCode.Alpha5:
                     return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
                 default:
-                    // Fallback for other keys - can be expanded as needed
                     return false;
             }
         }
@@ -235,12 +242,7 @@ namespace U3D
         {
             if (startActive)
             {
-                SetPhysicsState(PhysicsState.Active);
-                if (isNetworked && Object.HasStateAuthority)
-                {
-                    NetworkIsPhysicsActive = true;
-                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
-                }
+                StartCoroutine(ApplyStartActiveAfterPhysicsSettle());
             }
             else
             {
@@ -249,23 +251,32 @@ namespace U3D
             StoreOriginalPhysicsState();
         }
 
+        private IEnumerator ApplyStartActiveAfterPhysicsSettle()
+        {
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                networkRigidbody.Teleport(transform.position, transform.rotation);
+            }
+
+            yield return null;
+
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            currentPhysicsState = PhysicsState.Active;
+
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkIsPhysicsActive = true;
+            }
+        }
+
         private void CheckForInputConflicts()
         {
             if (grabbable != null)
             {
-                // Auto-remap grabbable to different key if both components present
-                var grabbableScript = grabbable as MonoBehaviour;
-                var kickableKeyField = this.GetType().GetField("kickKey",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-                if (kickableKeyField != null)
+                if (kickKey == KeyCode.R)
                 {
-                    // If grabbable uses R key, remap kickable to T
-                    if (kickKey == KeyCode.R)
-                    {
-                        kickKey = KeyCode.T;
-                        Debug.Log($"U3DKickable: Auto-remapped kick key to {kickKey} due to grabbable component");
-                    }
+                    kickKey = KeyCode.T;
                 }
             }
         }
@@ -274,22 +285,31 @@ namespace U3D
         {
             if (!isNetworked || !Object.HasStateAuthority) return;
 
-            // Skip checks if object has been grabbed
             if (grabbable != null && grabbable.IsGrabbed) return;
 
-            // Check for sleep conditions
+            // Start Active settle: if physics is active but the object hasn't been kicked,
+            // it's settling under gravity. Check if it has come to rest so we can transition
+            // to the normal kickable sleep state, ready for player interaction.
+            if (!NetworkIsKicked && NetworkIsPhysicsActive)
+            {
+                if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
+                    rb.angularVelocity.magnitude < sleepVelocityThreshold)
+                {
+                    ReturnToKickableSleepState();
+                }
+                return;
+            }
+
             if (NetworkIsKicked && NetworkIsPhysicsActive)
             {
                 bool shouldSleep = false;
 
-                // Check velocity threshold
                 if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
                     rb.angularVelocity.magnitude < sleepVelocityThreshold)
                 {
                     shouldSleep = true;
                 }
 
-                // Check timeout
                 if (NetworkSleepTimer.Expired(Runner))
                 {
                     shouldSleep = true;
@@ -306,14 +326,12 @@ namespace U3D
         {
             if (!isNetworked) return;
 
-            // Sync physics state changes from network
             PhysicsState networkState = NetworkIsPhysicsActive ? PhysicsState.Active : PhysicsState.Sleeping;
 
             if (networkState != lastNetworkPhysicsState)
             {
                 if (!Object.HasStateAuthority)
                 {
-                    // Apply network state to local physics (for non-authority clients)
                     ApplyPhysicsStateFromNetwork(networkState);
                 }
                 lastNetworkPhysicsState = networkState;
@@ -324,15 +342,34 @@ namespace U3D
         {
             if (!isNetworked) return;
 
-            // When authority changes, sync physics state with network
             if (Object.HasStateAuthority)
             {
-                // We gained authority - apply current local state to network
-                SyncNetworkPhysicsState();
+                isRequestingAuthority = false;
+
+                // Authority granted — execute the deferred kick if one is pending
+                if (hasPendingKick)
+                {
+                    hasPendingKick = false;
+
+                    if (pendingKickUsesCamera)
+                    {
+                        ExecuteCameraKick();
+                    }
+                    else
+                    {
+                        ExecuteDirectionalKick(pendingKickDirection, pendingKickForce);
+                    }
+                }
+                else
+                {
+                    SyncNetworkPhysicsState();
+                }
             }
             else
             {
-                // We lost authority - sync local state with network
+                // Lost authority — cancel any pending kick
+                isRequestingAuthority = false;
+                hasPendingKick = false;
                 SyncLocalPhysicsState();
             }
         }
@@ -342,7 +379,6 @@ namespace U3D
             currentPhysicsState = newState;
             ApplyPhysicsState(newState);
 
-            // Update network state if we have authority
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkIsPhysicsActive = (newState == PhysicsState.Active);
@@ -357,7 +393,6 @@ namespace U3D
             {
                 case PhysicsState.Sleeping:
                 case PhysicsState.Resetting:
-                    // Clear velocities if not kinematic to avoid Unity warnings
                     if (!rb.isKinematic)
                     {
                         rb.linearVelocity = Vector3.zero;
@@ -369,7 +404,6 @@ namespace U3D
                         rb.useGravity = false;
                         rb.isKinematic = true;
                     }
-                    // In networked mode, let NetworkRigidbody3D manage kinematic state
                     break;
 
                 case PhysicsState.Active:
@@ -378,14 +412,12 @@ namespace U3D
                         rb.isKinematic = false;
                         rb.useGravity = true;
                     }
-                    // In networked mode, NetworkRigidbody3D handles physics state automatically
                     break;
             }
         }
 
         private void ApplyPhysicsStateFromNetwork(PhysicsState networkState)
         {
-            // Apply physics state received from network (non-authority clients)
             currentPhysicsState = networkState;
             ApplyPhysicsState(networkState);
         }
@@ -419,7 +451,6 @@ namespace U3D
         {
             if (rb != null && !hasStoredOriginalPhysicsState)
             {
-                // For kickable objects, desired state is physics-ready when kicked
                 originalWasKinematic = false;
                 originalUsedGravity = true;
                 hasStoredOriginalPhysicsState = true;
@@ -436,7 +467,7 @@ namespace U3D
 
         private void FindPlayerComponents()
         {
-            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController playerController = U3DPlayerController.FindLocalPlayer();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -451,23 +482,19 @@ namespace U3D
 
         private bool CanAttemptKick()
         {
-            // Check if object is grabbed (kickable while grabbed is not allowed)
             if (grabbable != null && grabbable.IsGrabbed)
             {
                 return false;
             }
 
-            // Check if we're in range
             if (!isInKickRange)
             {
                 return false;
             }
 
-            // Objects already in motion can be kicked again (re-kick for hockey, soccer, etc.)
-            // No physics state check — if it's in range, it's kickable
-
-            // Check networking authority
-            if (isNetworked && !Object.HasStateAuthority)
+            // Authority is no longer a gate here — we request it if we don't have it.
+            // Only block if we're already mid-request to prevent spamming.
+            if (isNetworked && isRequestingAuthority)
             {
                 return false;
             }
@@ -479,7 +506,6 @@ namespace U3D
         {
             if (!CanAttemptKick()) return;
 
-            // Ensure we have player references
             if (playerCamera == null || playerTransform == null)
             {
                 FindPlayerComponents();
@@ -491,22 +517,125 @@ namespace U3D
                 }
             }
 
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (!isNetworked)
+            {
+                ExecuteCameraKick();
+                return;
+            }
 
-            // Activate physics before applying velocity
+            if (Object.HasStateAuthority)
+            {
+                ExecuteCameraKick();
+            }
+            else
+            {
+                // Defer the kick until authority is granted
+                RequestKickAuthority(useCamera: true, direction: Vector3.zero, force: 0f);
+            }
+        }
+
+        /// <summary>
+        /// Public method to manually kick with specific direction and force.
+        /// Requests authority if needed in networked mode.
+        /// </summary>
+        public void KickInDirection(Vector3 direction, float force)
+        {
+            if (grabbable != null && grabbable.IsGrabbed) return;
+            if (isNetworked && isRequestingAuthority) return;
+
+            if (!isNetworked)
+            {
+                ExecuteDirectionalKick(direction, force);
+                return;
+            }
+
+            if (Object.HasStateAuthority)
+            {
+                ExecuteDirectionalKick(direction, force);
+            }
+            else
+            {
+                RequestKickAuthority(useCamera: false, direction: direction, force: force);
+            }
+        }
+
+        /// <summary>
+        /// Public method to kick in camera direction with custom force.
+        /// Requests authority if needed in networked mode.
+        /// </summary>
+        public void KickInCameraDirection(float customForce = -1f)
+        {
+            if (playerCamera == null)
+            {
+                FindPlayerComponents();
+                if (playerCamera == null)
+                {
+                    Debug.LogWarning("U3DKickable: No camera found for KickInCameraDirection");
+                    return;
+                }
+            }
+
+            float useForce = customForce > 0f ? customForce : kickForce;
+            Vector3 kickDirection = playerCamera.transform.forward;
+            kickDirection.y += upwardKickBoost / Mathf.Max(0.01f, useForce);
+            kickDirection.Normalize();
+
+            KickInDirection(kickDirection, useForce);
+        }
+
+        private void RequestKickAuthority(bool useCamera, Vector3 direction, float force)
+        {
+            if (isRequestingAuthority) return;
+
+            isRequestingAuthority = true;
+            authorityRequestTime = Time.time;
+
+            hasPendingKick = true;
+            pendingKickUsesCamera = useCamera;
+            pendingKickDirection = direction;
+            pendingKickForce = force;
+
+            Object.RequestStateAuthority();
+        }
+
+        /// <summary>
+        /// Execute a camera-directed kick. Only call when we have authority (or non-networked).
+        /// </summary>
+        private void ExecuteCameraKick()
+        {
+            SetPhysicsState(PhysicsState.Active);
+            StartCoroutine(ApplyKickVelocityAfterPhysicsActivation());
+        }
+
+        /// <summary>
+        /// Execute a directional kick with explicit direction and force.
+        /// Only call when we have authority (or non-networked).
+        /// </summary>
+        private void ExecuteDirectionalKick(Vector3 direction, float force)
+        {
             SetPhysicsState(PhysicsState.Active);
 
-            // Apply the kick on the next frame after physics state changes
-            StartCoroutine(ApplyKickVelocityAfterPhysicsActivation());
+            Vector3 kickVelocity = direction.normalized * force;
+            if (kickVelocity.magnitude > maxKickVelocity)
+            {
+                kickVelocity = kickVelocity.normalized * maxKickVelocity;
+            }
+
+            rb.linearVelocity = kickVelocity;
+
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkIsKicked = true;
+                NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+            }
+
+            OnKicked?.Invoke();
         }
 
         private IEnumerator ApplyKickVelocityAfterPhysicsActivation()
         {
-            // Wait one frame to ensure physics state changes take effect
             yield return null;
 
-            // Build kick vector from camera forward + upward boost
             float useForce = kickForce;
             Vector3 kickDirection = playerCamera.transform.forward;
             kickDirection.y += upwardKickBoost / Mathf.Max(0.01f, useForce);
@@ -516,7 +645,6 @@ namespace U3D
             if (kickVelocity.magnitude > maxKickVelocity)
                 kickVelocity = kickVelocity.normalized * maxKickVelocity;
 
-            // Ensure rigidbody is ready for physics
             const int maxTries = 3;
             int tries = 0;
 
@@ -540,7 +668,6 @@ namespace U3D
                 yield break;
             }
 
-            // Mark as kicked on the network if it's a meaningful kick
             if (kickVelocity.magnitude >= minKickVelocity)
             {
                 if (isNetworked && Object.HasStateAuthority)
@@ -579,7 +706,6 @@ namespace U3D
                 return;
             }
 
-            // Ground-level kick detection
             Vector3 playerGroundPosition = new Vector3(playerTransform.position.x, transform.position.y, playerTransform.position.z);
             float distanceToPlayer = Vector3.Distance(transform.position, playerGroundPosition);
 
@@ -598,7 +724,7 @@ namespace U3D
 
         private void FindPlayer()
         {
-            U3DPlayerController playerController = FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController playerController = U3DPlayerController.FindLocalPlayer();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -617,19 +743,16 @@ namespace U3D
             {
                 yield return new WaitForSeconds(boundsCheckInterval);
 
-                // Skip bounds check if object is currently being grabbed
                 if (grabbable != null && grabbable.IsGrabbed)
                 {
                     continue;
                 }
 
-                // Only check bounds on authority (or non-networked)
                 if (isNetworked && (Object == null || !Object.HasStateAuthority))
                 {
                     continue;
                 }
 
-                // Check if object has fallen through world or gone too far
                 bool needsReset = false;
 
                 if (transform.position.y < worldBoundsFloor)
@@ -652,26 +775,20 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
-            // Authority check for networked objects
             if (isNetworked && !Object.HasStateAuthority) return;
 
-            // Set to resetting state to prevent physics interference
             SetPhysicsState(PhysicsState.Resetting);
 
-            // Reset position and rotation to spawn point
             if (hasNetworkRb3D && networkRigidbody != null)
             {
-                // For networked objects, use Teleport() to properly update Fusion's state
                 networkRigidbody.Teleport(originalPosition, originalRotation);
             }
             else
             {
-                // Non-networked: direct transform manipulation
                 transform.position = originalPosition;
                 transform.rotation = originalRotation;
             }
 
-            // Return to kickable sleep state
             SetPhysicsState(PhysicsState.Sleeping);
 
             if (isNetworked && Object.HasStateAuthority)
@@ -686,66 +803,12 @@ namespace U3D
 
         private void OnCollisionEnter(Collision collision)
         {
-            // Fire impact event if this was kicked and hits with sufficient force
             bool wasKicked = isNetworked ? NetworkIsKicked : (currentPhysicsState == PhysicsState.Active);
 
             if (wasKicked && collision.relativeVelocity.magnitude > 1.5f)
             {
                 OnImpact?.Invoke();
             }
-        }
-
-        // Public method to manually kick with specific direction and force
-        public void KickInDirection(Vector3 direction, float force)
-        {
-            // Authority check for networked objects
-            if (isNetworked && !Object.HasStateAuthority) return;
-
-            // Don't kick if grabbed
-            if (grabbable != null && grabbable.IsGrabbed) return;
-
-            // Activate physics
-            SetPhysicsState(PhysicsState.Active);
-
-            // Apply kick force
-            Vector3 kickVelocity = direction.normalized * force;
-
-            // Clamp to max velocity
-            if (kickVelocity.magnitude > maxKickVelocity)
-            {
-                kickVelocity = kickVelocity.normalized * maxKickVelocity;
-            }
-
-            rb.linearVelocity = kickVelocity;
-
-            if (isNetworked && Object.HasStateAuthority)
-            {
-                NetworkIsKicked = true;
-                NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
-            }
-
-            OnKicked?.Invoke();
-        }
-
-        // Public method to kick in camera direction with custom force
-        public void KickInCameraDirection(float customForce = -1f)
-        {
-            if (playerCamera == null)
-            {
-                FindPlayerComponents();
-                if (playerCamera == null)
-                {
-                    Debug.LogWarning("U3DKickable: No camera found for KickInCameraDirection");
-                    return;
-                }
-            }
-
-            float useForce = customForce > 0f ? customForce : kickForce;
-            Vector3 kickDirection = playerCamera.transform.forward;
-            kickDirection.y += upwardKickBoost / useForce;
-            kickDirection.Normalize();
-
-            KickInDirection(kickDirection, useForce);
         }
 
         // Public method to manually put object to sleep
@@ -791,7 +854,7 @@ namespace U3D
 
         public int GetInteractionPriority()
         {
-            return 30; // Lower priority than grabbable but higher than triggers
+            return 30;
         }
 
         public string GetInteractionPrompt()
@@ -800,6 +863,7 @@ namespace U3D
             {
                 return "Cannot kick while grabbed";
             }
+            if (isRequestingAuthority) return "Requesting...";
             return $"Kick ({kickKey})";
         }
 
@@ -813,17 +877,16 @@ namespace U3D
         public bool HasNetworkRigidbody => networkRigidbody != null;
         public bool IsPhysicsActive => isNetworked ? NetworkIsPhysicsActive : (currentPhysicsState == PhysicsState.Active);
         public KeyCode KickKey { get => kickKey; set => kickKey = value; }
+        public bool IsRequestingAuthority => isRequestingAuthority;
 
         private void OnDestroy()
         {
-            // Stop any running coroutines
             if (boundsCheckCoroutine != null)
             {
                 StopCoroutine(boundsCheckCoroutine);
             }
         }
 
-        // Editor helper to validate setup
         private void OnValidate()
         {
             if (kickForce <= 0f)

@@ -28,7 +28,7 @@ namespace U3D
         [Tooltip("Minimum velocity required to trigger throw events")]
         [SerializeField] private float minThrowVelocity = 1f;
 
-        [Tooltip("Drop straight down on release instead of throwing")]
+        [Tooltip("Drop straight down on release instead of throwing. Ignores Throw Configuration.")]
         [SerializeField] private bool dropOnRelease = false;
 
         [Header("Starting State")]
@@ -50,8 +50,6 @@ namespace U3D
 
         // HIDDEN PHYSICS MANAGEMENT - Optimal defaults
         [HideInInspector]
-        [SerializeField] private float sleepCheckDelay = 2f;
-        [HideInInspector]
         [SerializeField] private float sleepVelocityThreshold = 0.5f;
         [HideInInspector]
         [SerializeField] private float maxActiveTime = 10f;
@@ -65,6 +63,8 @@ namespace U3D
         [SerializeField] private float boundsCheckInterval = 1f;
 
         // Network state for physics management
+
+        [Networked] public bool NetworkAwaitingMotion { get; set; }
         [Networked] public bool NetworkIsThrown { get; set; }
         [Networked] public bool NetworkIsPhysicsActive { get; set; }
         [Networked] public TickTimer NetworkSleepTimer { get; set; }
@@ -152,16 +152,30 @@ namespace U3D
         {
             if (startActive)
             {
-                SetPhysicsState(PhysicsState.Active);
-                if (isNetworked && Object.HasStateAuthority)
-                {
-                    NetworkIsPhysicsActive = true;
-                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
-                }
+                StartCoroutine(ApplyStartActiveAfterPhysicsSettle());
             }
             else
             {
                 SetPhysicsState(PhysicsState.Sleeping);
+            }
+        }
+
+        private IEnumerator ApplyStartActiveAfterPhysicsSettle()
+        {
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                networkRigidbody.Teleport(transform.position, transform.rotation);
+            }
+
+            yield return null;
+
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            currentPhysicsState = PhysicsState.Active;
+
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkIsPhysicsActive = true;
             }
         }
 
@@ -281,7 +295,7 @@ namespace U3D
 
         private void FindPlayerComponents()
         {
-            playerController = FindAnyObjectByType<U3DPlayerController>();
+            playerController = U3DPlayerController.FindLocalPlayer();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
@@ -305,6 +319,7 @@ namespace U3D
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkIsThrown = false;
+                NetworkAwaitingMotion = false;
             }
 
             if (hasNetworkRb3D && networkRigidbody != null)
@@ -324,15 +339,38 @@ namespace U3D
         {
             if (isNetworked && !Object.HasStateAuthority) return;
 
+            if (dropOnRelease)
+            {
+                if (hasNetworkRb3D && networkRigidbody != null)
+                {
+                    networkRigidbody.enabled = true;
+                    networkRigidbody.Teleport(transform.position, transform.rotation);
+                }
+
+                rb.isKinematic = false;
+                rb.useGravity = true;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+
+                StartCoroutine(ExtendPlayerCollisionIgnore());
+
+                currentPhysicsState = PhysicsState.Active;
+
+                if (isNetworked && Object.HasStateAuthority)
+                {
+                    NetworkIsPhysicsActive = true;
+                    NetworkIsThrown = false;
+                    NetworkAwaitingMotion = true;
+                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                }
+                return;
+            }
+
+            // Throw path — unchanged except add the awaiting-motion flag
             if (hasNetworkRb3D && networkRigidbody != null)
             {
                 networkRigidbody.enabled = true;
-            }
-
-            if (dropOnRelease)
-            {
-                SetPhysicsState(PhysicsState.Active);
-                return;
+                networkRigidbody.Teleport(transform.position, transform.rotation);
             }
 
             if (playerCamera == null)
@@ -353,7 +391,28 @@ namespace U3D
             }
 
             SetPhysicsState(PhysicsState.Active);
+
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkAwaitingMotion = true;
+            }
+
             throwVelocityCoroutine = StartCoroutine(ApplyThrowVelocityAfterPhysicsActivation());
+        }
+
+        private IEnumerator ExtendPlayerCollisionIgnore()
+        {
+            U3DPlayerController player = U3DPlayerController.FindLocalPlayer();
+            if (player == null) yield break;
+
+            CharacterController cc = player.GetComponent<CharacterController>();
+            Collider myCollider = GetComponent<Collider>();
+            if (cc == null || myCollider == null) yield break;
+
+            Physics.IgnoreCollision(myCollider, cc, true);
+            yield return new WaitForSeconds(0.5f);
+            if (myCollider != null && cc != null)
+                Physics.IgnoreCollision(myCollider, cc, false);
         }
 
         private IEnumerator ApplyThrowVelocityAfterPhysicsActivation()
@@ -435,17 +494,39 @@ namespace U3D
 
             if (NetworkIsPhysicsActive)
             {
-                bool shouldSleep = false;
-
-                if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
-                    rb.angularVelocity.magnitude < sleepVelocityThreshold)
+                if (NetworkAwaitingMotion)
                 {
-                    shouldSleep = true;
+                    // Don't check sleep yet. Wait until the object has actually moved
+                    // (gravity has accelerated it past threshold) OR it's made contact
+                    // with something (collision callback clears this flag too).
+                    if (rb.linearVelocity.magnitude > sleepVelocityThreshold ||
+                        rb.angularVelocity.magnitude > sleepVelocityThreshold)
+                    {
+                        NetworkAwaitingMotion = false;
+                    }
+                    else if (NetworkSleepTimer.Expired(Runner))
+                    {
+                        // Safety: maxActiveTime elapsed and it never moved — force sleep
+                        NetworkAwaitingMotion = false;
+                        ReturnToGrabbableSleepState();
+                    }
+                    return;
                 }
+
+                // Object has proven it's in motion. Now check for settle.
+                bool shouldSleep = false;
 
                 if (NetworkSleepTimer.Expired(Runner))
                 {
                     shouldSleep = true;
+                }
+                else if (NetworkSleepTimer.IsRunning)
+                {
+                    if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
+                        rb.angularVelocity.magnitude < sleepVelocityThreshold)
+                    {
+                        shouldSleep = true;
+                    }
                 }
 
                 if (shouldSleep)
@@ -457,12 +538,23 @@ namespace U3D
 
         private void ReturnToGrabbableSleepState()
         {
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                if (!networkRigidbody.enabled)
+                {
+                    networkRigidbody.Teleport(transform.position, transform.rotation);
+                    networkRigidbody.enabled = true;
+                }
+                networkRigidbody.SyncParent = true;
+            }
+
             SetPhysicsState(PhysicsState.Sleeping);
 
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkIsThrown = false;
                 NetworkIsPhysicsActive = false;
+                NetworkAwaitingMotion = false;
             }
 
             OnSleep?.Invoke();
@@ -539,6 +631,14 @@ namespace U3D
 
         private void OnCollisionEnter(Collision collision)
         {
+            // Don't count player body contact as proof of landing
+            if (collision.gameObject.CompareTag("Player")) return;
+
+            if (isNetworked && Object.HasStateAuthority && NetworkAwaitingMotion)
+            {
+                NetworkAwaitingMotion = false;
+            }
+
             bool wasThrown = isNetworked ? NetworkIsThrown : (currentPhysicsState == PhysicsState.Active);
 
             if (wasThrown && collision.relativeVelocity.magnitude > 2f)

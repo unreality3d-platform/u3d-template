@@ -1458,6 +1458,22 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = pitch;
     }
 
+    /// <summary>
+    /// Returns the local player's U3DPlayerController instance.
+    /// All interaction scripts should use this instead of FindAnyObjectByType
+    /// to avoid latching onto a remote player's transform in multiplayer.
+    /// </summary>
+    public static U3DPlayerController FindLocalPlayer()
+    {
+        U3DPlayerController[] allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
+        foreach (U3DPlayerController player in allPlayers)
+        {
+            if (player.IsLocalPlayer)
+                return player;
+        }
+        return null;
+    }
+
     public void SetSwimmingState(bool isSwimming)
     {
         if (!_isLocalPlayer) return;

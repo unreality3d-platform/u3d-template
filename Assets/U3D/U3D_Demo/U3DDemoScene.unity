@@ -7087,8 +7087,8 @@ GameObject:
   - component: {fileID: 1246158078}
   - component: {fileID: 1246158077}
   - component: {fileID: 1246158085}
-  - component: {fileID: 1246158090}
   - component: {fileID: 1246158089}
+  - component: {fileID: 1246158090}
   - component: {fileID: 1246158088}
   - component: {fileID: 1246158087}
   - component: {fileID: 1246158086}
@@ -7276,10 +7276,10 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 0
-  m_IsKinematic: 0
+  m_IsKinematic: 1
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 2
+  m_CollisionDetection: 0
 --- !u!114 &1246158089
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9345,7 +9345,28 @@ MonoBehaviour:
   speedMultiplier: 1
   surfaceStickDistance: 0.05
   reattachCooldown: 0.3
+  ledgeAngleThreshold: 45
+  ledgeForwardNudge: 0.4
+  ledgeUpwardNudge: 0.2
   labelUI: {fileID: 0}
+  OnClimbStart:
+    m_PersistentCalls:
+      m_Calls: []
+  OnClimbEnd:
+    m_PersistentCalls:
+      m_Calls: []
+  OnJumpOff:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLedgeTransition:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerEnterRange:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerExitRange:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &1598526896
 GameObject:
   m_ObjectHideFlags: 0

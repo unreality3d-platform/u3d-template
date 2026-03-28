@@ -90,6 +90,11 @@ namespace U3D
         private bool isPushActive = false;
         private Coroutine boundsCheckCoroutine;
 
+        // Authority request management
+        private bool isRequestingAuthority = false;
+        private float authorityRequestTime = 0f;
+        private const float AUTHORITY_REQUEST_TIMEOUT = 2f;
+
         // Physics state management
         private PhysicsState currentPhysicsState = PhysicsState.Sleeping;
         private PhysicsState lastNetworkPhysicsState = PhysicsState.Sleeping;
@@ -159,6 +164,12 @@ namespace U3D
                     EndPush();
                 }
             }
+
+            if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
+            {
+                Debug.LogWarning($"U3DPushable: Authority request timeout for {name}");
+                isRequestingAuthority = false;
+            }
         }
 
         public override void FixedUpdateNetwork()
@@ -219,11 +230,20 @@ namespace U3D
 
             if (Object.HasStateAuthority)
             {
-                SyncNetworkPhysicsState();
+                // Authority granted — activate push if we were waiting for it
+                if (isRequestingAuthority)
+                {
+                    ActivatePush();
+                }
+                else
+                {
+                    SyncNetworkPhysicsState();
+                }
             }
             else
             {
                 // Lost authority while pushing — disengage locally
+                isRequestingAuthority = false;
                 if (isPushActive)
                 {
                     isPushActive = false;
@@ -284,16 +304,25 @@ namespace U3D
             if (grabbable != null && grabbable.IsGrabbed) return;
             if (!isInPushRange) return;
 
-            // Request authority for networked objects
-            if (isNetworked)
+            if (isNetworked && !Object.HasStateAuthority)
             {
-                if (!Object.HasStateAuthority)
+                // Defer activation until authority is granted
+                if (!isRequestingAuthority)
                 {
+                    isRequestingAuthority = true;
+                    authorityRequestTime = Time.time;
                     Object.RequestStateAuthority();
                 }
+                return;
             }
 
+            ActivatePush();
+        }
+
+        private void ActivatePush()
+        {
             isPushActive = true;
+            isRequestingAuthority = false;
             SetPhysicsState(PhysicsState.Active);
 
             if (isNetworked && Object.HasStateAuthority)
@@ -353,7 +382,7 @@ namespace U3D
 
         private void FindPlayer()
         {
-            U3DPlayerController controller = FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController controller = U3DPlayerController.FindLocalPlayer();
             if (controller != null)
             {
                 playerTransform = controller.transform;
@@ -370,7 +399,7 @@ namespace U3D
 
         private void FindPlayerComponents()
         {
-            U3DPlayerController controller = FindAnyObjectByType<U3DPlayerController>();
+            U3DPlayerController controller = U3DPlayerController.FindLocalPlayer();
             if (controller != null)
             {
                 playerTransform = controller.transform;
@@ -716,6 +745,7 @@ namespace U3D
             {
                 return "Cannot push while grabbed";
             }
+            if (isRequestingAuthority) return "Requesting...";
             if (isPushActive)
             {
                 return $"Stop Pushing ({pushKey})";
