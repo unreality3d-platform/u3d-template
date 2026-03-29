@@ -1052,7 +1052,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 150, y: 80}
+  m_SizeDelta: {x: 200, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &192309408
 MonoBehaviour:
@@ -1074,7 +1074,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Tab to free mouse cursor. Click Check Mark to hide it
+  m_text: "Press R Key, Right Grip, or Tab to free cursor, Click Check Mark \nto
+    hide it"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -3391,7 +3392,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 17, y: 2.5}
-  m_SizeDelta: {x: 180, y: 100}
+  m_SizeDelta: {x: 220, y: 120}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &639132718
 GameObject:
@@ -3836,35 +3837,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71a54a45528999546879d3cf946a1df4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DClickTrigger
+  requireTag: 0
+  requiredTag: Player
   triggerOnce: 0
   cooldownTime: 0
-  OnClickTrigger:
+  interactKey: 114
+  maxInteractDistance: 3
+  maxClickDistance: 10
+  allowMouseClick: 1
+  interactPromptText: Interact
+  OnInteractTriggered:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 710018663}
-        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
-        m_MethodName: SetActive
-        m_Mode: 6
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 613535983}
-        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
-        m_MethodName: SetActive
-        m_Mode: 6
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
       - m_Target: {fileID: 1938776870}
         m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
         m_MethodName: SetActive
@@ -3889,6 +3873,39 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 1
         m_CallState: 2
+      - m_Target: {fileID: 613535983}
+        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
+        m_MethodName: SetActive
+        m_Mode: 6
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 710018663}
+        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
+        m_MethodName: SetActive
+        m_Mode: 6
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  OnInteractFailed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerEnterRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerExitRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
   _NetworkHasTriggered: 0
   _NetworkLastTriggerTime: 0
 --- !u!114 &710018668
@@ -11093,7 +11110,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 150, y: 80}
+  m_SizeDelta: {x: 200, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1846156135
 MonoBehaviour:
@@ -11115,7 +11132,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Tab to free mouse cursor. Click Exclamation Point to hide it
+  m_text: Press R Key, Right Grip, or Tab to free cursor, Click Exclamation Point
+    to hide it
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -11623,12 +11641,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71a54a45528999546879d3cf946a1df4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DClickTrigger
+  requireTag: 0
+  requiredTag: Player
   triggerOnce: 0
   cooldownTime: 0
-  OnClickTrigger:
+  interactKey: 114
+  maxInteractDistance: 3
+  maxClickDistance: 10
+  allowMouseClick: 1
+  interactPromptText: Interact
+  OnInteractTriggered:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1938776870}
+      - m_Target: {fileID: 613535983}
         m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
         m_MethodName: SetActive
         m_Mode: 6
@@ -11638,19 +11663,7 @@ MonoBehaviour:
           m_IntArgument: 0
           m_FloatArgument: 0
           m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 2044513242}
-        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
-        m_MethodName: SetActive
-        m_Mode: 6
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
+          m_BoolArgument: 1
         m_CallState: 2
       - m_Target: {fileID: 710018663}
         m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
@@ -11664,7 +11677,7 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 1
         m_CallState: 2
-      - m_Target: {fileID: 613535983}
+      - m_Target: {fileID: 2044513242}
         m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
         m_MethodName: SetActive
         m_Mode: 6
@@ -11674,8 +11687,29 @@ MonoBehaviour:
           m_IntArgument: 0
           m_FloatArgument: 0
           m_StringArgument: 
-          m_BoolArgument: 1
+          m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 1938776870}
+        m_TargetAssemblyTypeName: UnityEngine.GameObject, UnityEngine
+        m_MethodName: SetActive
+        m_Mode: 6
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  OnInteractFailed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerEnterRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerExitRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
   _NetworkHasTriggered: 0
   _NetworkLastTriggerTime: 0
 --- !u!114 &1938776875
@@ -11797,7 +11831,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 13, y: 2.5}
-  m_SizeDelta: {x: 180, y: 100}
+  m_SizeDelta: {x: 220, y: 120}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2044513244
 MonoBehaviour:

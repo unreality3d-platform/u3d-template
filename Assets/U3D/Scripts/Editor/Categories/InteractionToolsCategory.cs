@@ -25,7 +25,7 @@ namespace U3D.Editor
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
-                new CreatorTool("🟢 Add Click Trigger", "Execute actions when player clicks this object", ApplyClickTrigger, true),
+                new CreatorTool("🟢 Add Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
                 new CreatorTool("🟢 Add Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
@@ -360,7 +360,7 @@ namespace U3D.Editor
             EditorUtility.SetDirty(selected);
         }
 
-        private static void ApplyClickTrigger()
+        private static void ApplyInteractTrigger()
         {
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
@@ -379,8 +379,8 @@ namespace U3D.Editor
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            if (selected.GetComponent<U3DClickTrigger>() == null)
-                selected.AddComponent<U3DClickTrigger>();
+            if (selected.GetComponent<U3DInteractTrigger>() == null)
+                selected.AddComponent<U3DInteractTrigger>();
 
             EditorUtility.SetDirty(selected);
         }
