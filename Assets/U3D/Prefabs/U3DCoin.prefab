@@ -31,13 +31,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5281420671373072059}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7071068, y: -0, z: -0, w: 0.7071067}
+  m_LocalRotation: {x: -0.7069834, y: 0, z: 0, w: 0.7072302}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 2.5, y: 2.4999998, z: 2.4999998}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: -89.98, y: 0, z: 0}
 --- !u!33 &8480114440994784164
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -157,6 +157,7 @@ MonoBehaviour:
   handBoneName: RightHand
   grabOffset: {x: 0, y: 0.2, z: 0}
   allowMultiGrab: 0
+  startActive: 0
   labelUI: {fileID: 0}
   OnGrabbed:
     m_PersistentCalls:
@@ -219,6 +220,7 @@ MonoBehaviour:
   maxThrowVelocity: 20
   minThrowVelocity: 1
   dropOnRelease: 0
+  startActive: 0
   OnThrown:
     m_PersistentCalls:
       m_Calls: []
@@ -231,11 +233,11 @@ MonoBehaviour:
   OnWorldBoundsReset:
     m_PersistentCalls:
       m_Calls: []
-  sleepCheckDelay: 2
   sleepVelocityThreshold: 0.5
   maxActiveTime: 10
   worldBoundsFloor: -50
   worldBoundsRadius: 1000
   boundsCheckInterval: 1
+  _NetworkAwaitingMotion: 0
   _NetworkIsThrown: 0
   _NetworkIsPhysicsActive: 0

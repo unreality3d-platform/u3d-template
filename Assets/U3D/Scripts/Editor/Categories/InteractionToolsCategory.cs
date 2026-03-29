@@ -17,7 +17,7 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 new CreatorTool("🟢 Add Object Spawner", "Spawns a prefab at this location. Add NetworkObject to your prefab for all players to see it.", ApplyObjectSpawner, true),
-                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance", ApplyGrabbable, true),
+                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance. Released objects float in place — use Make Throwable with 'Drop On Release' for gravity drop.", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
                 new CreatorTool("🟢 Make Pushable", "Objects can be pushed along surfaces by walking into them", ApplyPushable, true),
@@ -149,14 +149,13 @@ namespace U3D.Editor
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.mass = 1f;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            }
+            Rigidbody rb = selected.GetComponent<Rigidbody>();
+            if (rb == null)
+                rb = selected.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.mass = 1f;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
@@ -209,14 +208,13 @@ namespace U3D.Editor
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.mass = 1f;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            }
+            Rigidbody rb = selected.GetComponent<Rigidbody>();
+            if (rb == null)
+                rb = selected.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.mass = 1f;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {
@@ -269,14 +267,13 @@ namespace U3D.Editor
                 ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            if (!selected.GetComponent<Rigidbody>())
-            {
-                Rigidbody rb = selected.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.mass = 5f;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            }
+            Rigidbody rb = selected.GetComponent<Rigidbody>();
+            if (rb == null)
+                rb = selected.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.mass = 5f;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
             if (selected.GetComponent<NetworkObject>() && selected.GetComponent<Rigidbody>())
             {

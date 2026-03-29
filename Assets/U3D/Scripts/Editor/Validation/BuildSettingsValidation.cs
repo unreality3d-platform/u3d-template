@@ -14,11 +14,7 @@ namespace U3D.Editor
         {
             var results = new List<ValidationResult>();
 
-            // NOTE: UnityBuildHelper now handles critical build validation as authority
-            // These checks are now INFORMATIONAL and provide guidance only
-
             results.Add(ValidateWebGLCompression());
-            results.Add(ValidateWebGLMemorySize());
             results.Add(ValidateColorSpace());
             results.Add(ValidateRenderPipeline());
             results.Add(ValidateFirebaseIntegration());
@@ -30,23 +26,12 @@ namespace U3D.Editor
 
         private ValidationResult ValidateWebGLCompression()
         {
-            // INFORMATIONAL ONLY - UnityBuildHelper enforces this setting
             var compressionOk = PlayerSettings.WebGL.compressionFormat == WebGLCompressionFormat.Disabled;
             return new ValidationResult(
                 compressionOk,
-                compressionOk ?
-                    "✅ WebGL compression properly disabled for GitHub Pages compatibility" :
-                    "ℹ️ UnityBuildHelper will set compression to Disabled for GitHub Pages compatibility during build",
-                ValidationSeverity.Info // Always informational now
-            );
-        }
-
-        private ValidationResult ValidateWebGLMemorySize()
-        {
-            // Unity 6+ uses automatic WebAssembly memory management
-            return new ValidationResult(
-                true, // Always optimal in Unity 6+
-                "✅ Unity 6+ automatic WebAssembly memory management (manual sizing deprecated)",
+                compressionOk
+                    ? "✅ WebGL compression disabled for GitHub Pages compatibility"
+                    : "ℹ️ WebGL compression is enabled. This is automatically corrected during build.",
                 ValidationSeverity.Info
             );
         }
@@ -56,7 +41,9 @@ namespace U3D.Editor
             var colorSpaceOk = PlayerSettings.colorSpace == ColorSpace.Linear;
             return new ValidationResult(
                 colorSpaceOk,
-                colorSpaceOk ? "✅ Color space set to Linear for optimal rendering" : "⚠️ Consider setting color space to Linear for better rendering quality",
+                colorSpaceOk
+                    ? "✅ Color space set to Linear for optimal rendering"
+                    : "⚠️ Consider setting color space to Linear for better rendering quality",
                 colorSpaceOk ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
@@ -67,34 +54,34 @@ namespace U3D.Editor
             var hasURP = urpAsset != null;
             return new ValidationResult(
                 hasURP,
-                hasURP ? "✅ Universal Render Pipeline configured for enhanced WebGL features" : "💡 Consider using URP for enhanced WebGL performance and visual features",
+                hasURP
+                    ? "✅ Universal Render Pipeline configured"
+                    : "💡 Consider using URP for enhanced WebGL performance and visual features",
                 hasURP ? ValidationSeverity.Info : ValidationSeverity.Warning
             );
         }
 
         private ValidationResult ValidateFirebaseIntegration()
         {
-            var firebaseScript = AssetDatabase.FindAssets("FirebaseIntegration").Length > 0;
-            var firebasePlugin = AssetDatabase.FindAssets("FirebasePlugin").Length > 0;
+            var allComponents = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            var hasFirebaseIntegration = allComponents.Any(mb => mb.GetType().Name == "FirebaseIntegration");
 
-            var hasIntegration = firebaseScript && firebasePlugin;
             return new ValidationResult(
-                hasIntegration,
-                hasIntegration ? "✅ Firebase integration components found" : "❌ Missing Firebase integration - required for U3D backend functionality",
-                hasIntegration ? ValidationSeverity.Info : ValidationSeverity.Error
+                hasFirebaseIntegration,
+                hasFirebaseIntegration
+                    ? "✅ FirebaseIntegration found in scene"
+                    : "❌ FirebaseIntegration not found in scene. Add 'U3D CORE - DO NOT DELETE' prefab.",
+                hasFirebaseIntegration ? ValidationSeverity.Info : ValidationSeverity.Error
             );
         }
 
         private ValidationResult ValidatePlayerControllerSetup()
         {
-            // Check for U3D CORE networking system components instead of scene-placed player controller
-            var allComponents = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            var allComponents = Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
 
-            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3D_FusionNetworkManager");
-            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3D_PlayerSpawner");
-            var hasCursorManager = allComponents.Any(mb => mb.GetType().Name == "U3D_CursorManager");
+            var hasFusionNetworkManager = allComponents.Any(mb => mb.GetType().Name == "U3DFusionNetworkManager");
+            var hasPlayerSpawner = allComponents.Any(mb => mb.GetType().Name == "U3DPlayerSpawner");
 
-            // Check for U3D CORE prefab by looking for key networking components
             var coreSystemsPresent = hasFusionNetworkManager && hasPlayerSpawner;
 
             string resultMessage;
@@ -102,16 +89,16 @@ namespace U3D.Editor
 
             if (coreSystemsPresent)
             {
-                resultMessage = "✅ U3D CORE networking system found - player spawning configured";
+                resultMessage = "✅ U3D CORE networking system found";
                 severity = ValidationSeverity.Info;
             }
             else
             {
                 var missingComponents = new List<string>();
-                if (!hasFusionNetworkManager) missingComponents.Add("U3D_FusionNetworkManager");
-                if (!hasPlayerSpawner) missingComponents.Add("U3D_PlayerSpawner");
+                if (!hasFusionNetworkManager) missingComponents.Add("U3DFusionNetworkManager");
+                if (!hasPlayerSpawner) missingComponents.Add("U3DPlayerSpawner");
 
-                resultMessage = $"⚠️ Missing U3D CORE components: {string.Join(", ", missingComponents)}. Add 'U3D CORE - DO NOT DELETE' prefab to scene.";
+                resultMessage = $"❌ Missing U3D CORE components: {string.Join(", ", missingComponents)}. Add 'U3D CORE - DO NOT DELETE' prefab to scene.";
                 severity = ValidationSeverity.Error;
             }
 

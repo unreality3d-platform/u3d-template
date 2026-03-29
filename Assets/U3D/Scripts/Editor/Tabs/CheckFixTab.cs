@@ -75,9 +75,6 @@ namespace U3D.Editor
             validationCategories = new List<IValidationCategory>
             {
                 new BuildSettingsValidation(),
-                new AssetOptimizationValidation(),
-                new PerformanceValidation(),
-                new QualityValidation(),
                 new ComponentValidation()
             };
         }
@@ -86,9 +83,9 @@ namespace U3D.Editor
         {
             optimizationTools = new List<CreatorTool>
             {
-                new CreatorTool("Optimize Textures", "Open texture optimization window with WebGL presets", OptimizeAllTextures),
-                new CreatorTool("Optimize Audio", "Open audio optimization window with WebGL presets", OptimizeAllAudio),
-                new CreatorTool("Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB", RemoveUnitySplashScreen),
+                new CreatorTool("🚧 Optimize Textures", "Bulk optimize textures grouped by type within your content folders (coming soon)", null),
+                new CreatorTool("🚧 Optimize Audio", "Bulk optimize audio clips grouped by type within your content folders (coming soon)", null),
+                new CreatorTool("🚧 Remove Unity Splash", "Remove Unity splash screen to save ~2.7MB (coming soon)", null),
                 new CreatorTool("🚧 Analyze Build Size", "Show largest assets and estimated build size (coming soon)", null),
                 new CreatorTool("🚧 Find Resources Usage", "Identify Resources folder usage (coming soon)", null)
             };
