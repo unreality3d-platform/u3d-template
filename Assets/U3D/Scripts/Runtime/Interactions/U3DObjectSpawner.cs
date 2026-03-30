@@ -28,8 +28,8 @@ namespace U3D
         public int maxInstances = 1;
 
         [Header("Optional Label")]
-        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this spawner. Edit the text on that object directly.")]
-        public U3DBillboardUI labelUI;
+        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this spawner. Edit the text on that object directly.")]
+        public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
         public UnityEvent<GameObject> onSpawned;

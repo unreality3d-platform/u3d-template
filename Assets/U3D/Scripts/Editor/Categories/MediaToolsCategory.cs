@@ -69,7 +69,7 @@ namespace U3D.Editor
 
             canvasObj.AddComponent<CanvasGroup>();
             canvasObj.AddComponent<GraphicRaycaster>();
-            canvasObj.AddComponent<U3DBillboardUI>();
+            canvasObj.AddComponent<U3DWorldspaceUI>();
 
             RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(400, 300);

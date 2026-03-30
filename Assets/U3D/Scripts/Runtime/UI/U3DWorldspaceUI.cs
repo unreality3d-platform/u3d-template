@@ -7,7 +7,7 @@ namespace U3D
     /// Attach to a World Space Canvas or any parent transform containing UI elements.
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
-    public class U3DBillboardUI : MonoBehaviour
+    public class U3DWorldspaceUI : MonoBehaviour
     {
         [Header("Billboard Settings")]
         [Tooltip("Face the camera. Disable to keep the canvas at a fixed rotation.")]

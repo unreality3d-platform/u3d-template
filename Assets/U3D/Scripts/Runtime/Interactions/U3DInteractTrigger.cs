@@ -35,8 +35,8 @@ namespace U3D
         [SerializeField] private bool allowMouseClick = true;
 
         [Header("Optional Label")]
-        [Tooltip("Assign a U3DBillboardUI in your scene to show a label near this object. Edit the text on that object directly.")]
-        public U3DBillboardUI labelUI;
+        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
         public UnityEvent OnInteractTriggered;

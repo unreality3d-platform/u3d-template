@@ -26,7 +26,7 @@ namespace U3D.Editor
             canvas.renderMode = RenderMode.WorldSpace;
             scoreObj.AddComponent<UnityEngine.UI.CanvasScaler>();
             scoreObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-            scoreObj.AddComponent<U3DBillboardUI>();
+            scoreObj.AddComponent<U3DWorldspaceUI>();
 
             RectTransform canvasRect = scoreObj.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(200, 100);
