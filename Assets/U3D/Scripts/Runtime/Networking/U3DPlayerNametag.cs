@@ -9,6 +9,8 @@ namespace U3D.Networking
     /// <summary>
     /// Enhanced player nametag component that displays above networked players
     /// Features: Player numbering, line-of-sight visibility, proper billboarding, performance optimized
+    /// Proximity fade is measured from the local player's body position, not the camera,
+    /// so third-person camera distance doesn't affect visibility.
     /// </summary>
     public class U3DPlayerNametag : MonoBehaviour
     {
@@ -34,6 +36,7 @@ namespace U3D.Networking
         // Runtime references  
         private U3DPlayerController _playerController;
         private Camera _localPlayerCamera;
+        private Transform _localPlayerTransform;
         private PlayerRef _playerRef;
         private NetworkObject _networkObject;
 
@@ -73,10 +76,6 @@ namespace U3D.Networking
 
             if (_networkObject != null)
             {
-                // In Shared Mode, InputAuthority is not applicable — it returns the same
-                // default value for all players, causing every nametag to show "Player 1".
-                // StateAuthority is the correct identifier: the spawning client becomes
-                // StateAuthority of their own player object via Runner.Spawn().
                 _playerRef = _networkObject.StateAuthority;
             }
 
@@ -161,6 +160,8 @@ namespace U3D.Networking
                 {
                     if (player.IsLocalPlayer)
                     {
+                        _localPlayerTransform = player.transform;
+
                         var camera = player.GetComponentInChildren<Camera>();
                         if (camera != null && camera.enabled)
                         {
@@ -239,6 +240,8 @@ namespace U3D.Networking
                 {
                     if (player.IsLocalPlayer)
                     {
+                        _localPlayerTransform = player.transform;
+
                         var camera = player.GetComponentInChildren<Camera>();
                         if (camera != null && camera.enabled)
                         {
@@ -254,6 +257,13 @@ namespace U3D.Networking
 
                 if (_localPlayerCamera == null)
                     return;
+            }
+
+            if (_localPlayerTransform == null)
+            {
+                var localPlayer = U3DPlayerController.FindLocalPlayer();
+                if (localPlayer != null)
+                    _localPlayerTransform = localPlayer.transform;
             }
 
             if (Time.time - _lastUpdateTime < updateFrequency)
@@ -273,7 +283,12 @@ namespace U3D.Networking
 
         void UpdateVisibilityAndLineOfSight()
         {
-            float distance = Vector3.Distance(transform.position, _localPlayerCamera.transform.position);
+            // Distance fade uses the player body, not camera, so third-person zoom doesn't affect visibility
+            Transform distanceSource = _localPlayerTransform != null
+                ? _localPlayerTransform
+                : _localPlayerCamera.transform;
+
+            float distance = Vector3.Distance(transform.position, distanceSource.position);
 
             if (distance > maxDisplayDistance)
             {
@@ -291,6 +306,7 @@ namespace U3D.Networking
                 }
             }
 
+            // Behind-camera check still uses camera (this is a view-space check)
             Vector3 directionToNametag = (transform.position - _localPlayerCamera.transform.position).normalized;
             float dotProduct = Vector3.Dot(_localPlayerCamera.transform.forward, directionToNametag);
 
@@ -313,6 +329,7 @@ namespace U3D.Networking
 
         bool CheckLineOfSight()
         {
+            // Line-of-sight raycast still originates from camera (what you can see)
             Vector3 rayOrigin = _localPlayerCamera.transform.position;
             Vector3 rayDirection = (transform.position - rayOrigin).normalized;
             float rayDistance = Vector3.Distance(rayOrigin, transform.position);

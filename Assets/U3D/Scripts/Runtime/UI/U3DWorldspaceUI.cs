@@ -5,6 +5,8 @@ namespace U3D
     /// <summary>
     /// Worldspace UI component with proximity fade and optional camera-facing billboard behavior.
     /// Attach to a World Space Canvas or any parent transform containing UI elements.
+    /// Proximity fade is measured from the local player's body position, not the camera,
+    /// so third-person camera distance doesn't affect visibility.
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
     public class U3DWorldspaceUI : MonoBehaviour
@@ -32,6 +34,7 @@ namespace U3D
 
         private CanvasGroup canvasGroup;
         private Camera targetCamera;
+        private Transform _localPlayerTransform;
         private float targetAlpha;
 
         void Awake()
@@ -54,6 +57,9 @@ namespace U3D
                 if (targetCamera == null) return;
             }
 
+            if (_localPlayerTransform == null)
+                FindLocalPlayer();
+
             if (faceCamera)
                 UpdateBillboardRotation();
 
@@ -63,6 +69,13 @@ namespace U3D
         void FindTargetCamera()
         {
             targetCamera = Camera.main;
+        }
+
+        void FindLocalPlayer()
+        {
+            var localPlayer = U3DPlayerController.FindLocalPlayer();
+            if (localPlayer != null)
+                _localPlayerTransform = localPlayer.transform;
         }
 
         void UpdateBillboardRotation()
@@ -78,7 +91,11 @@ namespace U3D
 
         void UpdateProximityFade()
         {
-            float distance = Vector3.Distance(targetCamera.transform.position, transform.position);
+            Transform distanceSource = _localPlayerTransform != null
+                ? _localPlayerTransform
+                : targetCamera.transform;
+
+            float distance = Vector3.Distance(distanceSource.position, transform.position);
 
             if (distance >= hideDistance)
             {

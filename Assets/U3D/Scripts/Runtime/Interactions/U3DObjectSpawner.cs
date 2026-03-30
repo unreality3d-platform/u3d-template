@@ -10,12 +10,19 @@ namespace U3D
     /// Place this component on any GameObject to define where and what spawns.
     /// The prefab must have a NetworkObject component for all players to see it.
     /// Without NetworkObject on the prefab, only the local player will see it.
+    ///
+    /// Supports a single prefab or a list of prefabs with random selection.
+    /// When a prefab list is populated, a random prefab is chosen each spawn.
+    /// When the list is empty, the single Prefab To Spawn field is used instead.
     /// </summary>
     public class U3DObjectSpawner : NetworkBehaviour
     {
         [Header("What to Spawn")]
-        [Tooltip("The prefab to spawn at this location. Add a NetworkObject component to your prefab so all players see it. Without NetworkObject, only the local player will see the spawned object.")]
+        [Tooltip("The prefab to spawn at this location. If a Prefab List is populated below, that list is used instead. Add a NetworkObject component to your prefab so all players see it. Without NetworkObject, only the local player will see the spawned object.")]
         public GameObject prefabToSpawn;
+
+        [Tooltip("Optional list of prefabs. When populated, a random prefab is chosen from this list each time Spawn is called. Each prefab should have a NetworkObject component for networked spawning.")]
+        [SerializeField] private GameObject[] prefabList;
 
         [Header("Spawn Behavior")]
         [Tooltip("Spawn automatically when the scene starts.")]
@@ -59,7 +66,8 @@ namespace U3D
         /// </summary>
         public void Spawn()
         {
-            if (prefabToSpawn == null)
+            GameObject resolved = ResolvePrefab();
+            if (resolved == null)
             {
                 Debug.LogWarning($"U3DObjectSpawner on '{name}': No prefab assigned.");
                 onSpawnFailed?.Invoke();
@@ -68,7 +76,7 @@ namespace U3D
 
             if (Runner == null)
             {
-                SpawnLocal();
+                SpawnLocal(resolved);
                 return;
             }
 
@@ -81,11 +89,13 @@ namespace U3D
 
             if (Object.HasStateAuthority)
             {
-                ExecuteNetworkedSpawn();
+                ExecuteNetworkedSpawn(resolved);
             }
             else
             {
-                // Non-host client: ask the host to spawn
+                // Non-host client: ask the host to spawn.
+                // The host resolves its own random prefab from the list,
+                // so all clients don't need to agree on which index was picked.
                 RPC_RequestSpawn();
             }
         }
@@ -98,21 +108,24 @@ namespace U3D
                 return;
             }
 
-            ExecuteNetworkedSpawn();
+            GameObject resolved = ResolvePrefab();
+            if (resolved == null) return;
+
+            ExecuteNetworkedSpawn(resolved);
         }
 
-        private void ExecuteNetworkedSpawn()
+        private void ExecuteNetworkedSpawn(GameObject prefab)
         {
-            var networkObject = prefabToSpawn.GetComponent<NetworkObject>();
+            var networkObject = prefab.GetComponent<NetworkObject>();
             if (networkObject == null)
             {
                 // Prefab has no NetworkObject - warn and fall back to local spawn
                 Debug.LogWarning($"U3DObjectSpawner on '{name}': Prefab has no NetworkObject component. Only the local player will see this object. Add NetworkObject to your prefab for all players to see it.");
-                SpawnLocal();
+                SpawnLocal(prefab);
                 return;
             }
 
-            var instance = Runner.Spawn(prefabToSpawn, transform.position, transform.rotation);
+            var instance = Runner.Spawn(prefab, transform.position, transform.rotation);
             if (instance != null)
             {
                 NetworkActiveCount++;
@@ -134,15 +147,24 @@ namespace U3D
             }
         }
 
-        private void SpawnLocal()
+        private void SpawnLocal(GameObject prefab = null)
         {
+            if (prefab == null)
+                prefab = ResolvePrefab();
+
+            if (prefab == null)
+            {
+                onSpawnFailed?.Invoke();
+                return;
+            }
+
             if (_localActiveCount >= maxInstances)
             {
                 onSpawnFailed?.Invoke();
                 return;
             }
 
-            var instance = Instantiate(prefabToSpawn, transform.position, transform.rotation);
+            var instance = Instantiate(prefab, transform.position, transform.rotation);
             _localActiveCount++;
 
             if (respawnWhenDestroyed)
@@ -164,7 +186,11 @@ namespace U3D
                 NetworkActiveCount = Mathf.Max(0, NetworkActiveCount - 1);
                 if (labelUI != null) labelUI.gameObject.SetActive(true);
                 if (respawnWhenDestroyed && NetworkActiveCount < maxInstances)
-                    ExecuteNetworkedSpawn();
+                {
+                    GameObject resolved = ResolvePrefab();
+                    if (resolved != null)
+                        ExecuteNetworkedSpawn(resolved);
+                }
             }
             else
             {
@@ -173,6 +199,24 @@ namespace U3D
                 if (respawnWhenDestroyed && _localActiveCount < maxInstances)
                     SpawnLocal();
             }
+        }
+
+        /// <summary>
+        /// Resolves which prefab to use. If prefabList has entries, picks one at random.
+        /// Otherwise falls back to the single prefabToSpawn field.
+        /// </summary>
+        private GameObject ResolvePrefab()
+        {
+            if (prefabList != null && prefabList.Length > 0)
+            {
+                GameObject picked = prefabList[Random.Range(0, prefabList.Length)];
+                if (picked != null)
+                    return picked;
+
+                Debug.LogWarning($"U3DObjectSpawner on '{name}': Random selection from Prefab List returned a null entry. Falling back to Prefab To Spawn.");
+            }
+
+            return prefabToSpawn;
         }
 
         void OnDrawGizmos()

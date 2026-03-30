@@ -35,6 +35,13 @@ namespace U3D
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming throwable. Use this for objects spawned above ground level.")]
         [SerializeField] private bool startActive = false;
 
+        [Header("Impact Filter")]
+        [Tooltip("Only fire OnImpact for collisions with a specific tag")]
+        [SerializeField] private bool requireTag = false;
+
+        [Tooltip("Tag required to fire OnImpact")]
+        [SerializeField] private string requiredTag = "Player";
+
         [Header("Events")]
         [Tooltip("Called when object is thrown")]
         public UnityEvent OnThrown;
@@ -643,6 +650,9 @@ namespace U3D
 
             if (wasThrown && collision.relativeVelocity.magnitude > 2f)
             {
+                if (requireTag && !collision.gameObject.CompareTag(requiredTag))
+                    return;
+
                 OnImpact?.Invoke();
             }
         }
