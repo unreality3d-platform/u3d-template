@@ -657,6 +657,19 @@ namespace U3D
             }
         }
 
+        private void OnTriggerEnter(Collider other)
+        {
+            if (!requireTag) return;
+            if (!other.CompareTag(requiredTag)) return;
+
+            bool wasThrown = isNetworked ? NetworkIsThrown : (currentPhysicsState == PhysicsState.Active);
+
+            if (wasThrown)
+            {
+                OnImpact?.Invoke();
+            }
+        }
+
         public void ThrowInDirection(Vector3 direction, float force)
         {
             if (isNetworked && !Object.HasStateAuthority) return;
