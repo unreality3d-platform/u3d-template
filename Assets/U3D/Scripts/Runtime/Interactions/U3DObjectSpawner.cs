@@ -4,6 +4,17 @@ using Fusion;
 
 namespace U3D
 {
+    [System.Serializable]
+    public struct SpawnEntry
+    {
+        [Tooltip("The prefab to spawn.")]
+        public GameObject prefab;
+
+        [Tooltip("Relative spawn weight. Higher values mean this prefab is chosen more often. A weight of 0 removes it from the pool.")]
+        [Min(0f)]
+        public float weight;
+    }
+
     /// <summary>
     /// Spawns a prefab at this object's position and rotation.
     /// All spawns are networked via Fusion so every player sees the result.
@@ -11,8 +22,8 @@ namespace U3D
     /// The prefab must have a NetworkObject component for all players to see it.
     /// Without NetworkObject on the prefab, only the local player will see it.
     ///
-    /// Supports a single prefab or a list of prefabs with random selection.
-    /// When a prefab list is populated, a random prefab is chosen each spawn.
+    /// Supports a single prefab or a weighted list of prefabs with random selection.
+    /// When a prefab list is populated, a prefab is chosen based on relative weights.
     /// When the list is empty, the single Prefab To Spawn field is used instead.
     /// </summary>
     public class U3DObjectSpawner : NetworkBehaviour
@@ -21,8 +32,8 @@ namespace U3D
         [Tooltip("The prefab to spawn at this location. If a Prefab List is populated below, that list is used instead. Add a NetworkObject component to your prefab so all players see it. Without NetworkObject, only the local player will see the spawned object.")]
         public GameObject prefabToSpawn;
 
-        [Tooltip("Optional list of prefabs. When populated, a random prefab is chosen from this list each time Spawn is called. Each prefab should have a NetworkObject component for networked spawning.")]
-        [SerializeField] private GameObject[] prefabList;
+        [Tooltip("Optional weighted list of prefabs. When populated, a prefab is chosen based on relative weights each time Spawn is called. Each prefab should have a NetworkObject component for networked spawning.")]
+        [SerializeField] private SpawnEntry[] prefabList;
 
         [Header("Spawn Behavior")]
         [Tooltip("Spawn automatically when the scene starts.")]
@@ -54,8 +65,6 @@ namespace U3D
 
         void Start()
         {
-            // Non-networked fallback: if there is no runner (e.g. editor Play mode without Fusion),
-            // fall back to local spawn so the component still works during solo testing.
             if (Runner == null && spawnOnStart)
                 SpawnLocal();
         }
@@ -93,9 +102,6 @@ namespace U3D
             }
             else
             {
-                // Non-host client: ask the host to spawn.
-                // The host resolves its own random prefab from the list,
-                // so all clients don't need to agree on which index was picked.
                 RPC_RequestSpawn();
             }
         }
@@ -104,9 +110,7 @@ namespace U3D
         private void RPC_RequestSpawn()
         {
             if (NetworkActiveCount >= maxInstances)
-            {
                 return;
-            }
 
             GameObject resolved = ResolvePrefab();
             if (resolved == null) return;
@@ -119,7 +123,6 @@ namespace U3D
             var networkObject = prefab.GetComponent<NetworkObject>();
             if (networkObject == null)
             {
-                // Prefab has no NetworkObject - warn and fall back to local spawn
                 Debug.LogWarning($"U3DObjectSpawner on '{name}': Prefab has no NetworkObject component. Only the local player will see this object. Add NetworkObject to your prefab for all players to see it.");
                 SpawnLocal(prefab);
                 return;
@@ -138,6 +141,7 @@ namespace U3D
 
                 if (labelUI != null && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
                     labelUI.gameObject.SetActive(false);
+
                 onSpawned?.Invoke(instance.gameObject);
             }
             else
@@ -202,18 +206,36 @@ namespace U3D
         }
 
         /// <summary>
-        /// Resolves which prefab to use. If prefabList has entries, picks one at random.
-        /// Otherwise falls back to the single prefabToSpawn field.
+        /// Resolves which prefab to use. If prefabList has entries, picks one
+        /// using weighted random selection. Otherwise falls back to prefabToSpawn.
         /// </summary>
         private GameObject ResolvePrefab()
         {
             if (prefabList != null && prefabList.Length > 0)
             {
-                GameObject picked = prefabList[Random.Range(0, prefabList.Length)];
-                if (picked != null)
-                    return picked;
+                float totalWeight = 0f;
+                for (int i = 0; i < prefabList.Length; i++)
+                {
+                    if (prefabList[i].prefab != null && prefabList[i].weight > 0f)
+                        totalWeight += prefabList[i].weight;
+                }
 
-                Debug.LogWarning($"U3DObjectSpawner on '{name}': Random selection from Prefab List returned a null entry. Falling back to Prefab To Spawn.");
+                if (totalWeight > 0f)
+                {
+                    float roll = Random.Range(0f, totalWeight);
+                    float cumulative = 0f;
+                    for (int i = 0; i < prefabList.Length; i++)
+                    {
+                        if (prefabList[i].prefab == null || prefabList[i].weight <= 0f)
+                            continue;
+
+                        cumulative += prefabList[i].weight;
+                        if (roll < cumulative)
+                            return prefabList[i].prefab;
+                    }
+                }
+
+                Debug.LogWarning($"U3DObjectSpawner on '{name}': Prefab List has no valid weighted entries. Falling back to Prefab To Spawn.");
             }
 
             return prefabToSpawn;
