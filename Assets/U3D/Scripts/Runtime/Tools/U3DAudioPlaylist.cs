@@ -4,11 +4,17 @@ using UnityEngine;
 
 namespace U3D
 {
+    public enum PlaybackMode { Shuffled, Sequence, RandomOneShot }
+
     public class U3DAudioPlaylist : MonoBehaviour
     {
         [Header("Audio Configuration")]
         [SerializeField] private List<AudioClip> audioClips = new List<AudioClip>();
         [SerializeField] private AudioSource audioSource;
+
+        [Header("Auto Play")]
+        [SerializeField] private bool autoPlayOnStart = false;
+        [SerializeField] private PlaybackMode autoPlayMode = PlaybackMode.Shuffled;
 
         [Header("Volume & Pitch")]
         [SerializeField][Range(0f, 1f)] private float volumeScale = 1f;
@@ -48,6 +54,19 @@ namespace U3D
                 _sourceA = audioSource;
                 _originalPitch = audioSource.pitch;
                 audioSource.playOnAwake = false;
+            }
+        }
+
+        private void Start()
+        {
+            if (autoPlayOnStart)
+            {
+                switch (autoPlayMode)
+                {
+                    case PlaybackMode.Shuffled: PlayShuffled(); break;
+                    case PlaybackMode.Sequence: PlaySequence(); break;
+                    case PlaybackMode.RandomOneShot: PlayRandomOneShot(); break;
+                }
             }
         }
 
