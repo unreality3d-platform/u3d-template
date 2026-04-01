@@ -10,34 +10,38 @@ public class U3DAudioManager : MonoBehaviour
 
     [Header("Sliders")]
     [SerializeField] private Slider mainSlider;
-    [SerializeField] private Slider musicSlider;
+    [SerializeField] private Slider ambientSlider;
     [SerializeField] private Slider effectsSlider;
+    [SerializeField] private Slider musicSlider;
     [SerializeField] private Slider voiceSlider;
 
     [Header("Parameters")]
     [SerializeField] private string masterParam = "MasterVolume";
-    [SerializeField] private string musicParam = "MusicVolume";
+    [SerializeField] private string ambientParam = "AmbientVolume";
     [SerializeField] private string effectsParam = "EffectsVolume";
+    [SerializeField] private string musicParam = "MusicVolume";
     [SerializeField] private string voiceParam = "VoiceVolume";
 
     [Header("WebGL Fallback")]
     [SerializeField] private AudioSource[] mainAudioSources;
-    [SerializeField] private AudioSource[] musicAudioSources;
+    [SerializeField] private AudioSource[] ambientAudioSources;
     [SerializeField] private AudioSource[] effectsAudioSources;
+    [SerializeField] private AudioSource[] musicAudioSources;
     [SerializeField] private AudioSource[] voiceAudioSources;
     [SerializeField] private bool useWebGLFallback = true;
 
     private bool isWebGL;
-    private Coroutine[] saveCoroutines = new Coroutine[3];
+    private Coroutine[] saveCoroutines = new Coroutine[5];
 
     private void Start()
     {
         isWebGL = Application.platform == RuntimePlatform.WebGLPlayer;
 
         SetupSlider(mainSlider, masterParam, 0);
-        SetupSlider(musicSlider, musicParam, 1);
+        SetupSlider(ambientSlider, ambientParam, 1);
         SetupSlider(effectsSlider, effectsParam, 2);
-        SetupSlider(voiceSlider, voiceParam, 3);
+        SetupSlider(musicSlider, musicParam, 3);
+        SetupSlider(voiceSlider, voiceParam, 4);
 
         if (isWebGL && useWebGLFallback)
         {
@@ -52,7 +56,6 @@ public class U3DAudioManager : MonoBehaviour
         slider.minValue = 0.0001f;
         slider.maxValue = 1f;
 
-        // Load saved value
         float defaultValue = 0.75f;
         if (mixer.GetFloat(parameter, out float currentVolume))
         {
@@ -62,10 +65,8 @@ public class U3DAudioManager : MonoBehaviour
         float savedValue = PlayerPrefs.GetFloat(parameter, defaultValue);
         slider.value = Mathf.Clamp(savedValue, slider.minValue, slider.maxValue);
 
-        // Apply initial volume
         ApplyVolume(savedValue, parameter, index);
 
-        // Connect listener
         slider.onValueChanged.AddListener(value => HandleVolumeChanged(value, parameter, index));
     }
 
@@ -85,10 +86,8 @@ public class U3DAudioManager : MonoBehaviour
         sliderValue = Mathf.Max(0.0001f, sliderValue);
         float decibelValue = Mathf.Log10(sliderValue) * 20f;
 
-        // Try AudioMixer first
         mixer.SetFloat(parameter, decibelValue);
 
-        // WebGL fallback
         if (isWebGL && useWebGLFallback)
         {
             AudioSource[] sources = GetAudioSourcesForIndex(audioIndex);
@@ -107,9 +106,10 @@ public class U3DAudioManager : MonoBehaviour
         switch (index)
         {
             case 0: return mainAudioSources ?? new AudioSource[0];
-            case 1: return musicAudioSources ?? new AudioSource[0];
+            case 1: return ambientAudioSources ?? new AudioSource[0];
             case 2: return effectsAudioSources ?? new AudioSource[0];
-            case 3: return voiceAudioSources ?? new AudioSource[0];
+            case 3: return musicAudioSources ?? new AudioSource[0];
+            case 4: return voiceAudioSources ?? new AudioSource[0];
             default: return new AudioSource[0];
         }
     }
@@ -132,8 +132,9 @@ public class U3DAudioManager : MonoBehaviour
     private void OnDestroy()
     {
         if (mainSlider != null) mainSlider.onValueChanged.RemoveAllListeners();
-        if (musicSlider != null) musicSlider.onValueChanged.RemoveAllListeners();
+        if (ambientSlider != null) ambientSlider.onValueChanged.RemoveAllListeners();
         if (effectsSlider != null) effectsSlider.onValueChanged.RemoveAllListeners();
+        if (musicSlider != null) musicSlider.onValueChanged.RemoveAllListeners();
         if (voiceSlider != null) voiceSlider.onValueChanged.RemoveAllListeners();
 
         foreach (var coroutine in saveCoroutines)

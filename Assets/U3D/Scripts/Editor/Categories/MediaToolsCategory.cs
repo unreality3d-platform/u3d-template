@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEngine.UI;
 using TMPro;
 using UnityEditor;
@@ -12,12 +13,16 @@ namespace U3D.Editor
         public System.Action<int> OnRequestTabSwitch { get; set; }
         private List<CreatorTool> tools;
 
+        private const string MIXER_PATH = "Assets/U3D/Prefabs/U3D_AudioMixer.mixer";
+
         public MediaToolsCategory()
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Add Audio Playlist", "Play random audio clips from a list through an AudioSource", ApplyAudioList, true),
-                new CreatorTool("🟢 Add Worldspace UI", "World space canvas that faces camera with proximity fade", CreateWorldspaceUI),
+                new CreatorTool("🟢 Add Audio Playlist", "Play audio clips through your AudioSource. Add clips, then start playback from a trigger (like U3D Enter Trigger).", ApplyAudioList, true),
+                new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource, true),
+                new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource, true),
+                new CreatorTool("🟢 Add Worldspace UI", "World space canvaswith proximity fade and billboard behavior options", CreateWorldspaceUI),
                 new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
                 new CreatorTool("🚧 Add Video Player", "Stream videos from URLs in your world", () => { }),
                 new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => { }),
@@ -39,6 +44,10 @@ namespace U3D.Editor
             }
         }
 
+        // ───────────────────────────────────────────
+        // Audio Playlist
+        // ───────────────────────────────────────────
+
         private static void ApplyAudioList()
         {
             GameObject selected = Selection.activeGameObject;
@@ -59,6 +68,98 @@ namespace U3D.Editor
 
             EditorUtility.SetDirty(selected);
         }
+
+        // ───────────────────────────────────────────
+        // Ambient Source
+        // ───────────────────────────────────────────
+
+        private static void CreateAmbientSource()
+        {
+            AudioMixerGroup ambientGroup = FindMixerGroup("Ambient");
+            if (ambientGroup == null) return;
+
+            GameObject obj = new GameObject("Ambient Audio Source");
+
+            AudioSource source = obj.AddComponent<AudioSource>();
+            source.outputAudioMixerGroup = ambientGroup;
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+            source.loop = false;
+
+            PositionInScene(obj);
+            Selection.activeGameObject = obj;
+            EditorGUIUtility.PingObject(obj);
+            EditorUtility.SetDirty(obj);
+        }
+
+        // ───────────────────────────────────────────
+        // Local Source
+        // ───────────────────────────────────────────
+
+        private static void CreateLocalSource()
+        {
+            AudioMixerGroup effectsGroup = FindMixerGroup("Effects");
+            if (effectsGroup == null) return;
+
+            GameObject obj = new GameObject("Local Audio Source");
+
+            AudioSource source = obj.AddComponent<AudioSource>();
+            source.outputAudioMixerGroup = effectsGroup;
+            source.playOnAwake = false;
+            source.spatialBlend = 1f;
+            source.minDistance = 1f;
+            source.maxDistance = 500f;
+            source.rolloffMode = AudioRolloffMode.Logarithmic;
+            source.loop = false;
+
+            PositionInScene(obj);
+            Selection.activeGameObject = obj;
+            EditorGUIUtility.PingObject(obj);
+            EditorUtility.SetDirty(obj);
+        }
+
+        // ───────────────────────────────────────────
+        // Mixer Lookup
+        // ───────────────────────────────────────────
+
+        private static AudioMixerGroup FindMixerGroup(string groupName)
+        {
+            AudioMixer mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(MIXER_PATH);
+            if (mixer == null)
+            {
+                EditorUtility.DisplayDialog("Audio Mixer Not Found",
+                    "Could not find U3D_AudioMixer at:\n" + MIXER_PATH +
+                    "\n\nMake sure the U3D template audio mixer has not been moved or renamed.",
+                    "OK");
+                return null;
+            }
+
+            AudioMixerGroup[] groups = mixer.FindMatchingGroups(groupName);
+            if (groups == null || groups.Length == 0)
+            {
+                EditorUtility.DisplayDialog("Mixer Group Not Found",
+                    "Could not find the '" + groupName + "' group in U3D_AudioMixer." +
+                    "\n\nExpected groups: Master, Ambient, Effects, Music, Voice.",
+                    "OK");
+                return null;
+            }
+
+            return groups[0];
+        }
+
+        // ───────────────────────────────────────────
+        // Scene Positioning
+        // ───────────────────────────────────────────
+
+        private static void PositionInScene(GameObject obj)
+        {
+            if (SceneView.lastActiveSceneView != null)
+                obj.transform.position = SceneView.lastActiveSceneView.pivot;
+        }
+
+        // ───────────────────────────────────────────
+        // Worldspace UI
+        // ───────────────────────────────────────────
 
         private static void CreateWorldspaceUI()
         {
