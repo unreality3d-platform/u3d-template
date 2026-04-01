@@ -3,6 +3,7 @@ using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Audio;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityEngine.Video;
 
@@ -15,6 +16,7 @@ namespace U3D.Editor
         private List<CreatorTool> tools;
 
         private const string MIXER_PATH = "Assets/U3D/Prefabs/U3D_AudioMixer.mixer";
+        private const string SETTINGS_UI_PREFAB_PATH = "Assets/U3D/Prefabs/Settings UI Canvas.prefab";
 
         public MediaToolsCategory()
         {
@@ -23,11 +25,13 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Audio Playlist", "Play audio clips through your AudioSource. Add clips, then start playback from a trigger (like U3D Enter Trigger).", ApplyAudioList),
                 new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource),
                 new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource),
-                new CreatorTool("🟢 Add Worldspace UI", "World space canvaswith proximity fade and billboard behavior options", CreateWorldspaceUI),
+                new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
                 new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
                 new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => { }),
                 new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
+                new CreatorTool("🟢 Add Movement Instructions", "Worldspace UI showing default movement patterns and all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
+                new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
             };
         }
 
@@ -115,11 +119,9 @@ namespace U3D.Editor
 
         private static void CreateVideoPlayer()
         {
-            // Parent container so screen + controls move together
             GameObject root = new GameObject("Video Player");
             PositionInScene(root);
 
-            // Video screen quad (child of root)
             GameObject screenObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
             screenObj.name = "Video Screen";
             screenObj.transform.SetParent(root.transform, false);
@@ -151,8 +153,6 @@ namespace U3D.Editor
 
             U3DVideoPlayer u3dVideo = screenObj.AddComponent<U3DVideoPlayer>();
 
-            // ── Built-in UI sprites ──
-
             Sprite uiSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             Sprite uiBackground = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd");
             Sprite uiKnob = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
@@ -162,8 +162,6 @@ namespace U3D.Editor
 
             var tmpResources = new TMP_DefaultControls.Resources();
             tmpResources.standard = uiSprite;
-
-            // ── Controls Canvas (sibling of screen, not child) ──
 
             GameObject canvasObj = new GameObject("Video Controls Canvas");
             canvasObj.transform.SetParent(root.transform, false);
@@ -184,7 +182,6 @@ namespace U3D.Editor
             canvasRect.sizeDelta = new Vector2(300, 40);
             canvasRect.localScale = Vector3.one * 0.006f;
 
-            // Panel background
             GameObject panelObj = DefaultControls.CreatePanel(uiResources);
             panelObj.name = "Controls Panel";
             panelObj.transform.SetParent(canvasObj.transform, false);
@@ -200,7 +197,6 @@ namespace U3D.Editor
             if (panelImage != null)
                 panelImage.color = new Color(1f, 1f, 1f, 0.95f);
 
-            // Play/Pause Button — left 16%
             GameObject buttonObj = TMP_DefaultControls.CreateButton(tmpResources);
             buttonObj.name = "PlayPause Button";
             buttonObj.transform.SetParent(panelObj.transform, false);
@@ -221,7 +217,6 @@ namespace U3D.Editor
                 buttonTMP.alignment = TextAlignmentOptions.Center;
             }
 
-            // Progress Slider — middle 55%
             GameObject sliderObj = DefaultControls.CreateSlider(uiResources);
             sliderObj.name = "Progress Slider";
             sliderObj.transform.SetParent(panelObj.transform, false);
@@ -260,7 +255,6 @@ namespace U3D.Editor
                 handleSlideArea.offsetMax = new Vector2(-10f, -6f);
             }
 
-            // Time Display — right 23%
             GameObject timeObj = TMP_DefaultControls.CreateText(tmpResources);
             timeObj.name = "Time Display";
             timeObj.transform.SetParent(panelObj.transform, false);
@@ -282,7 +276,6 @@ namespace U3D.Editor
                 timeTMP.raycastTarget = false;
             }
 
-            // Wire references on the runtime component
             u3dVideo.playPauseButton = buttonObj.GetComponent<Button>();
             u3dVideo.progressSlider = slider;
             u3dVideo.timeDisplay = timeTMP;
@@ -291,6 +284,273 @@ namespace U3D.Editor
             Selection.activeGameObject = root;
             EditorGUIUtility.PingObject(root);
             EditorUtility.SetDirty(root);
+        }
+
+        // ───────────────────────────────────────────
+        // Movement Instructions
+        // ───────────────────────────────────────────
+
+        private static void CreateMovementInstructions()
+        {
+            // Build instruction text: Section 1 (default patterns) + Section 2 (all bindings)
+            string instructionText = BuildMovementInstructionsText();
+
+            // Create Worldspace UI canvas with U3DWorldspaceUI component
+            GameObject canvasObj = new GameObject("Movement Instructions");
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+
+            canvasObj.AddComponent<CanvasGroup>();
+            canvasObj.AddComponent<GraphicRaycaster>();
+
+            U3DWorldspaceUI worldspaceUI = canvasObj.AddComponent<U3DWorldspaceUI>();
+            worldspaceUI.faceCamera = true;
+
+            RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(500, 600);
+            canvasRect.localScale = Vector3.one * 0.005f;
+
+            var uiResources = new DefaultControls.Resources();
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            // Background panel
+            GameObject panelObj = DefaultControls.CreatePanel(uiResources);
+            panelObj.name = "Panel";
+            panelObj.transform.SetParent(canvasObj.transform, false);
+            panelObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform panelRect = panelObj.GetComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+
+            Image panelImage = panelObj.GetComponent<Image>();
+            if (panelImage != null)
+                panelImage.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);
+
+            // Title
+            GameObject titleObj = TMP_DefaultControls.CreateText(tmpResources);
+            titleObj.name = "Title";
+            titleObj.transform.SetParent(panelObj.transform, false);
+            titleObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+            titleRect.anchorMin = new Vector2(0.05f, 0.9f);
+            titleRect.anchorMax = new Vector2(0.95f, 0.98f);
+            titleRect.offsetMin = Vector2.zero;
+            titleRect.offsetMax = Vector2.zero;
+
+            TextMeshProUGUI titleTMP = titleObj.GetComponent<TextMeshProUGUI>();
+            if (titleTMP != null)
+            {
+                titleTMP.text = "CONTROLS";
+                titleTMP.fontSize = 22;
+                titleTMP.fontStyle = FontStyles.Bold;
+                titleTMP.color = Color.white;
+                titleTMP.alignment = TextAlignmentOptions.Center;
+                titleTMP.raycastTarget = false;
+            }
+
+            // Scrollable content area
+            GameObject scrollObj = DefaultControls.CreateScrollView(uiResources);
+            scrollObj.name = "Scroll View";
+            scrollObj.transform.SetParent(panelObj.transform, false);
+            scrollObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform scrollRect = scrollObj.GetComponent<RectTransform>();
+            scrollRect.anchorMin = new Vector2(0.03f, 0.03f);
+            scrollRect.anchorMax = new Vector2(0.97f, 0.88f);
+            scrollRect.offsetMin = Vector2.zero;
+            scrollRect.offsetMax = Vector2.zero;
+
+            Image scrollBg = scrollObj.GetComponent<Image>();
+            if (scrollBg != null)
+                scrollBg.color = new Color(0f, 0f, 0f, 0f);
+
+            Transform contentArea = scrollObj.transform.Find("Viewport/Content");
+
+            // Instruction text
+            GameObject textObj = TMP_DefaultControls.CreateText(tmpResources);
+            textObj.name = "Instructions Text";
+            textObj.transform.SetParent(contentArea, false);
+            textObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0f, 1f);
+            textRect.anchorMax = new Vector2(1f, 1f);
+            textRect.pivot = new Vector2(0.5f, 1f);
+            textRect.sizeDelta = new Vector2(0f, 0f);
+            textRect.anchoredPosition = Vector2.zero;
+
+            TextMeshProUGUI instructionTMP = textObj.GetComponent<TextMeshProUGUI>();
+            if (instructionTMP != null)
+            {
+                instructionTMP.text = instructionText;
+                instructionTMP.fontSize = 14;
+                instructionTMP.color = new Color(0.9f, 0.9f, 0.9f, 1f);
+                instructionTMP.alignment = TextAlignmentOptions.TopLeft;
+                instructionTMP.raycastTarget = false;
+                instructionTMP.textWrappingMode = TextWrappingModes.Normal;
+            }
+
+            // Auto-size content to fit text
+            ContentSizeFitter fitter = textObj.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+            if (contentArea != null)
+            {
+                VerticalLayoutGroup layout = contentArea.gameObject.AddComponent<VerticalLayoutGroup>();
+                layout.padding = new RectOffset(10, 10, 10, 10);
+                layout.childControlWidth = true;
+                layout.childControlHeight = true;
+                layout.childForceExpandWidth = true;
+                layout.childForceExpandHeight = false;
+
+                ContentSizeFitter contentFitter = contentArea.gameObject.AddComponent<ContentSizeFitter>();
+                contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            }
+
+            PositionInScene(canvasObj);
+            Selection.activeGameObject = canvasObj;
+            EditorGUIUtility.PingObject(canvasObj);
+            EditorUtility.SetDirty(canvasObj);
+        }
+
+        private static string BuildMovementInstructionsText()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // ── Section 1: Default Movement Patterns ──
+            sb.AppendLine("<b>MOVEMENT</b>");
+            sb.AppendLine("─────────────────────────");
+            sb.AppendLine("Walk: W A S D  or  Arrow Keys");
+            sb.AppendLine("Run: Hold Shift while moving");
+            sb.AppendLine("Jump: Space");
+            sb.AppendLine("Crouch: C");
+            sb.AppendLine("Fly: F (toggle)");
+            sb.AppendLine();
+            sb.AppendLine("<b>CAMERA</b>");
+            sb.AppendLine("─────────────────────────");
+            sb.AppendLine("Look: Right Mouse + Move");
+            sb.AppendLine("Zoom: Mouse Wheel");
+            sb.AppendLine("Strafe: Q / E");
+            sb.AppendLine();
+            sb.AppendLine("<b>SPECIAL MOVEMENT</b>");
+            sb.AppendLine("─────────────────────────");
+            sb.AppendLine("Move Forward: Left + Right Mouse");
+            sb.AppendLine("Steer: Left + Right Mouse + Move Mouse");
+            sb.AppendLine("Auto-Run: Num Lock (toggle)");
+            sb.AppendLine("Teleport: Double-Click (if enabled)");
+            sb.AppendLine("Interact: R");
+            sb.AppendLine();
+
+            // ── Section 2: All Input Bindings (read from asset) ──
+            sb.AppendLine("<b>ALL INPUT BINDINGS</b>");
+            sb.AppendLine("─────────────────────────");
+
+            InputActionAsset inputActions = FindInputActionAsset();
+            if (inputActions == null)
+            {
+                sb.AppendLine("(Input Action asset not found)");
+                return sb.ToString();
+            }
+
+            var playerMap = inputActions.FindActionMap("Player");
+            if (playerMap == null)
+            {
+                sb.AppendLine("(Player action map not found)");
+                return sb.ToString();
+            }
+
+            foreach (var action in playerMap.actions)
+            {
+                string keys = GetBindingDisplayString(action);
+                if (!string.IsNullOrEmpty(keys))
+                    sb.AppendLine($"{action.name}: {keys}");
+            }
+
+            return sb.ToString();
+        }
+
+        private static InputActionAsset FindInputActionAsset()
+        {
+            string[] guids = AssetDatabase.FindAssets("U3DInputActions t:InputActionAsset");
+            if (guids.Length == 0)
+                guids = AssetDatabase.FindAssets("t:InputActionAsset", new[] { "Assets/U3D" });
+
+            if (guids.Length == 0)
+                return null;
+
+            string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+            return AssetDatabase.LoadAssetAtPath<InputActionAsset>(path);
+        }
+
+        private static string GetBindingDisplayString(InputAction action)
+        {
+            var keys = new List<string>();
+
+            foreach (var binding in action.bindings)
+            {
+                if (binding.isComposite) continue;
+
+                string display = InputControlPath.ToHumanReadableString(
+                    binding.effectivePath,
+                    InputControlPath.HumanReadableStringOptions.OmitDevice);
+
+                if (!string.IsNullOrEmpty(display) && !keys.Contains(display))
+                {
+                    display = display
+                        .Replace("Up Arrow", "↑")
+                        .Replace("Down Arrow", "↓")
+                        .Replace("Left Arrow", "←")
+                        .Replace("Right Arrow", "→")
+                        .Replace("Left Shift", "Shift")
+                        .Replace("Left Ctrl", "Ctrl")
+                        .Replace("Mouse Delta", "Mouse")
+                        .Replace("Scroll Y", "Mouse Wheel");
+                    keys.Add(display);
+                }
+            }
+
+            return string.Join("  |  ", keys);
+        }
+
+        // ───────────────────────────────────────────
+        // Settings UI
+        // ───────────────────────────────────────────
+
+        private static void AddSettingsUI()
+        {
+            // Check if one already exists in the scene
+            var existing = Object.FindAnyObjectByType<Canvas>();
+            if (existing != null && existing.gameObject.name.Contains("Settings UI"))
+            {
+                EditorUtility.DisplayDialog("Settings UI",
+                    "A Settings UI Canvas already exists in the scene.\n\nFound: " + existing.gameObject.name,
+                    "OK");
+                Selection.activeGameObject = existing.gameObject;
+                return;
+            }
+
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(SETTINGS_UI_PREFAB_PATH);
+            if (prefab == null)
+            {
+                EditorUtility.DisplayDialog("Settings UI Not Found",
+                    "Could not find the Settings UI prefab at:\n" + SETTINGS_UI_PREFAB_PATH +
+                    "\n\nMake sure the U3D template prefab has not been moved or renamed.",
+                    "OK");
+                return;
+            }
+
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            instance.name = "U3D Settings UI";
+            Undo.RegisterCreatedObjectUndo(instance, "Add Settings UI");
+
+            Selection.activeGameObject = instance;
+            EditorGUIUtility.PingObject(instance);
         }
 
         // ───────────────────────────────────────────
@@ -393,7 +653,6 @@ namespace U3D.Editor
 
             Selection.activeGameObject = canvasObj;
             EditorGUIUtility.PingObject(canvasObj);
-
             EditorUtility.SetDirty(canvasObj);
         }
     }
