@@ -5681,10 +5681,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DObjectSpawner
   prefabToSpawn: {fileID: 0}
   prefabList:
-  - prefab: {fileID: 0}
-    weight: 0
-  - prefab: {fileID: 0}
-    weight: 0
+  - prefab: {fileID: 4064305928472602456, guid: 78b200a67a0aa0e479fcd57c28bfcc1f, type: 3}
+    weight: 1
+  - prefab: {fileID: 4064305928472602456, guid: 5b543f98039e4364aa37da1546df9682, type: 3}
+    weight: 0.2
   spawnOnStart: 0
   respawnWhenDestroyed: 0
   maxInstances: 100

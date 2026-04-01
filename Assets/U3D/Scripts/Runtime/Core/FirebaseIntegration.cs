@@ -8,35 +8,35 @@ using UnityEditor;
 #endif
 
 /// <summary>
-/// U3D Platform Integration - Handles PayPal, professional URLs, and multiplayer auto-initialization
-/// This component works automatically - no configuration needed by Creators
+/// U3D Platform Integration - Handles PayPal, professional URLs, and multiplayer auto-initialization.
+/// This component works automatically. No configuration needed by creators.
 /// </summary>
 public class FirebaseIntegration : MonoBehaviour
 {
     [Header("Platform Integration")]
-    [Tooltip("This component handles PayPal, professional URLs, and multiplayer automatically")]
+    [Tooltip("When enabled, multiplayer initializes automatically on scene start.")]
     [SerializeField] private bool enableMultiplayer = true;
 
-    [Header("Debug Info (Read-Only)")]
-    [SerializeField] private string detectedEnvironment = "Detecting...";
-    [SerializeField] private string professionalURL = "";
-    [SerializeField] private bool multiplayerActive = false;
+    [Header("Editor Multiplayer Testing")]
+    [Tooltip("Leave empty for isolated testing. Set a shared name for two editors to join the same room.")]
+    [SerializeField] private string editorTestRoomOverride = "";
+
+    [Header("Debug Info (Runtime Only)")]
+    [SerializeField, ReadOnly] private string detectedEnvironment = "Not running";
+    [SerializeField, ReadOnly] private bool multiplayerActive = false;
 
     private string contentId = "creator-content";
-    private float contentPrice = 0f;
     private int maxPlayers = 10;
 
     private U3DFusionNetworkManager networkManager;
     private U3DPlayerSpawner playerSpawner;
 
-    // PayPal Integration
     [DllImport("__Internal")]
     private static extern void UnityCheckContentAccess(string contentId);
 
     [DllImport("__Internal")]
     private static extern void UnityRequestPayment(string contentId, string price);
 
-    // Professional URL Detection
     [DllImport("__Internal")]
     private static extern System.IntPtr UnityGetCurrentURL();
 
@@ -46,7 +46,6 @@ public class FirebaseIntegration : MonoBehaviour
     [DllImport("__Internal")]
     private static extern void UnityReportDeploymentMetrics(string deploymentType, string loadTime);
 
-    // Photon Fusion Integration
     [DllImport("__Internal")]
     private static extern void UnityGetPhotonToken(string roomName, string contentId);
 
@@ -93,19 +92,21 @@ public class FirebaseIntegration : MonoBehaviour
 
     void InitializeComponents()
     {
+        if (!enableMultiplayer) return;
+
         if (networkManager == null)
             networkManager = FindAnyObjectByType<U3DFusionNetworkManager>();
 
         if (playerSpawner == null)
             playerSpawner = FindAnyObjectByType<U3DPlayerSpawner>();
 
-        if (networkManager == null && enableMultiplayer)
+        if (networkManager == null)
         {
             var networkManagerObject = new GameObject("U3D Network Manager");
             networkManager = networkManagerObject.AddComponent<U3DFusionNetworkManager>();
         }
 
-        if (playerSpawner == null && enableMultiplayer)
+        if (playerSpawner == null)
         {
             var spawnerObject = new GameObject("U3D Player Spawner");
             playerSpawner = spawnerObject.AddComponent<U3DPlayerSpawner>();
@@ -115,30 +116,29 @@ public class FirebaseIntegration : MonoBehaviour
     void DetectDeploymentEnvironment()
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
-    try
-    {
-        var deploymentInfoPtr = UnityGetDeploymentInfo();
-        var deploymentInfoJson = Marshal.PtrToStringAnsi(deploymentInfoPtr);
-        
-        if (!string.IsNullOrEmpty(deploymentInfoJson))
+        try
         {
-            _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
-            detectedEnvironment = _deploymentInfo.deploymentType;
-            
-            if (_deploymentInfo.isProfessionalURL)
+            var deploymentInfoPtr = UnityGetDeploymentInfo();
+            var deploymentInfoJson = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(deploymentInfoPtr);
+
+            if (!string.IsNullOrEmpty(deploymentInfoJson))
             {
-                professionalURL = $"unreality3d.com/{_deploymentInfo.creatorUsername}/{_deploymentInfo.projectName}";
-                contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
+                _deploymentInfo = JsonUtility.FromJson<DeploymentInfo>(deploymentInfoJson);
+                detectedEnvironment = _deploymentInfo.deploymentType;
+
+                if (_deploymentInfo.isProfessionalURL)
+                {
+                    contentId = $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
+                }
+
+                Invoke(nameof(ReportDeploymentMetrics), 2f);
             }
-            
-            Invoke(nameof(ReportDeploymentMetrics), 2f);
         }
-    }
-    catch (System.Exception e)
-    {
-        Debug.LogWarning($"Platform detection failed: {e.Message}");
-        detectedEnvironment = "Detection failed";
-    }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"Platform detection failed: {e.Message}");
+            detectedEnvironment = "Detection failed";
+        }
 #else
         detectedEnvironment = "Unity Editor";
         _deploymentInfo = new DeploymentInfo
@@ -172,8 +172,6 @@ public class FirebaseIntegration : MonoBehaviour
     {
         if (!enableMultiplayer) return;
 
-        // Ensure the NetworkManager isn't already connected
-        // (prevents double-start if execution order varies)
         if (networkManager != null && networkManager.IsConnected)
             return;
 
@@ -206,7 +204,14 @@ public class FirebaseIntegration : MonoBehaviour
         if (_deploymentInfo != null && _deploymentInfo.isProfessionalURL)
             return $"{_deploymentInfo.creatorUsername}_{_deploymentInfo.projectName}";
 
+#if UNITY_EDITOR
+        if (!string.IsNullOrEmpty(editorTestRoomOverride))
+            return $"editor_{editorTestRoomOverride}";
+
+        return $"editor_{SystemInfo.deviceUniqueIdentifier.Substring(0, 8)}_{contentId}";
+#else
         return $"room_{contentId}";
+#endif
     }
 
     void CheckContentAccess()
@@ -222,8 +227,6 @@ public class FirebaseIntegration : MonoBehaviour
         }
 #endif
     }
-
-    // ========== PLATFORM CALLBACKS ==========
 
     public void OnAccessCheckComplete(string hasAccess)
     {
@@ -283,51 +286,31 @@ public class FirebaseIntegration : MonoBehaviour
         }
     }
 
-    // ========== PUBLIC API FOR CREATORS ==========
-
-    /// <summary>
-    /// Check if running on a professional URL (username.unreality3d.com)
-    /// </summary>
     public bool IsProfessionalURL()
     {
         return _deploymentInfo != null && _deploymentInfo.isProfessionalURL;
     }
 
-    /// <summary>
-    /// Get the creator's username (only on professional URLs)
-    /// </summary>
     public string GetCreatorUsername()
     {
         return _deploymentInfo?.creatorUsername ?? "";
     }
 
-    /// <summary>
-    /// Get the project name
-    /// </summary>
     public string GetProjectName()
     {
         return _deploymentInfo?.projectName ?? "";
     }
 
-    /// <summary>
-    /// Check if multiplayer is currently active
-    /// </summary>
     public bool IsMultiplayerActive()
     {
         return networkManager != null && networkManager.IsConnected;
     }
 
-    /// <summary>
-    /// Get current player count
-    /// </summary>
     public int GetPlayerCount()
     {
         return networkManager != null ? networkManager.PlayerCount : 0;
     }
 
-    /// <summary>
-    /// Enable or disable multiplayer functionality
-    /// </summary>
     public void SetMultiplayerEnabled(bool enabled)
     {
         enableMultiplayer = enabled;
