@@ -19,9 +19,9 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Add Audio Playlist", "Play audio clips through your AudioSource. Add clips, then start playback from a trigger (like U3D Enter Trigger).", ApplyAudioList, true),
-                new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource, true),
-                new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource, true),
+                new CreatorTool("🟢 Add Audio Playlist", "Play audio clips through your AudioSource. Add clips, then start playback from a trigger (like U3D Enter Trigger).", ApplyAudioList),
+                new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource),
+                new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource),
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvaswith proximity fade and billboard behavior options", CreateWorldspaceUI),
                 new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
                 new CreatorTool("🚧 Add Video Player", "Stream videos from URLs in your world", () => { }),
@@ -50,23 +50,13 @@ namespace U3D.Editor
 
         private static void ApplyAudioList()
         {
-            GameObject selected = Selection.activeGameObject;
-            if (selected == null)
-            {
-                Debug.LogWarning("Please select an object first");
-                return;
-            }
+            GameObject obj = new GameObject("Audio Playlist");
+            obj.AddComponent<U3DAudioPlaylist>();
 
-            if (selected.GetComponent<U3DAudioPlaylist>() != null)
-            {
-                Debug.LogWarning("Object already has an AudioPlaylist component");
-                return;
-            }
-
-            Undo.RecordObject(selected, "Add AudioList Component");
-            selected.AddComponent<U3DAudioPlaylist>();
-
-            EditorUtility.SetDirty(selected);
+            PositionInScene(obj);
+            Selection.activeGameObject = obj;
+            EditorGUIUtility.PingObject(obj);
+            EditorUtility.SetDirty(obj);
         }
 
         // ───────────────────────────────────────────
