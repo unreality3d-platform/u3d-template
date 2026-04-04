@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Fusion;
+using System.Collections.Generic;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -26,12 +27,13 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource),
                 new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource),
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
-                new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
+                new CreatorTool("🟢 Add URL Link", "Click to open a URL in a new browser tab. Adds an Interact Trigger wired to open the link.", ApplyURLLink, true),
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
-                new CreatorTool("🚧 Add Image Gallery", "Display rotating image collections", () => { }),
-                new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
                 new CreatorTool("🟢 Add Movement Instructions", "Worldspace UI showing default movement patterns and all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
+                new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
+                new CreatorTool("🚧 Add Slide Presentation", "Display and cycle through image collections in a sequence, in one UI element", () => { }),
+                new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
             };
         }
 
@@ -47,6 +49,64 @@ namespace U3D.Editor
             {
                 ProjectToolsTab.DrawCategoryTool(tool);
             }
+        }
+
+        // ───────────────────────────────────────────
+        // URL Link
+        // ───────────────────────────────────────────
+
+        private static void ApplyURLLink()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Undo.RecordObject(selected, "Add URL Link");
+
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+                selected.AddComponent<BoxCollider>();
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            U3DInteractTrigger interactTrigger = selected.GetComponent<U3DInteractTrigger>();
+            if (interactTrigger == null)
+                interactTrigger = selected.AddComponent<U3DInteractTrigger>();
+
+            U3DOpenURL openURL = selected.GetComponent<U3DOpenURL>();
+            if (openURL == null)
+                openURL = selected.AddComponent<U3DOpenURL>();
+
+            if (interactTrigger.OnInteractTriggered == null)
+                interactTrigger.OnInteractTriggered = new UnityEngine.Events.UnityEvent();
+
+            if (!IsAlreadyWired(interactTrigger.OnInteractTriggered, openURL, "Open"))
+            {
+                UnityEditor.Events.UnityEventTools.AddVoidPersistentListener(
+                    interactTrigger.OnInteractTriggered,
+                    new UnityEngine.Events.UnityAction(openURL.Open)
+                );
+            }
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static bool IsAlreadyWired(UnityEngine.Events.UnityEvent unityEvent, Object target, string methodName)
+        {
+            for (int i = 0; i < unityEvent.GetPersistentEventCount(); i++)
+            {
+                if (unityEvent.GetPersistentTarget(i) == target &&
+                    unityEvent.GetPersistentMethodName(i) == methodName)
+                    return true;
+            }
+            return false;
         }
 
         // ───────────────────────────────────────────

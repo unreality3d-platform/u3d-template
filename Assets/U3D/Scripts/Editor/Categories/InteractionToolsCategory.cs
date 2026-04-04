@@ -480,7 +480,7 @@ namespace U3D.Editor
 
         // ========== SHARED HELPERS ==========
 
-        private static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
+        internal static void ConfigureNetworkObjectForSharedMode(NetworkObject networkObject)
         {
             var so = new SerializedObject(networkObject);
             var flagsProp = so.FindProperty("Flags");

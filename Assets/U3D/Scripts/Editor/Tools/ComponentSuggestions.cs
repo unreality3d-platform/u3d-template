@@ -24,6 +24,7 @@ namespace U3D.Editor
             {"grab", "Make Grabbable (Interactions)"},
             {"throw", "Make Throwable (Interactions)"},
             {"kick", "Make Kickable (Interactions)"},
+            {"push", "Make Pushable (Interactions)"},
 
             // Navigation
             {"portal", "Add Scene Portal (Interactions)"},
@@ -62,14 +63,16 @@ namespace U3D.Editor
             {"sound", "Add Audio List (Media & Content)"},
             {"music", "Add Audio List (Media & Content)"},
             {"video", "Add Video Player (Media & Content)"},
-            {"gallery", "Add Image Gallery (Media & Content)"},
-            {"image", "Add Image Gallery (Media & Content)"},
+            {"presentation", "Add Slide Presentation (Media & Content)"},
             {"guestbook", "Add Guestbook (Media & Content)"},
             {"message", "Add Guestbook (Media & Content)"},
             {"feedback", "Add Guestbook (Media & Content)"},
             {"ui", "Add Worldspace UI (Media & Content)"},
             {"canvas", "Add Worldspace UI (Media & Content)"},
             {"sign", "Add Worldspace UI (Media & Content)"},
+            {"url", "Add URL Link (Media & Content)"},
+            {"link", "Add URL Link (Media & Content)"},
+            {"website", "Add URL Link (Media & Content)"},
 
             // Monetization
             {"shop", "Add Shop Object (Monetization)"},
