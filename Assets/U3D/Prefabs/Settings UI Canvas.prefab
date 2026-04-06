@@ -3434,7 +3434,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mixer: {fileID: 24100000, guid: 0ca192ea063c5be4e91ea63fc2288b27, type: 2}
   mainSlider: {fileID: 8936098687357094746}
-  ambientSlider: {fileID: 0}
+  ambientSlider: {fileID: 5111347141163150118}
   effectsSlider: {fileID: 470021566532573387}
   musicSlider: {fileID: 4112411990582364793}
   voiceSlider: {fileID: 7135092116662259690}
