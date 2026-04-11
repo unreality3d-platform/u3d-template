@@ -128,7 +128,11 @@ namespace U3D.Networking
             InitializeNetworking();
             SetupInputActions();
 
-            if (Application.isMobilePlatform || Application.isEditor)
+            // Always attempt touch setup on WebGL — the touch zone component
+            // handles its own platform detection internally.
+            if (Application.isMobilePlatform ||
+                Application.isEditor ||
+                Application.platform == RuntimePlatform.WebGLPlayer)
             {
                 SetupTouchControls();
             }
@@ -156,6 +160,16 @@ namespace U3D.Networking
                 touchZones = touchControllerObj.AddComponent<U3DSimpleTouchZones>();
                 DontDestroyOnLoad(touchControllerObj);
             }
+        }
+
+        /// <summary>
+        /// Returns true if touch zones are active and providing input.
+        /// Uses the touch zone's own detection rather than Application.isMobilePlatform,
+        /// which returns false on WebGL even when running on a mobile browser.
+        /// </summary>
+        private bool IsTouchInputActive()
+        {
+            return touchZones != null && touchZones.IsTouchEnabled;
         }
 
         void InitializeNetworking()
@@ -227,7 +241,7 @@ namespace U3D.Networking
                 return;
             }
 
-            if (Application.isMobilePlatform && touchZones != null)
+            if (IsTouchInputActive() && UnityEngine.Input.touchCount > 0)
             {
                 _cachedMovementInput = touchZones.MovementInput;
                 _cachedLookInput = touchZones.LookInput;
