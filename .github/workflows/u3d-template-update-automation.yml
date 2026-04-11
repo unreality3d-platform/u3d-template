@@ -220,6 +220,15 @@ jobs:
           8. Click **Import**
           9. **Verify** your template version updated in Creator Dashboard
 
+          ## Troubleshooting After Update
+
+          If a GameObject loses U3D functionality after updating:
+          1. Select the GameObject in the Hierarchy
+          2. In the Inspector, remove any missing or outdated U3D components
+          3. Re-apply the feature from the Creator Dashboard (toolbar → U3D)
+
+          **Tip**: To get the latest demo scene, delete `Assets/U3D/U3D_Demo` before importing the update.
+
           ## Important Notes
 
           - **Always backup** your entire project folder before updating
