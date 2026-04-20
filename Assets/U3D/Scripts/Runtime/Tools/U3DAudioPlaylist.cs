@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace U3D
 {
@@ -30,6 +31,7 @@ namespace U3D
         [SerializeField] private bool fadeOutOnStop = true;
 
         [Header("Looping")]
+        [FormerlySerializedAs("loopSequence")]
         [SerializeField] private bool loopPlayback = false;
 
         private AudioSource _sourceA;
@@ -119,6 +121,15 @@ namespace U3D
             {
                 StopAllSources();
             }
+        }
+
+        // Backward compatibility wrapper for UnityEvent wirings created before the Stop() -> StopPlaylist() rename.
+        // Keeps existing creator scene wirings functional. Remove in a future major release after creators have
+        // had a reasonable window to re-wire.
+        [System.Obsolete("Use StopPlaylist() instead. Stop() is retained only for backward compatibility with existing UnityEvent wirings.")]
+        public void Stop()
+        {
+            StopPlaylist();
         }
 
         // ───────────────────────────────────────────
