@@ -1204,11 +1204,17 @@ namespace U3D.Editor
 
                 var uploader = new FirebaseStorageUploader(storageBucket, U3DAuthenticator.GetIdToken());
 
+                // === CHANGED: Pass the raw, case-preserving Product Name to the
+                // === server as productDisplayName. cachedProductName is the
+                // === canonical reference in this file's logic and equals
+                // === PlayerSettings.productName / Application.productName at
+                // === publish time.
                 var result = await uploader.UploadBuildToStorageWithIntent(
                     buildPath,
                     U3DAuthenticator.CreatorUsername,
                     targetRepositoryName,
-                    deploymentIntent
+                    deploymentIntent,
+                    cachedProductName
                 );
 
                 uploader.Dispose();
@@ -1280,15 +1286,26 @@ namespace U3D.Editor
             public string ErrorMessage { get; set; }
         }
 
+        // === CHANGED: Added credit line using U3DAuthenticator.DisplayName so the
+        // === user's name feature is visible in the success dialog. Falls back
+        // === to CreatorUsername if DisplayName is empty.
         private void ShowDeploymentSummary(string repositoryName)
         {
+            var displayName = !string.IsNullOrEmpty(U3DAuthenticator.DisplayName)
+                ? U3DAuthenticator.DisplayName
+                : U3DAuthenticator.CreatorUsername;
+
             string summaryMessage = "🎉 Publishing completed successfully!\n\n";
             summaryMessage += $"🌐 Your URL: {publishUrl}\n\n";
+            if (!string.IsNullOrEmpty(displayName))
+            {
+                summaryMessage += $"👤 Published by: {displayName}\n\n";
+            }
             summaryMessage += "🔧 Build Configuration:\n";
             summaryMessage += "• Unity build: Local (using your Unity license)\n";
             summaryMessage += "• Repository: Creator-owned GitHub repository\n";
             summaryMessage += "• Hosting: GitHub Pages (unlimited bandwidth)\n";
-            summaryMessage += "• Professional URL: Unreality3D Load Balancer\n";
+            summaryMessage += "• Professional URL: Unreality3D routing\n";
             summaryMessage += "\n💡 Next steps:\n";
             summaryMessage += "• Your content is live and accessible\n";
             summaryMessage += "• Push changes to trigger new deployments\n";

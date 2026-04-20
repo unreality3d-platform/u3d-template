@@ -441,6 +441,12 @@ public static class U3DAuthenticator
         }
     }
 
+    // === FIX: Reservation now caches both the lookup form AND the display form
+    // === from the server response, instead of the raw input typed by the user.
+    // === This is the Unity-side half of Rei's 404 root cause — Unity had been
+    // === caching "MakerComet" as _creatorUsername, but Firestore stored
+    // === "makercomet". The server's new response contract (file 2) returns
+    // === both forms; we cache both.
     public static async Task<bool> ReserveUsername(string username)
     {
         try
@@ -449,7 +455,34 @@ public static class U3DAuthenticator
 
             if (result.ContainsKey("success") && (bool)result["success"])
             {
-                _creatorUsername = username;
+                // Prefer server-normalized creatorUsername (lookup form).
+                // Fall back to legacy "username" field for compatibility with
+                // older server responses, and ultimately to the raw input as
+                // a last resort.
+                if (result.ContainsKey("creatorUsername") && result["creatorUsername"] != null)
+                {
+                    _creatorUsername = result["creatorUsername"].ToString();
+                }
+                else if (result.ContainsKey("username") && result["username"] != null)
+                {
+                    _creatorUsername = result["username"].ToString();
+                }
+                else
+                {
+                    _creatorUsername = username;
+                }
+
+                // Cache the server-returned displayName (trimmed raw input).
+                // Falls back to the raw input if the server didn't return it.
+                if (result.ContainsKey("displayName") && result["displayName"] != null)
+                {
+                    _displayName = result["displayName"].ToString();
+                }
+                else
+                {
+                    _displayName = username?.Trim() ?? "";
+                }
+
                 SaveCredentials();
                 return true;
             }

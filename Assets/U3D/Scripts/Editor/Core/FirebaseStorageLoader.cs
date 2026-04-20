@@ -57,7 +57,11 @@ public class FirebaseStorageUploader
         }
     }
 
-    public async Task<DeploymentResult> UploadBuildToStorageWithIntent(string buildPath, string creatorUsername, string baseProjectName, string deploymentIntent)
+    // === CHANGED: Added productDisplayName parameter so PublishTab can send
+    // === PlayerSettings.productName (the raw, case-preserving typed value) to
+    // === the server, which stores it as creator_projects.productDisplayName
+    // === and uses it in the Unity loading-screen title and generated README.
+    public async Task<DeploymentResult> UploadBuildToStorageWithIntent(string buildPath, string creatorUsername, string baseProjectName, string deploymentIntent, string productDisplayName)
     {
         try
         {
@@ -84,7 +88,7 @@ public class FirebaseStorageUploader
                 return new DeploymentResult { Success = false, ErrorMessage = "File upload failed" };
             }
 
-            return await TriggerGitHubDeploymentWithIntent(creatorUsername, baseProjectName, deploymentIntent, buildFiles);
+            return await TriggerGitHubDeploymentWithIntent(creatorUsername, baseProjectName, deploymentIntent, buildFiles, productDisplayName);
         }
         catch (Exception ex)
         {
@@ -93,7 +97,10 @@ public class FirebaseStorageUploader
         }
     }
 
-    private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files)
+    // === CHANGED: Added productDisplayName parameter and included it in the
+    // === deployment request payload. Server-side deployFromStorage (file 5)
+    // === destructures this field and threads it through the deploy chain.
+    private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files, string productDisplayName)
     {
         try
         {
@@ -108,7 +115,8 @@ public class FirebaseStorageUploader
             { "fileList", fileList },
             { "githubToken", GitHubTokenManager.Token },
             { "deploymentIntent", deploymentIntent },
-            { "creatorPayPalEmail", paypalEmail ?? "" }
+            { "creatorPayPalEmail", paypalEmail ?? "" },
+            { "productDisplayName", productDisplayName ?? "" }
         };
 
             var result = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry("deployFromStorage", deploymentRequest);
@@ -127,9 +135,32 @@ public class FirebaseStorageUploader
             }
             else
             {
-                var errorMessage = result.ContainsKey("error") ? result["error"].ToString() : "Unknown deployment error";
+                // Surface the full server error including any registration-failure
+                // guidance (file 5's deployFromStorage returns a descriptive message
+                // when registration throws, including the working GitHub Pages URL
+                // so the user isn't stranded).
+                var errorMessage = result.ContainsKey("message") && result["message"] != null
+                    ? result["message"].ToString()
+                    : (result.ContainsKey("error") ? result["error"].ToString() : "Unknown deployment error");
+
                 Debug.LogError($"❌ Deployment failed: {errorMessage}");
-                return new DeploymentResult { Success = false, ErrorMessage = errorMessage };
+
+                // If registration failed but the build IS live on GitHub Pages,
+                // return the fallback URL so the UI can still offer it to the user.
+                var fallbackUrl = result.ContainsKey("githubPagesUrl") && result["githubPagesUrl"] != null
+                    ? result["githubPagesUrl"].ToString()
+                    : "";
+                var fallbackProject = result.ContainsKey("actualProjectName") && result["actualProjectName"] != null
+                    ? result["actualProjectName"].ToString()
+                    : baseProjectName;
+
+                return new DeploymentResult
+                {
+                    Success = false,
+                    ErrorMessage = errorMessage,
+                    ActualProjectName = fallbackProject,
+                    Url = fallbackUrl
+                };
             }
         }
         catch (Exception ex)

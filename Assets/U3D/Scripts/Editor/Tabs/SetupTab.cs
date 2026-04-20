@@ -328,20 +328,24 @@ namespace U3D.Editor
             }
         }
 
+        // === CHANGED: Labels and help text reflect the two-field architecture.
+        // === Users now type a display-form Creator Name; the server computes
+        // === the URL-safe lookup form. Per decision #4, the live URL preview
+        // === is deferred — labels and help text only for this pass.
         private void DrawUsernameReservation()
         {
-            EditorGUILayout.LabelField("Reserve Your Creator Username", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Reserve Your Creator Name", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
             EditorGUILayout.HelpBox(
-                "Your username creates your professional URL:\n" +
-                "https://unreality3d.com/[username]/\n\n" +
-                "Choose carefully - this represents your creator brand.",
+                "Your name is how you're known on the platform. Capitals, spaces, " +
+                "hyphens, and underscores are fine. We'll create a URL-safe version " +
+                "automatically for your pages: unreality3d.com/[url-safe-name]/",
                 MessageType.Info);
 
             EditorGUILayout.Space(10);
 
-            EditorGUILayout.LabelField("Desired Username:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Your Creator Name:", EditorStyles.boldLabel);
             string newUsername = EditorGUILayout.TextField(desiredUsername);
 
             if (newUsername != desiredUsername)
@@ -374,10 +378,10 @@ namespace U3D.Editor
             {
                 if (usernameAvailable)
                 {
-                    EditorGUILayout.HelpBox("Username is available!", MessageType.Info);
+                    EditorGUILayout.HelpBox("Name is available!", MessageType.Info);
 
                     EditorGUI.BeginDisabledGroup(reservingUsername);
-                    if (GUILayout.Button("Reserve Username", GUILayout.Height(35)))
+                    if (GUILayout.Button("Reserve Name", GUILayout.Height(35)))
                     {
                         ReserveUsername();
                     }
@@ -385,12 +389,12 @@ namespace U3D.Editor
 
                     if (reservingUsername)
                     {
-                        EditorGUILayout.LabelField("Reserving username...", EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("Reserving name...", EditorStyles.miniLabel);
                     }
                 }
                 else
                 {
-                    EditorGUILayout.HelpBox("Username is not available.", MessageType.Warning);
+                    EditorGUILayout.HelpBox("Name is not available.", MessageType.Warning);
 
                     if (usernameSuggestions.Length > 0)
                     {
@@ -817,6 +821,11 @@ namespace U3D.Editor
             }
         }
 
+        // === CHANGED: Success dialog shows both the display name (what the
+        // === user typed) and the lookup-form professional URL. After the
+        // === U3DAuthenticator.ReserveUsername fix in file 7A, DisplayName
+        // === holds the trimmed raw input and CreatorUsername holds the
+        // === URL-safe lookup form.
         private async void ReserveUsername()
         {
             reservingUsername = true;
@@ -840,13 +849,21 @@ namespace U3D.Editor
                         currentState = AuthState.LoggedIn;
                     }
                     UpdateCompletion();
+
+                    var shownDisplayName = !string.IsNullOrEmpty(U3DAuthenticator.DisplayName)
+                        ? U3DAuthenticator.DisplayName
+                        : desiredUsername;
+                    var shownUrlName = !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername)
+                        ? U3DAuthenticator.CreatorUsername
+                        : desiredUsername;
+
                     EditorUtility.DisplayDialog("Success!",
-                        $"Username '{desiredUsername}' reserved successfully!\n\nYour professional URL: https://unreality3d.com/{desiredUsername}/",
+                        $"Name '{shownDisplayName}' reserved successfully!\n\nYour professional URL: https://unreality3d.com/{shownUrlName}/",
                         "Awesome!");
                 }
                 else
                 {
-                    EditorUtility.DisplayDialog("Reservation Failed", "Failed to reserve username. Please try again.", "OK");
+                    EditorUtility.DisplayDialog("Reservation Failed", "Failed to reserve name. Please try again.", "OK");
                 }
             }
             catch (Exception ex)
