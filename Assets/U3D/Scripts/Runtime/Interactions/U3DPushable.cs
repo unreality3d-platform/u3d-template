@@ -734,11 +734,6 @@ namespace U3D
             return CanStartPush();
         }
 
-        public int GetInteractionPriority()
-        {
-            return 30;
-        }
-
         public string GetInteractionPrompt()
         {
             if (grabbable != null && grabbable.IsGrabbed)

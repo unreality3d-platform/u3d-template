@@ -634,119 +634,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 74011101}
   m_CullTransparentMesh: 1
---- !u!1 &74202879 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-  m_PrefabInstance: {fileID: 351686678}
-  m_PrefabAsset: {fileID: 0}
 --- !u!4 &74202881 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6884755092382502008, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
   m_PrefabInstance: {fileID: 351686678}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &74202882
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 74202879}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8cb9240298aee804981ac3471ea981c5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DOpenURL
-  url: https://www.adjectivebeaver.com/
-  OnURLOpened:
-    m_PersistentCalls:
-      m_Calls: []
---- !u!114 &74202883
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 74202879}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 71a54a45528999546879d3cf946a1df4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DInteractTrigger
-  requireTag: 0
-  requiredTag: Player
-  triggerOnce: 0
-  cooldownTime: 0
-  interactKey: 114
-  maxInteractDistance: 3
-  maxClickDistance: 10
-  allowMouseClick: 1
-  labelUI: {fileID: 0}
-  OnInteractTriggered:
-    m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 74202882}
-        m_TargetAssemblyTypeName: U3D.U3DOpenURL, U3D.Runtime
-        m_MethodName: Open
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: 
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-  OnInteractFailed:
-    m_PersistentCalls:
-      m_Calls: []
-  OnPlayerEnterRangeEvent:
-    m_PersistentCalls:
-      m_Calls: []
-  OnPlayerExitRangeEvent:
-    m_PersistentCalls:
-      m_Calls: []
-  _NetworkHasTriggered: 0
-  _NetworkLastTriggerTime: 0
---- !u!114 &74202884
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 74202879}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
-  SortKey: 3913744248
-  ObjectInterest: 1
-  Flags: 524289
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 74202883}
-  ForceRemoteRenderTimeframe: 0
---- !u!65 &74202885
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 74202879}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &79214897
 GameObject:
   m_ObjectHideFlags: 0
@@ -2619,6 +2511,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: SkipRigTiling
       objectReference: {fileID: 0}
+    - target: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6884755092382502008, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
       propertyPath: m_LocalPosition.x
       value: 15
@@ -2662,19 +2558,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 74202885}
-    - targetCorrespondingSourceObject: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 74202884}
-    - targetCorrespondingSourceObject: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 74202883}
-    - targetCorrespondingSourceObject: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 74202882}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
 --- !u!1 &359620734
 GameObject:
@@ -3943,6 +3827,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: U3DCoin
       objectReference: {fileID: 0}
+    - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
+      propertyPath: useRadiusDetection
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
+      propertyPath: grabDetectionRadius
+      value: 5
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -5174,6 +5066,7 @@ Transform:
   - {fileID: 89861282}
   - {fileID: 557501850}
   - {fileID: 8159490}
+  - {fileID: 1142375835}
   - {fileID: 74202881}
   - {fileID: 329734320}
   m_Father: {fileID: 0}
@@ -5297,7 +5190,7 @@ Transform:
   m_GameObject: {fileID: 710018663}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 15, y: 2.5, z: 25}
+  m_LocalPosition: {x: 15, y: 2.27, z: 25}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -7226,8 +7119,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  grabDetectionRadius: 1
-  useRadiusDetection: 1
   minGrabDistance: 0
   maxGrabDistance: 2
   grabKey: 114
@@ -8590,6 +8481,203 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1136829057}
   m_CullTransparentMesh: 1
+--- !u!1 &1142375834
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1142375835}
+  - component: {fileID: 1142375841}
+  - component: {fileID: 1142375840}
+  - component: {fileID: 1142375839}
+  - component: {fileID: 1142375838}
+  - component: {fileID: 1142375837}
+  - component: {fileID: 1142375836}
+  m_Layer: 0
+  m_Name: Open URL
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1142375835
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 15, y: 6, z: 10}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 703688350}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1142375836
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8cb9240298aee804981ac3471ea981c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DOpenURL
+  url: https://www.adjectivebeaver.com/
+  OnURLOpened:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &1142375837
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71a54a45528999546879d3cf946a1df4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DInteractTrigger
+  requireTag: 0
+  requiredTag: Player
+  triggerOnce: 0
+  cooldownTime: 0
+  interactKey: 114
+  maxInteractDistance: 3
+  maxClickDistance: 10
+  allowMouseClick: 1
+  labelUI: {fileID: 0}
+  OnInteractTriggered:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 1142375836}
+        m_TargetAssemblyTypeName: U3D.U3DOpenURL, U3D.Runtime
+        m_MethodName: Open
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: 
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+  OnInteractFailed:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerEnterRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnPlayerExitRangeEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  _NetworkHasTriggered: 0
+  _NetworkLastTriggerTime: 0
+--- !u!114 &1142375838
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
+  SortKey: 1481155481
+  ObjectInterest: 1
+  Flags: 524289
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 1142375837}
+  ForceRemoteRenderTimeframe: 0
+--- !u!65 &1142375839
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!23 &1142375840
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Enabled: 0
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &1142375841
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1142375834}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!1 &1144277450
 GameObject:
   m_ObjectHideFlags: 0
@@ -9338,8 +9426,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddcb0acd59ed6044c80e9df1232ca5c6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DGrabbable
-  grabDetectionRadius: 1
-  useRadiusDetection: 1
   minGrabDistance: 0
   maxGrabDistance: 2
   grabKey: 114
@@ -14335,7 +14421,7 @@ Transform:
   m_GameObject: {fileID: 1938776870}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 15, y: 2.8, z: 25}
+  m_LocalPosition: {x: 15, y: 2.57, z: 25}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:

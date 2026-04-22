@@ -207,11 +207,6 @@ namespace U3D
             return isInRange;
         }
 
-        public int GetInteractionPriority()
-        {
-            return 20;
-        }
-
         public string GetInteractionPrompt()
         {
             return $"Interact ({interactKey})";

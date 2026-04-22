@@ -36,18 +36,11 @@ namespace U3D.Editor
             {
                 if (EditorStyles.miniButton == null) return;
 
-                sectionButtonStyle = new GUIStyle(EditorStyles.miniButton)
-                {
-                    normal = { textColor = Color.white },
-                    hover = { textColor = Color.white },
-                    onNormal = { textColor = Color.white }
-                };
+                // Let Unity's default button style handle text color for theme compatibility
+                sectionButtonStyle = new GUIStyle(EditorStyles.miniButton);
 
                 activeSectionButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
                 {
-                    normal = { textColor = Color.white },
-                    hover = { textColor = Color.white },
-                    onNormal = { textColor = Color.white },
                     fontStyle = FontStyle.Bold
                 };
 

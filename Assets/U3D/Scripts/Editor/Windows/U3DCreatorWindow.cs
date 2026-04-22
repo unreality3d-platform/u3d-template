@@ -132,35 +132,17 @@ namespace U3D.Editor
                     wordWrap = true
                 };
 
-                // Use the same base style as your existing buttons
+                // Let Unity's default button style handle text color for theme compatibility
                 tabButtonStyle = new GUIStyle("Button")
                 {
                     fontSize = 12,
-                    fixedHeight = 35,
-                    normal = {
-                        textColor = Color.white
-                    },
-                    hover = {
-                        textColor = Color.white
-                    },
-                    onNormal = {
-                        textColor = Color.white
-                    }
+                    fixedHeight = 35
                 };
 
                 activeTabButtonStyle = new GUIStyle("Button")
                 {
                     fontSize = 12,
                     fixedHeight = 35,
-                    normal = {
-                        textColor = Color.white
-                    },
-                    hover = {
-                        textColor = Color.white
-                    },
-                    onNormal = {
-                        textColor = Color.white
-                    },
                     fontStyle = FontStyle.Bold
                 };
 
@@ -318,7 +300,11 @@ namespace U3D.Editor
             var versionStyle = new GUIStyle(EditorStyles.miniLabel)
             {
                 fontSize = 10,
-                normal = { textColor = new Color(0.7f, 0.7f, 0.7f) },
+                normal = {
+                    textColor = EditorGUIUtility.isProSkin
+                        ? new Color(0.7f, 0.7f, 0.7f)
+                        : new Color(0.35f, 0.35f, 0.35f)
+                },
                 alignment = TextAnchor.MiddleCenter
             };
 
@@ -330,6 +316,13 @@ namespace U3D.Editor
 
             var status = U3DTemplateUpdateChecker.CurrentStatus;
 
+            bool isDark = EditorGUIUtility.isProSkin;
+            Color checkingColor = isDark ? new Color(0.6f, 0.6f, 0.6f) : new Color(0.35f, 0.35f, 0.35f);
+            Color upToDateColor = isDark ? new Color(0.4f, 0.8f, 0.4f) : new Color(0f, 0.5f, 0f);
+            Color updateAvailableColor = isDark ? new Color(1f, 0.8f, 0.2f) : new Color(0.6f, 0.45f, 0f);
+            Color downloadingColor = isDark ? new Color(0.6f, 0.8f, 1f) : new Color(0.1f, 0.35f, 0.6f);
+            Color errorColor = isDark ? new Color(0.8f, 0.4f, 0.4f) : new Color(0.65f, 0.1f, 0.1f);
+
             switch (status)
             {
                 case U3DTemplateUpdateChecker.UpdateStatus.Unknown:
@@ -337,18 +330,18 @@ namespace U3D.Editor
                     break;
 
                 case U3DTemplateUpdateChecker.UpdateStatus.Checking:
-                    DrawCenteredMiniLabel("Checking for updates...", new Color(0.6f, 0.6f, 0.6f));
+                    DrawCenteredMiniLabel("Checking for updates...", checkingColor);
                     Repaint();
                     break;
 
                 case U3DTemplateUpdateChecker.UpdateStatus.UpToDate:
-                    DrawCenteredMiniLabel("✓ Up to date", new Color(0.4f, 0.8f, 0.4f));
+                    DrawCenteredMiniLabel("✓ Up to date", upToDateColor);
                     break;
 
                 case U3DTemplateUpdateChecker.UpdateStatus.UpdateAvailable:
                     DrawCenteredMiniLabel(
                         $"Update available: {U3DTemplateUpdateChecker.LatestVersion}",
-                        new Color(1f, 0.8f, 0.2f));
+                        updateAvailableColor);
 
                     if (!U3DTemplateUpdateChecker.IsDownloading)
                     {
@@ -365,7 +358,7 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        DrawCenteredMiniLabel("Downloading...", new Color(0.6f, 0.8f, 1f));
+                        DrawCenteredMiniLabel("Downloading...", downloadingColor);
                         Repaint();
                     }
                     break;
@@ -373,7 +366,7 @@ namespace U3D.Editor
                 case U3DTemplateUpdateChecker.UpdateStatus.CheckFailed:
                     DrawCenteredMiniLabel(
                         $"Update check failed: {U3DTemplateUpdateChecker.ErrorMessage}",
-                        new Color(0.8f, 0.4f, 0.4f));
+                        errorColor);
 
                     EditorGUILayout.BeginHorizontal();
                     GUILayout.FlexibleSpace();

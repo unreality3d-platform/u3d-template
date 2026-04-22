@@ -34,31 +34,11 @@ namespace U3D.Editor
                 // Only create styles if EditorStyles is ready
                 if (EditorStyles.miniButton == null) return;
 
-                // Match ONLY the color settings from your main window
-                subtabButtonStyle = new GUIStyle(EditorStyles.miniButton)
-                {
-                    normal = {
-                textColor = Color.white
-            },
-                    hover = {
-                textColor = Color.white
-            },
-                    onNormal = {
-                textColor = Color.white
-            }
-                };
+                // Let Unity's default button style handle text color for theme compatibility
+                subtabButtonStyle = new GUIStyle(EditorStyles.miniButton);
 
                 activeSubtabButtonStyle = new GUIStyle(EditorStyles.miniButtonMid)
                 {
-                    normal = {
-                textColor = Color.white
-            },
-                    hover = {
-                textColor = Color.white
-            },
-                    onNormal = {
-                textColor = Color.white
-            },
                     fontStyle = FontStyle.Bold
                 };
 

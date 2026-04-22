@@ -10,17 +10,12 @@ namespace U3D
     /// Prevents race conditions and ensures deterministic state synchronization
     /// Enhanced with remappable interaction keys using Unity Input System
     /// Input handling delegated to U3DInteractionManager to prevent double-input
+    /// Aim detection delegated to U3DInteractionManager SphereCast — this component
+    /// only gates proximity via min/max grab distance.
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
     {
-        [Header("Grab Detection Radius")]
-        [Tooltip("Detection radius around the object (independent of collider size)")]
-        [SerializeField] private float grabDetectionRadius = 1.0f;
-
-        [Tooltip("Use radius-based detection instead of precise raycast")]
-        [SerializeField] private bool useRadiusDetection = true;
-
         [Header("Grab Distance Configuration")]
         [Tooltip("Minimum distance to grab from (0 = touch only)")]
         [SerializeField] private float minGrabDistance = 0f;
@@ -86,8 +81,6 @@ namespace U3D
         // Deterministic state management
         private GrabState localGrabState = GrabState.Free;
         private bool isInRange = false;
-        private bool isAimedAt = false;
-        private float lastAimCheckTime;
         private bool isNetworked = false;
         private bool hasRigidbody = false;
         private bool hasNetworkRb3D = false;
@@ -111,6 +104,13 @@ namespace U3D
 
         // Static tracking for single grab mode - per client
         private static U3DGrabbable currentlyGrabbed;
+
+        /// <summary>
+        /// The grabbable currently held by the local player, or null if the player's hands are empty.
+        /// Exposed so U3DInteractionManager can route R-press directly to the held object for release
+        /// without needing to find it via SphereCast.
+        /// </summary>
+        public static U3DGrabbable CurrentlyGrabbed => currentlyGrabbed;
 
         public enum GrabState : byte
         {
@@ -181,12 +181,6 @@ namespace U3D
         private void Update()
         {
             UpdatePlayerProximity();
-
-            if (maxGrabDistance > 0f && !IsCurrentlyGrabbed() && Time.time - lastAimCheckTime > 0.1f)
-            {
-                lastAimCheckTime = Time.time;
-                CheckIfAimedAt();
-            }
 
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
@@ -283,13 +277,7 @@ namespace U3D
             }
 
             float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-            if (distanceToPlayer < minGrabDistance || distanceToPlayer > maxGrabDistance)
-                return false;
-
-            if (maxGrabDistance > minGrabDistance && playerCamera != null)
-                return CheckAimingAtObject();
-
-            return true;
+            return distanceToPlayer >= minGrabDistance && distanceToPlayer <= maxGrabDistance;
         }
 
         private void RequestGrabAuthority()
@@ -553,68 +541,6 @@ namespace U3D
                 OnExitGrabRange?.Invoke();
         }
 
-        private void CheckIfAimedAt()
-        {
-            bool wasAimedAt = isAimedAt;
-            isAimedAt = CheckAimingAtObject();
-        }
-
-        private bool CheckAimingAtObject()
-        {
-            if (playerCamera == null || maxGrabDistance <= 0f || playerTransform == null)
-                return false;
-
-            float avatarDistance = Vector3.Distance(transform.position, playerTransform.position);
-            if (avatarDistance < minGrabDistance || avatarDistance > maxGrabDistance)
-                return false;
-
-            bool isThirdPerson = playerController != null && !playerController.IsFirstPerson;
-
-            if (isThirdPerson)
-            {
-                Vector3 avatarToObject = transform.position - playerTransform.position;
-                avatarToObject.y = 0f;
-
-                Vector3 avatarForward = playerTransform.forward;
-                avatarForward.y = 0f;
-                avatarForward.Normalize();
-
-                if (avatarToObject.magnitude > 0.1f)
-                {
-                    float angle = Vector3.Angle(avatarForward, avatarToObject.normalized);
-                    return angle <= 60f;
-                }
-                return true;
-            }
-            else
-            {
-                if (useRadiusDetection)
-                {
-                    Vector3 cameraToObject = transform.position - playerCamera.transform.position;
-                    float distanceToObject = cameraToObject.magnitude;
-
-                    if (distanceToObject <= maxGrabDistance)
-                    {
-                        Vector3 cameraForward = playerCamera.transform.forward;
-                        Vector3 directionToObject = cameraToObject.normalized;
-                        float angle = Vector3.Angle(cameraForward, directionToObject);
-                        float maxAllowedAngle = Mathf.Atan(grabDetectionRadius / distanceToObject) * Mathf.Rad2Deg;
-                        return angle <= maxAllowedAngle;
-                    }
-                }
-                else
-                {
-                    Vector3 avatarEyeLevel = playerTransform.position + Vector3.up * 1.5f;
-                    Ray ray = new Ray(avatarEyeLevel, playerCamera.transform.forward);
-
-                    if (Physics.Raycast(ray, out RaycastHit hit, maxGrabDistance))
-                        return hit.collider == col;
-                }
-            }
-
-            return false;
-        }
-
         private void RecordSpawnPosition()
         {
             if (!hasRecordedSpawn)
@@ -677,13 +603,6 @@ namespace U3D
             return dist >= minGrabDistance && dist <= maxGrabDistance;
         }
 
-        public int GetInteractionPriority()
-        {
-            if (localGrabState == GrabState.Grabbed) return 60;
-            if (minGrabDistance <= 0f) return 50;
-            return 40;
-        }
-
         public string GetInteractionPrompt()
         {
             if (isRequestingAuthority) return "Requesting...";
@@ -695,7 +614,6 @@ namespace U3D
         // Public properties
         public bool IsGrabbed => IsCurrentlyGrabbed();
         public bool IsInRange => isInRange;
-        public bool IsAimedAt => isAimedAt;
         public bool IsNetworked => isNetworked;
         public bool HasRigidbody => hasRigidbody;
         public bool HasThrowable => throwable != null;

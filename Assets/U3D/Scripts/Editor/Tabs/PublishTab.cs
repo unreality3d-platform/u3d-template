@@ -601,17 +601,19 @@ namespace U3D.Editor
                 var style = new GUIStyle(EditorStyles.boldLabel);
 
                 // Color logic with enhanced matching indication
+                // Colors darken in light mode for readability on light backgrounds
+                bool isDark = EditorGUIUtility.isProSkin;
                 if (option.Type == ProjectOption.OptionType.CreateNew)
                 {
-                    style.normal.textColor = Color.yellow;
+                    style.normal.textColor = isDark ? Color.yellow : new Color(0.6f, 0.45f, 0f);
                 }
                 else if (hasMatchingRepo && option.RepositoryName == matchingRepo.RepositoryName)
                 {
-                    style.normal.textColor = Color.cyan; // Special color for matching repo
+                    style.normal.textColor = isDark ? Color.cyan : new Color(0f, 0.45f, 0.55f);
                 }
                 else
                 {
-                    style.normal.textColor = Color.green;
+                    style.normal.textColor = isDark ? Color.green : new Color(0f, 0.5f, 0f);
                 }
 
                 // Display text with enhanced matching indication
@@ -770,7 +772,9 @@ namespace U3D.Editor
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
                     var headerStyle = new GUIStyle(EditorStyles.boldLabel);
-                    headerStyle.normal.textColor = new Color(0.3f, 0.7f, 1f);
+                    headerStyle.normal.textColor = EditorGUIUtility.isProSkin
+                        ? new Color(0.3f, 0.7f, 1f)
+                        : new Color(0.1f, 0.35f, 0.6f);
                     EditorGUILayout.LabelField("📷 Optional: Add a Thumbnail", headerStyle);
 
                     EditorGUILayout.LabelField("If you want to include a thumbnail for unreality3d.com to display:", EditorStyles.wordWrappedLabel);
@@ -787,7 +791,9 @@ namespace U3D.Editor
                     if (File.Exists(projectThumbnailPath))
                     {
                         var successStyle = new GUIStyle(EditorStyles.miniLabel);
-                        successStyle.normal.textColor = Color.green;
+                        successStyle.normal.textColor = EditorGUIUtility.isProSkin
+                            ? Color.green
+                            : new Color(0f, 0.5f, 0f);
                         EditorGUILayout.LabelField("✅ Found: thumbnail.jpg in Assets/_MyAssets", successStyle);
 
                         if (GUILayout.Button("View Current Thumbnail", GUILayout.Height(25)))
@@ -797,9 +803,8 @@ namespace U3D.Editor
                     }
                     else
                     {
-                        var infoStyle = new GUIStyle(EditorStyles.miniLabel);
-                        infoStyle.normal.textColor = Color.gray;
-                        EditorGUILayout.LabelField("💡 No thumbnail.jpg found in Assets/_MyAssets", infoStyle);
+                        // Let Unity's default miniLabel handle theming
+                        EditorGUILayout.LabelField("💡 No thumbnail.jpg found in Assets/_MyAssets", EditorStyles.miniLabel);
 
                         if (GUILayout.Button("Open _MyAssets Folder", GUILayout.Height(25)))
                         {
@@ -1320,7 +1325,9 @@ namespace U3D.Editor
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             var successStyle = new GUIStyle(EditorStyles.boldLabel);
-            successStyle.normal.textColor = Color.green;
+            successStyle.normal.textColor = EditorGUIUtility.isProSkin
+                ? Color.green
+                : new Color(0f, 0.5f, 0f);
             successStyle.fontSize = 16;
 
             EditorGUILayout.LabelField("🎉 Success! Your content is live!", successStyle);

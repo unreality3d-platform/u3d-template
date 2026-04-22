@@ -102,7 +102,6 @@ namespace U3D
         // State tracking
         private bool isNetworked = false;
         private bool isInKickRange = false;
-        private float lastRangeCheckTime;
         private Coroutine boundsCheckCoroutine;
 
         // Authority request management (modeled on U3DGrabbable)
@@ -850,11 +849,6 @@ namespace U3D
         public bool CanInteract()
         {
             return CanAttemptKick();
-        }
-
-        public int GetInteractionPriority()
-        {
-            return 30;
         }
 
         public string GetInteractionPrompt()
