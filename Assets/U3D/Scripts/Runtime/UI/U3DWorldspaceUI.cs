@@ -36,12 +36,21 @@ namespace U3D
         private Camera targetCamera;
         private Transform _localPlayerTransform;
         private float targetAlpha;
+        private bool _hasSnappedToInitialAlpha;
+
+        // Throttled search for Camera.main while it doesn't exist yet (bootstrap window).
+        private const float CameraSearchInterval = 0.25f;
+        private float _nextCameraSearchTime;
 
         void Awake()
         {
             canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();
+
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
         }
 
         void Start()
@@ -53,7 +62,11 @@ namespace U3D
         {
             if (targetCamera == null)
             {
-                FindTargetCamera();
+                if (Time.unscaledTime >= _nextCameraSearchTime)
+                {
+                    FindTargetCamera();
+                    _nextCameraSearchTime = Time.unscaledTime + CameraSearchInterval;
+                }
                 if (targetCamera == null) return;
             }
 
@@ -111,7 +124,20 @@ namespace U3D
                 targetAlpha = 1f - t;
             }
 
-            canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, targetAlpha, fadeSpeed * Time.deltaTime);
+            // Gate on first valid frame: don't start fading until the local player exists,
+            // so the initial distance calculation reflects the real viewpoint. Without this
+            // gate, labels would fade in during the bootstrap window based on the wrong
+            // distance source (Camera.main fallback).
+            if (!_hasSnappedToInitialAlpha && _localPlayerTransform != null)
+            {
+                _hasSnappedToInitialAlpha = true;
+            }
+
+            if (_hasSnappedToInitialAlpha)
+            {
+                canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, targetAlpha, fadeSpeed * Time.deltaTime);
+            }
+
             canvasGroup.interactable = canvasGroup.alpha > 0.1f;
             canvasGroup.blocksRaycasts = canvasGroup.alpha > 0.1f;
         }
