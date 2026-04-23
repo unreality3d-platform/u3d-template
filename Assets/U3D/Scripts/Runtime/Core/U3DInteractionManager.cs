@@ -4,27 +4,24 @@ namespace U3D
 {
     /// <summary>
     /// Handles interaction detection and dispatch for the U3D interaction system.
-    /// Selection uses a SphereCast in the direction the player's body is facing —
-    /// whatever the cast hits first, if it's an IU3DInteractable that can be interacted
-    /// with, receives OnInteract(). No priority scoring. Closest hit wins.
+    /// Uses an OverlapSphere centered on the player to find nearby interactables.
+    /// The closest one that CanInteract() returns true wins. No priority scoring,
+    /// no directionality — proximity alone determines selection.
     ///
     /// If the player is currently holding a grabbable object, R is routed directly
-    /// to that object so it can handle its own release. The SphereCast is skipped
+    /// to that object so it can handle its own release. The OverlapSphere is skipped
     /// in that case.
     /// </summary>
     public class U3DInteractionManager : MonoBehaviour
     {
-        [Header("Interaction SphereCast")]
-        [Tooltip("Radius of the SphereCast used to find interactables in front of the player. Larger = more forgiving aim.")]
-        [SerializeField] private float sphereCastRadius = 0.5f;
+        [Header("Interaction Detection")]
+        [Tooltip("Radius of the OverlapSphere used to find interactables near the player.")]
+        [SerializeField] private float interactionRange = 3f;
 
-        [Tooltip("Maximum distance the SphereCast will check for interactables.")]
-        [SerializeField] private float sphereCastMaxDistance = 15f;
-
-        [Tooltip("Layers checked by the interaction SphereCast.")]
+        [Tooltip("Layers checked by the interaction OverlapSphere.")]
         [SerializeField] private LayerMask interactionLayerMask = -1;
 
-        [Tooltip("Show the SphereCast in the Scene view when this object is selected.")]
+        [Tooltip("Show the interaction range sphere in the Scene view when this object is selected.")]
         [SerializeField] private bool debugMode = false;
 
         private static U3DInteractionManager instance;
@@ -62,9 +59,7 @@ namespace U3D
         private void Update()
         {
             if (localPlayerController == null)
-            {
                 FindLocalPlayer();
-            }
         }
 
         private void FindLocalPlayer()
@@ -74,14 +69,13 @@ namespace U3D
 
         /// <summary>
         /// Called by PlayerController when interact button is pressed.
-        /// If the player is holding a grabbable, route the press to that object (drop/release).
-        /// Otherwise, SphereCast forward to find the closest interactable the player is aiming at.
+        /// If the player is holding a grabbable, route the press to that object for release.
+        /// Otherwise find the closest interactable within range.
         /// </summary>
         public void OnPlayerInteract()
         {
             if (localPlayerController == null) return;
 
-            // Hands full? The press goes to the held object so it can handle its own release.
             if (U3DGrabbable.CurrentlyGrabbed != null)
             {
                 U3DGrabbable.CurrentlyGrabbed.OnInteract();
@@ -90,52 +84,41 @@ namespace U3D
 
             IU3DInteractable target = GetBestInteractable();
             if (target != null)
-            {
                 target.OnInteract();
-            }
         }
 
         /// <summary>
-        /// SphereCast in the direction the player's body is facing.
-        /// Fires two casts: chest height first (covers grab/throw/interact targets at
-        /// hand level on tables, shelves, etc.), then floor height (covers kickables
-        /// and low-to-the-ground objects). First valid hit wins.
+        /// OverlapSphere centered on the player. Returns the closest IU3DInteractable
+        /// whose CanInteract() returns true. Closest wins, no priority, no directionality.
         /// </summary>
         private IU3DInteractable GetBestInteractable()
         {
             if (localPlayerController == null) return null;
 
-            Transform playerTransform = localPlayerController.transform;
-            Vector3 direction = playerTransform.forward;
+            Vector3 playerPosition = localPlayerController.transform.position;
 
-            // Primary: chest-height cast for grab/throw/interact targets
-            Vector3 chestOrigin = playerTransform.position + Vector3.up * 1.0f;
-            IU3DInteractable chestHit = CastForInteractable(chestOrigin, direction);
-            if (chestHit != null) return chestHit;
+            Collider[] colliders = Physics.OverlapSphere(playerPosition, interactionRange,
+                interactionLayerMask, QueryTriggerInteraction.Collide);
 
-            // Fallback: floor-height cast for kickables and low objects
-            Vector3 floorOrigin = playerTransform.position;
-            return CastForInteractable(floorOrigin, direction);
-        }
+            IU3DInteractable best = null;
+            float closestDistance = Mathf.Infinity;
 
-        /// <summary>
-        /// Single SphereCast that returns an interactable if one is hit and can be interacted with.
-        /// </summary>
-        private IU3DInteractable CastForInteractable(Vector3 origin, Vector3 direction)
-        {
-            if (Physics.SphereCast(origin, sphereCastRadius, direction, out RaycastHit hit,
-                sphereCastMaxDistance, interactionLayerMask, QueryTriggerInteraction.Collide))
+            foreach (Collider col in colliders)
             {
-                // Walk up the hierarchy — covers cases where the collider is on a child
-                // of the IU3DInteractable component.
-                IU3DInteractable interactable = hit.collider.GetComponentInParent<IU3DInteractable>();
-                if (interactable != null && interactable.CanInteract())
+                IU3DInteractable interactable = col.GetComponentInParent<IU3DInteractable>();
+                if (interactable == null || !interactable.CanInteract()) continue;
+
+                float distance = Vector3.Distance(playerPosition,
+                    ((MonoBehaviour)interactable).transform.position);
+
+                if (distance < closestDistance)
                 {
-                    return interactable;
+                    closestDistance = distance;
+                    best = interactable;
                 }
             }
 
-            return null;
+            return best;
         }
 
         private void OnDrawGizmosSelected()
@@ -143,24 +126,8 @@ namespace U3D
             if (!debugMode) return;
             if (localPlayerController == null) return;
 
-            Transform playerTransform = localPlayerController.transform;
-            Vector3 direction = playerTransform.forward;
-
-            // Primary cast (chest height) — cyan
-            Vector3 chestOrigin = playerTransform.position + Vector3.up * 1.0f;
-            Vector3 chestEnd = chestOrigin + direction * sphereCastMaxDistance;
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(chestOrigin, sphereCastRadius);
-            Gizmos.DrawLine(chestOrigin, chestEnd);
-            Gizmos.DrawWireSphere(chestEnd, sphereCastRadius);
-
-            // Fallback cast (floor height) — yellow
-            Vector3 floorOrigin = playerTransform.position;
-            Vector3 floorEnd = floorOrigin + direction * sphereCastMaxDistance;
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(floorOrigin, sphereCastRadius);
-            Gizmos.DrawLine(floorOrigin, floorEnd);
-            Gizmos.DrawWireSphere(floorEnd, sphereCastRadius);
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(localPlayerController.transform.position, interactionRange);
         }
     }
 
@@ -169,29 +136,10 @@ namespace U3D
     /// </summary>
     public interface IU3DInteractable
     {
-        /// <summary>
-        /// Called when player interacts with this object.
-        /// </summary>
         void OnInteract();
-
-        /// <summary>
-        /// Called when player enters interaction range.
-        /// </summary>
         void OnPlayerEnterRange();
-
-        /// <summary>
-        /// Called when player exits interaction range.
-        /// </summary>
         void OnPlayerExitRange();
-
-        /// <summary>
-        /// Check if this object can currently be interacted with.
-        /// </summary>
         bool CanInteract();
-
-        /// <summary>
-        /// Get text to show in interaction prompt.
-        /// </summary>
         string GetInteractionPrompt();
     }
 }
