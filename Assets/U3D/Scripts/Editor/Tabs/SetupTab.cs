@@ -529,12 +529,18 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Step 1: Go to GitHub", EditorStyles.boldLabel);
             if (GUILayout.Button("Open GitHub Settings", GUILayout.Height(35)))
             {
-                Application.OpenURL("https://github.com/settings/tokens/new");
+                Application.OpenURL("https://github.com/settings/tokens/new?scopes=repo,workflow&description=U3D");
             }
             EditorGUILayout.Space(5);
 
-            EditorGUILayout.LabelField("Step 2: Fill out the form", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("• Note: Type in 'Unreality3D Publishing'", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Step 2: If you see a list of tokens", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Click 'Generate new token' (top right)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("• Choose 'Generate new token (classic)'", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("(If you went straight to a form, skip to Step 3)", EditorStyles.miniLabel);
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.LabelField("Step 3: Fill out the form", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("• Note: Type in 'U3D' (or any name you'll recognize)", EditorStyles.miniLabel);
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("• Expiration: Choose '90 days' (Recommended)", EditorStyles.miniLabel);
@@ -553,7 +559,7 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("  workflow (Update GitHub Action workflows)", EditorStyles.miniLabel);
             EditorGUILayout.Space(3);
 
-            EditorGUILayout.LabelField("Step 3: Create and copy", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Step 4: Create and copy", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("• Click 'Generate token' at the bottom", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("• Copy the long code that appears", EditorStyles.miniLabel);
             EditorGUILayout.LabelField("• Paste it below", EditorStyles.miniLabel);
