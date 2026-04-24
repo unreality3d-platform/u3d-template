@@ -1445,6 +1445,20 @@ public class U3DPlayerController : NetworkBehaviour
     public bool JumpPressedThisFrame => _jumpPressedPending;
     public CharacterController CharacterController => characterController;
 
+    // ==================== PUBLIC ACCESSORS FOR FEATURE FLAGS ====================
+    // Read-only exposure of Inspector toggles so editor tools (like Movement
+    // Instructions UI generation) can reflect the creator's actual configuration.
+
+    public bool EnableMovement => enableMovement;
+    public bool EnableJumping => enableJumping;
+    public bool EnableSprintToggle => enableSprintToggle;
+    public bool EnableCrouchToggle => enableCrouchToggle;
+    public bool EnableFlying => enableFlying;
+    public bool EnableAutoRun => enableAutoRun;
+    public bool EnableTeleport => enableTeleport;
+    public bool EnableViewZoom => enableViewZoom;
+    public bool EnableAdvancedCamera => enableAdvancedCamera;
+
     public void SetPosition(Vector3 position)
     {
         if (!_isLocalPlayer)

@@ -29,7 +29,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
                 new CreatorTool("🟢 Add URL Link", "Click to open a URL in a new browser tab. Adds an Interact Trigger wired to open the link.", ApplyURLLink, true),
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
-                new CreatorTool("🟢 Add Movement Instructions", "Worldspace UI showing default movement patterns and all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
+                new CreatorTool("🟢 Add Instructions", "Worldspace UI showing default movement and control patterns with all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
                 new CreatorTool("🟢 Add Screenspace UI", "Screen overlay canvas with title and body text. Good for HUDs, menus, or info overlays. Add your own buttons and content.", CreateScreenspaceUI),
                 new CreatorTool("🚧 Add Slide Presentation", "Display and cycle through image collections in a sequence, in one UI element", () => { }),
@@ -348,7 +348,7 @@ namespace U3D.Editor
         {
             string instructionText = BuildMovementInstructionsText();
 
-            GameObject canvasObj = new GameObject("Movement Instructions");
+            GameObject canvasObj = new GameObject("Instructions");
 
             Canvas canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
@@ -471,31 +471,66 @@ namespace U3D.Editor
         {
             var sb = new System.Text.StringBuilder();
 
-            // ── Section 1: Default Movement Patterns ──
-            sb.AppendLine("<b>MOVEMENT</b>");
+            // Find the Player Controller prefab to read enabled-feature flags.
+            // Intro sections conditionally hide lines that the creator has disabled.
+            U3DPlayerController playerController = FindPlayerControllerForFlags();
+
+            bool showMovement = playerController == null || playerController.EnableMovement;
+            bool showJump = playerController == null || playerController.EnableJumping;
+            bool showSprint = playerController == null || playerController.EnableSprintToggle;
+            bool showCrouch = playerController == null || playerController.EnableCrouchToggle;
+            bool showFly = playerController == null || playerController.EnableFlying;
+            bool showAutoRun = playerController == null || playerController.EnableAutoRun;
+            bool showTeleport = playerController == null || playerController.EnableTeleport;
+            bool showZoom = playerController == null || playerController.EnableViewZoom;
+            bool showAdvancedCam = playerController == null || playerController.EnableAdvancedCamera;
+
+            // ── BASIC MOVEMENT ──
+            var basicLines = new List<string>();
+            if (showMovement) basicLines.Add("Walk: W A S D  or  Arrow Keys");
+            if (showMovement && showSprint) basicLines.Add("Run: Shift (toggle)");
+            if (showMovement && showJump) basicLines.Add("Jump: Space");
+            if (showMovement && showCrouch) basicLines.Add("Crouch: C");
+
+            if (basicLines.Count > 0)
+            {
+                sb.AppendLine("<b>BASIC MOVEMENT</b>");
+                sb.AppendLine("─────────────────────────");
+                foreach (var line in basicLines) sb.AppendLine(line);
+                sb.AppendLine();
+            }
+
+            // ── CAMERA + UI ──
+            var cameraLines = new List<string>();
+            cameraLines.Add("Look: Right Mouse + Move");
+            cameraLines.Add("Interact: R");
+            cameraLines.Add("Free Cursor (stay in game): Tab");
+            cameraLines.Add("Free Cursor (return to browser): Esc");
+            if (showZoom) cameraLines.Add("Zoom: Mouse Wheel");
+
+            sb.AppendLine("<b>CAMERA + UI</b>");
             sb.AppendLine("─────────────────────────");
-            sb.AppendLine("Walk: W A S D  or  Arrow Keys");
-            sb.AppendLine("Run: Hold Shift while moving");
-            sb.AppendLine("Jump: Space");
-            sb.AppendLine("Crouch: C");
-            sb.AppendLine("Fly: F (toggle)");
-            sb.AppendLine();
-            sb.AppendLine("<b>CAMERA</b>");
-            sb.AppendLine("─────────────────────────");
-            sb.AppendLine("Look: Right Mouse + Move");
-            sb.AppendLine("Zoom: Mouse Wheel");
-            sb.AppendLine("Strafe: Q / E");
-            sb.AppendLine();
-            sb.AppendLine("<b>SPECIAL MOVEMENT</b>");
-            sb.AppendLine("─────────────────────────");
-            sb.AppendLine("Move Forward: Left + Right Mouse");
-            sb.AppendLine("Steer: Left + Right Mouse + Move Mouse");
-            sb.AppendLine("Auto-Run: Num Lock (toggle)");
-            sb.AppendLine("Teleport: Double-Click (if enabled)");
-            sb.AppendLine("Interact: R");
+            foreach (var line in cameraLines) sb.AppendLine(line);
             sb.AppendLine();
 
-            // ── Section 2: All Input Bindings (read from asset) ──
+            // ── SPECIAL MOVEMENT ──
+            var specialLines = new List<string>();
+            if (showFly) specialLines.Add("Fly: F (toggle)");
+            if (showMovement) specialLines.Add("Strafe: Q / E");
+            if (showAdvancedCam && showMovement) specialLines.Add("Move Forward: Left + Right Mouse");
+            if (showAdvancedCam && showMovement) specialLines.Add("Steer: Left + Right Mouse + Move Mouse");
+            if (showAutoRun && showMovement) specialLines.Add("Auto-Run: Num Lock (toggle)");
+            if (showTeleport) specialLines.Add("Teleport: Double-Click");
+
+            if (specialLines.Count > 0)
+            {
+                sb.AppendLine("<b>SPECIAL MOVEMENT</b>");
+                sb.AppendLine("─────────────────────────");
+                foreach (var line in specialLines) sb.AppendLine(line);
+                sb.AppendLine();
+            }
+
+            // ── ALL INPUT BINDINGS ──
             sb.AppendLine("<b>ALL INPUT BINDINGS</b>");
             sb.AppendLine("─────────────────────────");
 
@@ -513,14 +548,109 @@ namespace U3D.Editor
                 return sb.ToString();
             }
 
+            // Map action names to the feature flag that controls them. Null = always shown.
+            System.Func<string, bool> isActionEnabled = (actionName) =>
+            {
+                if (playerController == null) return true;
+                switch (actionName)
+                {
+                    case "Jump": return playerController.EnableJumping;
+                    case "Sprint": return playerController.EnableSprintToggle;
+                    case "Crouch": return playerController.EnableCrouchToggle;
+                    case "Fly": return playerController.EnableFlying;
+                    case "AutoRun":
+                    case "AutoRunToggle": return playerController.EnableAutoRun;
+                    case "Teleport": return playerController.EnableTeleport;
+                    case "Zoom": return playerController.EnableViewZoom;
+                    case "Move":
+                    case "StrafeLeft":
+                    case "StrafeRight":
+                    case "TurnLeft":
+                    case "TurnRight": return playerController.EnableMovement;
+                    default: return true;
+                }
+            };
+
+            // Keyboard/mouse bindings
+            var keyboardLines = new List<string>();
             foreach (var action in playerMap.actions)
             {
-                string keys = GetBindingDisplayString(action);
+                if (!isActionEnabled(action.name)) continue;
+                string keys = GetBindingDisplayString(action, BindingDeviceFilter.KeyboardMouse);
                 if (!string.IsNullOrEmpty(keys))
-                    sb.AppendLine($"{action.name}: {keys}");
+                    keyboardLines.Add($"{GetActionDisplayName(action.name)}: {keys}");
+            }
+
+            if (keyboardLines.Count > 0)
+            {
+                foreach (var line in keyboardLines)
+                    sb.AppendLine(line);
+            }
+            else
+            {
+                sb.AppendLine("(No keyboard or mouse bindings)");
+            }
+
+            // ── VR CONTROLS (only if XR bindings exist) ──
+            var xrLines = new List<string>();
+            foreach (var action in playerMap.actions)
+            {
+                if (!isActionEnabled(action.name)) continue;
+                string xr = GetBindingDisplayString(action, BindingDeviceFilter.XR);
+                if (!string.IsNullOrEmpty(xr))
+                    xrLines.Add($"{GetActionDisplayName(action.name)}: {xr}");
+            }
+
+            if (xrLines.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("<b>VR CONTROLS</b>");
+                sb.AppendLine("─────────────────────────");
+                foreach (var line in xrLines)
+                    sb.AppendLine(line);
             }
 
             return sb.ToString();
+        }
+
+        private static U3DPlayerController FindPlayerControllerForFlags()
+        {
+            // Prefer a Player Controller that's actually in the open scene — reflects
+            // any scene-level overrides the creator has made.
+            U3DPlayerController inScene = Object.FindAnyObjectByType<U3DPlayerController>(
+                FindObjectsInactive.Include);
+            if (inScene != null) return inScene;
+
+            // Fall back to the prefab — covers the common case where the creator
+            // hasn't dropped the player into the scene yet.
+            string[] guids = AssetDatabase.FindAssets("U3D_PlayerController t:Prefab");
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (prefab == null) continue;
+                var controller = prefab.GetComponent<U3DPlayerController>();
+                if (controller != null) return controller;
+            }
+
+            return null;
+        }
+
+        private static string GetActionDisplayName(string actionName)
+        {
+            // Override action names that don't self-explain to visitors.
+            // The action name itself stays unchanged in the asset — this only
+            // affects what the Movement Instructions UI shows.
+            switch (actionName)
+            {
+                case "Pause": return "Free Cursor (stay in game)";
+                case "Escape": return "Free Cursor (return to browser)";
+                case "PerspectiveSwitch": return "Camera Perspective";
+                case "AutoRunToggle": return "Auto-Run";
+                case "MouseLeft": return "Primary Click";
+                case "MouseRight": return "Camera Look (hold)";
+                default: return actionName;
+            }
         }
 
         private static InputActionAsset FindInputActionAsset()
@@ -536,34 +666,185 @@ namespace U3D.Editor
             return AssetDatabase.LoadAssetAtPath<InputActionAsset>(path);
         }
 
-        private static string GetBindingDisplayString(InputAction action)
+        private enum BindingDeviceFilter
         {
-            var keys = new List<string>();
+            KeyboardMouse,
+            XR
+        }
 
-            foreach (var binding in action.bindings)
+        private static string GetBindingDisplayString(InputAction action, BindingDeviceFilter filter)
+        {
+            var entries = new List<string>();
+            var bindings = action.bindings;
+
+            for (int i = 0; i < bindings.Count; i++)
             {
-                if (binding.isComposite) continue;
+                var binding = bindings[i];
 
-                string display = InputControlPath.ToHumanReadableString(
-                    binding.effectivePath,
-                    InputControlPath.HumanReadableStringOptions.OmitDevice);
-
-                if (!string.IsNullOrEmpty(display) && !keys.Contains(display))
+                // Handle composites (like 2D Vector for WASD) as a single entry
+                if (binding.isComposite)
                 {
-                    display = display
-                        .Replace("Up Arrow", "↑")
-                        .Replace("Down Arrow", "↓")
-                        .Replace("Left Arrow", "←")
-                        .Replace("Right Arrow", "→")
-                        .Replace("Left Shift", "Shift")
-                        .Replace("Left Ctrl", "Ctrl")
-                        .Replace("Mouse Delta", "Mouse")
-                        .Replace("Scroll Y", "Mouse Wheel");
-                    keys.Add(display);
+                    string compositeDisplay = FormatComposite(bindings, i, filter);
+                    if (!string.IsNullOrEmpty(compositeDisplay) && !entries.Contains(compositeDisplay))
+                        entries.Add(compositeDisplay);
+
+                    // Skip ahead past all parts of this composite
+                    int j = i + 1;
+                    while (j < bindings.Count && bindings[j].isPartOfComposite)
+                        j++;
+                    i = j - 1;
+                    continue;
                 }
+
+                // Skip orphan composite parts (shouldn't happen, but safe)
+                if (binding.isPartOfComposite) continue;
+
+                if (!BindingMatchesFilter(binding.effectivePath, filter)) continue;
+
+                string display = FormatSingleBinding(binding.effectivePath, filter);
+                if (!string.IsNullOrEmpty(display) && !entries.Contains(display))
+                    entries.Add(display);
             }
 
-            return string.Join("  |  ", keys);
+            return string.Join("  |  ", entries);
+        }
+
+        private static string FormatComposite(IReadOnlyList<InputBinding> bindings, int compositeIndex, BindingDeviceFilter filter)
+        {
+            // Gather parts of the composite
+            var partDisplays = new List<string>();
+            for (int j = compositeIndex + 1; j < bindings.Count; j++)
+            {
+                if (!bindings[j].isPartOfComposite) break;
+
+                string path = bindings[j].effectivePath;
+                if (!BindingMatchesFilter(path, filter)) continue;
+
+                string part = FormatSingleBinding(path, filter);
+                if (!string.IsNullOrEmpty(part))
+                    partDisplays.Add(part);
+            }
+
+            if (partDisplays.Count == 0) return null;
+
+            // For 2D Vector composites (WASD, arrows), the order is Up/Down/Left/Right.
+            // Render as a compact group rather than "Up | Down | Left | Right".
+            if (partDisplays.Count == 4)
+                return string.Join(" ", partDisplays);
+
+            // For 1D axis or other composites, join with slashes
+            return string.Join(" / ", partDisplays);
+        }
+
+        private static bool BindingMatchesFilter(string effectivePath, BindingDeviceFilter filter)
+        {
+            if (string.IsNullOrEmpty(effectivePath)) return false;
+
+            bool isXR = effectivePath.Contains("<XRController>")
+                     || effectivePath.Contains("<XRHMD>")
+                     || effectivePath.Contains("<WebXRController>");
+
+            if (filter == BindingDeviceFilter.XR) return isXR;
+
+            // KeyboardMouse: exclude XR, exclude gamepad (not currently supported),
+            // include keyboard and mouse
+            if (isXR) return false;
+            return effectivePath.Contains("<Keyboard>") || effectivePath.Contains("<Mouse>");
+        }
+
+        private static string FormatSingleBinding(string effectivePath, BindingDeviceFilter filter)
+        {
+            if (filter == BindingDeviceFilter.XR)
+                return FormatXRBinding(effectivePath);
+
+            string display = InputControlPath.ToHumanReadableString(
+                effectivePath,
+                InputControlPath.HumanReadableStringOptions.OmitDevice);
+
+            if (string.IsNullOrEmpty(display)) return null;
+
+            display = display
+                .Replace("Up Arrow", "↑")
+                .Replace("Down Arrow", "↓")
+                .Replace("Left Arrow", "←")
+                .Replace("Right Arrow", "→")
+                .Replace("Left Shift", "Shift")
+                .Replace("Left Ctrl", "Ctrl")
+                .Replace("Mouse Delta", "Mouse")
+                .Replace("Scroll Y", "Mouse Wheel");
+
+            return display;
+        }
+
+        private static string FormatXRBinding(string effectivePath)
+        {
+            if (string.IsNullOrEmpty(effectivePath)) return null;
+
+            // Extract handedness from {LeftHand} or {RightHand} usage tag
+            string hand = null;
+            if (effectivePath.Contains("{LeftHand}")) hand = "Left";
+            else if (effectivePath.Contains("{RightHand}")) hand = "Right";
+
+            // Extract the control name (the last path segment)
+            int lastSlash = effectivePath.LastIndexOf('/');
+            if (lastSlash < 0 || lastSlash >= effectivePath.Length - 1) return null;
+
+            string control = effectivePath.Substring(lastSlash + 1);
+
+            // Map XR control names to readable labels
+            string readable = PrettifyXRControl(control);
+            if (string.IsNullOrEmpty(readable)) return null;
+
+            return hand != null ? $"{hand} {readable}" : readable;
+        }
+
+        private static string PrettifyXRControl(string control)
+        {
+            if (string.IsNullOrEmpty(control)) return null;
+
+            switch (control)
+            {
+                case "trigger":
+                case "triggerButton":
+                case "triggerPressed":
+                    return "Trigger";
+                case "grip":
+                case "gripButton":
+                case "gripPressed":
+                    return "Grip";
+                case "primaryButton":
+                case "primaryPressed":
+                    return "Primary Button (A/X)";
+                case "secondaryButton":
+                case "secondaryPressed":
+                    return "Secondary Button (B/Y)";
+                case "menuButton":
+                    return "Menu Button";
+                case "primary2DAxis":
+                case "thumbstick":
+                    return "Thumbstick";
+                case "primary2DAxisClick":
+                case "thumbstickClicked":
+                    return "Thumbstick Click";
+                case "secondary2DAxis":
+                case "touchpad":
+                    return "Touchpad";
+                case "secondary2DAxisClick":
+                case "touchpadClicked":
+                    return "Touchpad Click";
+                case "devicePosition":
+                    return "Controller Position";
+                case "deviceRotation":
+                    return "Controller Rotation";
+                case "centerEyePosition":
+                    return "Headset Position";
+                case "centerEyeRotation":
+                    return "Headset Rotation";
+                default:
+                    // Fallback: insert spaces before capitals and title-case
+                    return System.Text.RegularExpressions.Regex.Replace(
+                        control, "([a-z])([A-Z])", "$1 $2");
+            }
         }
 
         // ───────────────────────────────────────────
