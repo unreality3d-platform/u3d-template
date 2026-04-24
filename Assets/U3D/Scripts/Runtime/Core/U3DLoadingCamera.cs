@@ -1,5 +1,7 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace U3D
 {
@@ -13,6 +15,10 @@ namespace U3D
     ///
     /// Also enforces Depth = -10 so the player camera (depth -1) always renders
     /// on top, preventing a stuck-view bug if a creator changes the depth value.
+    ///
+    /// Fires OnHandoffComplete just before destroying itself, so other components
+    /// (e.g. U3DWorldspaceUI) can defer their own visual work until the scene is
+    /// stable and the player camera is rendering solo.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class U3DLoadingCamera : MonoBehaviour
@@ -28,6 +34,20 @@ namespace U3D
         private const float EnforcedDepth = -10f;
         private const float PollInterval = 0.25f;
 
+        /// <summary>
+        /// Fired once per LoadingCamera instance, just before its GameObject is destroyed.
+        /// Subscribers can use this to defer visual work until the camera handoff is complete.
+        /// Static so subscribers don't need a direct reference to the instance.
+        /// </summary>
+        public static event Action OnHandoffComplete;
+
+        /// <summary>
+        /// True once OnHandoffComplete has fired for the current scene's LoadingCamera.
+        /// Reset to false when a new LoadingCamera Awakes (e.g. after scene transition).
+        /// Components spawned after handoff can check this flag instead of waiting for the event.
+        /// </summary>
+        public static bool HandoffComplete { get; private set; }
+
         private Camera _camera;
 
         void Awake()
@@ -35,6 +55,10 @@ namespace U3D
             _camera = GetComponent<Camera>();
             if (_camera != null)
                 _camera.depth = EnforcedDepth;
+
+            // New LoadingCamera means we're in a fresh scene (or the first one).
+            // Reset the handoff state so subscribers know to wait again.
+            HandoffComplete = false;
         }
 
         void OnValidate()
@@ -61,6 +85,7 @@ namespace U3D
                     if (handoffDelay > 0f)
                         yield return new WaitForSeconds(handoffDelay);
 
+                    FireHandoffComplete();
                     Destroy(gameObject);
                     yield break;
                 }
@@ -70,7 +95,9 @@ namespace U3D
             }
 
             // Timed out. Leave the loading camera in place as a fallback rather than
-            // destroying it and leaving the player with no view at all.
+            // destroying it and leaving the player with no view at all. Do NOT fire
+            // OnHandoffComplete — subscribers should rely on their own safety timeout
+            // to decide how to proceed when the handoff genuinely did not happen.
             Debug.LogWarning("U3DLoadingCamera: Local player camera was not detected within " +
                              maxWaitSeconds + " seconds. LoadingCamera will remain active as a fallback view.");
         }
@@ -94,6 +121,12 @@ namespace U3D
                 return mainCam;
 
             return null;
+        }
+
+        private void FireHandoffComplete()
+        {
+            HandoffComplete = true;
+            OnHandoffComplete?.Invoke();
         }
     }
 }

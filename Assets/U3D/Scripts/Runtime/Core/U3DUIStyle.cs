@@ -11,8 +11,8 @@ namespace U3D
     ///
     /// The goal of this helper is to keep U3D tool-created UI visually consistent
     /// by routing every tool through the same style methods, rather than hardcoding
-    /// font sizes and colors in each tool. See U3D-UI-Style-Spec.md for the rules
-    /// this helper encodes and when to deviate.
+    /// font sizes and colors in each tool. See the UI Creation Methods Reference
+    /// (U3D-Reference-Router) for the rules this helper encodes and when to deviate.
     /// </summary>
     public static class U3DUIStyle
     {
@@ -218,6 +218,36 @@ namespace U3D
             }
 
             return statusTMP;
+        }
+
+        // ───────────────────────────────────────────
+        // Scroll View Configuration
+        // ───────────────────────────────────────────
+
+        /// <summary>
+        /// Configure a scroll view created by DefaultControls.CreateScrollView to scroll vertically only.
+        /// Matches the settings verified to work in the Settings UI Canvas:
+        ///   - ScrollRect.horizontal = false
+        ///   - ScrollRect.horizontalScrollbarVisibility = Permanent
+        ///   - Horizontal scrollbar GameObject and reference are preserved (required for the hide to work)
+        /// Vertical scrollbar settings are left untouched for the caller to configure.
+        ///
+        /// Note on the counterintuitive enum value: in this configuration, Permanent hides the horizontal
+        /// scrollbar in Play Mode while AutoHide variants show it. This is empirically verified behavior
+        /// in the Settings UI Canvas. Do not change to AutoHide or AutoHideAndExpandViewport without
+        /// retesting in Play Mode. In Edit Mode the scrollbar will be visible regardless — this is
+        /// documented Unity behavior (Edit Mode always shows scrollbars so layout can be authored with
+        /// them in mind).
+        /// </summary>
+        public static void ConfigureVerticalOnlyScrollView(GameObject scrollView)
+        {
+            if (scrollView == null) return;
+
+            var scrollRect = scrollView.GetComponent<ScrollRect>();
+            if (scrollRect == null) return;
+
+            scrollRect.horizontal = false;
+            scrollRect.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
         }
     }
 }

@@ -170,13 +170,15 @@ namespace U3D.Editor
             container.name = "Tip Jar";
             container.transform.SetParent(canvas.transform, false);
 
+            U3DUIStyle.ApplyPanelStyle(container);
+
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = new Vector2(0.5f, 0.5f);
             containerRect.anchorMax = new Vector2(0.5f, 0.5f);
             containerRect.sizeDelta = new Vector2(300, 200);
             containerRect.anchoredPosition = Vector2.zero;
 
-            CreateCleanHeaderUI(container, "Tip Jar");
+            U3DUIStyle.CreateHeader(container, "Tip Jar");
 
             var tmpResources = new TMP_DefaultControls.Resources();
 
@@ -198,7 +200,7 @@ namespace U3D.Editor
             if (placeholder != null)
             {
                 placeholder.text = "Enter tip amount ($1.00 - $100.00)";
-                placeholder.color = new Color32(150, 150, 150, 128);
+                U3DUIStyle.ApplyPlaceholderStyle(placeholder);
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -211,15 +213,9 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Send Tip";
-                buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255);
-            }
+            U3DUIStyle.ApplyButtonStyle(button, "Send Tip");
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
 
             var dualTransaction = container.AddComponent<PayPalDualTransaction>();
             dualTransaction.SetItemDetails("Creator Tip", "Support this creator's work", 5.00f);
@@ -254,6 +250,11 @@ namespace U3D.Editor
             var tmpResources = new TMP_DefaultControls.Resources();
             var uiResources = new DefaultControls.Resources();
 
+            // Full-screen container acts as a modal backdrop: covers the viewport,
+            // blocks input from falling through to the game world, and tints the
+            // scene so the inner content panel has focus. The explicit alpha matches
+            // Unity's default panel alpha; this is intentional so the tint reads the
+            // same as every other U3D panel rather than the old dim-black look.
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = Vector2.zero;
             containerRect.anchorMax = Vector2.one;
@@ -265,12 +266,15 @@ namespace U3D.Editor
             {
                 containerImage = container.AddComponent<Image>();
             }
-            containerImage.color = new Color(0, 0, 0, 0.8f);
+            U3DUIStyle.StripSprite(container);
+            containerImage.color = new Color32(255, 255, 255, 100);
             containerImage.raycastTarget = true;
 
             GameObject contentPanel = DefaultControls.CreatePanel(uiResources);
             contentPanel.name = "ContentPanel";
             contentPanel.transform.SetParent(container.transform, false);
+
+            U3DUIStyle.ApplyPanelStyle(contentPanel);
 
             var contentRect = contentPanel.GetComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -278,13 +282,7 @@ namespace U3D.Editor
             contentRect.sizeDelta = new Vector2(400, 300);
             contentRect.anchoredPosition = Vector2.zero;
 
-            var contentImage = contentPanel.GetComponent<Image>();
-            if (contentImage != null)
-            {
-                contentImage.color = new Color(1f, 1f, 1f, 0.95f);
-            }
-
-            CreateCleanHeaderUI(contentPanel, "Scene Access Required");
+            U3DUIStyle.CreateHeader(contentPanel, "Scene Access Required");
 
             GameObject messageText = TMP_DefaultControls.CreateText(tmpResources);
             messageText.name = "MessageText";
@@ -300,10 +298,7 @@ namespace U3D.Editor
             if (messageTMP != null)
             {
                 messageTMP.text = "This premium content requires payment to access.\n\nSupport the creator and unlock this experience!";
-                messageTMP.fontSize = 14;
-                messageTMP.color = new Color32(50, 50, 50, 255);
-                messageTMP.alignment = TextAlignmentOptions.Center;
-                messageTMP.raycastTarget = false;
+                U3DUIStyle.ApplyBodyStyle(messageTMP);
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -316,39 +311,19 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
+            // Strip the button sprite per the standard rule, but route the label
+            // through ApplyBodyStyle (18pt) rather than ApplyButtonStyle (14pt).
+            // This is the "higher-emphasis" tier for a prominent CTA — if BodyFontSize
+            // changes in U3DUIStyle, this button's label tracks it automatically.
+            U3DUIStyle.StripSprite(button);
             var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)
             {
                 buttonText.text = "Unlock Scene - $3.00";
-                buttonText.fontSize = 16;
-                buttonText.color = new Color32(50, 50, 50, 255);
+                U3DUIStyle.ApplyBodyStyle(buttonText);
             }
 
-            var buttonImage = button.GetComponent<Image>();
-            if (buttonImage != null)
-            {
-                buttonImage.color = new Color32(100, 200, 100, 255);
-            }
-
-            GameObject statusText = TMP_DefaultControls.CreateText(tmpResources);
-            statusText.name = "StatusText";
-            statusText.transform.SetParent(contentPanel.transform, false);
-
-            var statusRect = statusText.GetComponent<RectTransform>();
-            statusRect.anchorMin = new Vector2(0.1f, 0.05f);
-            statusRect.anchorMax = new Vector2(0.9f, 0.2f);
-            statusRect.offsetMin = Vector2.zero;
-            statusRect.offsetMax = Vector2.zero;
-
-            var statusTMP = statusText.GetComponent<TextMeshProUGUI>();
-            if (statusTMP != null)
-            {
-                statusTMP.text = "Ready to accept payment (95% Creator, 5% Platform)";
-                statusTMP.fontSize = 10;
-                statusTMP.color = new Color32(50, 50, 50, 255);
-                statusTMP.alignment = TextAlignmentOptions.Center;
-                statusTMP.raycastTarget = false;
-            }
+            U3DUIStyle.CreateStatusText(contentPanel, "Ready to accept payment (95% Creator, 5% Platform)");
         }
 
         private void CreateShopObject()
@@ -402,7 +377,7 @@ namespace U3D.Editor
             canvas.renderMode = RenderMode.WorldSpace;
             canvasObject.AddComponent<CanvasScaler>();
             canvasObject.AddComponent<GraphicRaycaster>();
-            canvas.transform.localScale = Vector3.one * 0.01f;
+            canvas.transform.localScale = Vector3.one * U3DUIStyle.WorldspaceCanvasScale;
 
             return canvas;
         }
@@ -427,13 +402,15 @@ namespace U3D.Editor
             container.name = name;
             container.transform.SetParent(canvas.transform, false);
 
+            U3DUIStyle.ApplyPanelStyle(container);
+
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = new Vector2(0.5f, 0.5f);
             containerRect.anchorMax = new Vector2(0.5f, 0.5f);
             containerRect.sizeDelta = new Vector2(300, 200);
             containerRect.anchoredPosition = Vector2.zero;
 
-            CreateCleanHeaderUI(container, name);
+            U3DUIStyle.CreateHeader(container, name);
 
             customSetup?.Invoke(container);
 
@@ -450,77 +427,19 @@ namespace U3D.Editor
             container.name = name;
             container.transform.SetParent(canvas.transform, false);
 
+            U3DUIStyle.ApplyPanelStyle(container);
+
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = new Vector2(0.5f, 0.5f);
             containerRect.anchorMax = new Vector2(0.5f, 0.5f);
             containerRect.sizeDelta = new Vector2(400, 300);
             containerRect.anchoredPosition = Vector2.zero;
 
-            CreateCleanHeaderUI(container, name);
+            U3DUIStyle.CreateHeader(container, name);
             customSetup?.Invoke(container);
 
             Selection.activeGameObject = canvas.gameObject;
             return container;
-        }
-
-        private void CreateCleanHeaderUI(GameObject parent, string title)
-        {
-            var uiResources = new DefaultControls.Resources();
-
-            GameObject header = DefaultControls.CreatePanel(uiResources);
-            header.name = "Header";
-            header.transform.SetParent(parent.transform, false);
-
-            var headerRect = header.GetComponent<RectTransform>();
-            headerRect.anchorMin = new Vector2(0, 0.8f);
-            headerRect.anchorMax = new Vector2(1, 1);
-            headerRect.offsetMin = Vector2.zero;
-            headerRect.offsetMax = Vector2.zero;
-
-            var tmpResources = new TMP_DefaultControls.Resources();
-            GameObject titleText = TMP_DefaultControls.CreateText(tmpResources);
-            titleText.name = "Title";
-            titleText.transform.SetParent(header.transform, false);
-
-            var titleRect = titleText.GetComponent<RectTransform>();
-            titleRect.anchorMin = Vector2.zero;
-            titleRect.anchorMax = Vector2.one;
-            titleRect.offsetMin = new Vector2(10, 0);
-            titleRect.offsetMax = new Vector2(-10, 0);
-
-            var titleTMP = titleText.GetComponent<TextMeshProUGUI>();
-            if (titleTMP != null)
-            {
-                titleTMP.text = title;
-                titleTMP.fontSize = 16;
-                titleTMP.color = new Color32(50, 50, 50, 255);
-                titleTMP.alignment = TextAlignmentOptions.Center;
-                titleTMP.raycastTarget = false;
-            }
-        }
-
-        private void CreateCleanStatusText(GameObject container)
-        {
-            var tmpResources = new TMP_DefaultControls.Resources();
-
-            GameObject statusText = TMP_DefaultControls.CreateText(tmpResources);
-            statusText.name = "StatusText";
-            statusText.transform.SetParent(container.transform, false);
-
-            var statusRect = statusText.GetComponent<RectTransform>();
-            statusRect.anchorMin = new Vector2(0, 0);
-            statusRect.anchorMax = new Vector2(1, 0.15f);
-            statusRect.offsetMin = new Vector2(10, 5);
-            statusRect.offsetMax = new Vector2(-10, -5);
-
-            var statusTMP = statusText.GetComponent<TextMeshProUGUI>();
-            if (statusTMP != null)
-            {
-                statusTMP.text = "Ready to accept payments";
-                statusTMP.fontSize = 10;
-                statusTMP.color = new Color32(50, 50, 50, 255);
-                statusTMP.raycastTarget = false;
-            }
         }
 
         private void CreatePurchaseButtonUI(GameObject container)
@@ -541,10 +460,7 @@ namespace U3D.Editor
             if (priceTMP != null)
             {
                 priceTMP.text = "$5.00";
-                priceTMP.fontSize = 18;
-                priceTMP.color = new Color32(50, 50, 50, 255);
-                priceTMP.alignment = TextAlignmentOptions.Center;
-                priceTMP.raycastTarget = false;
+                U3DUIStyle.ApplyBodyStyle(priceTMP);
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -557,15 +473,9 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Purchase";
-                buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255);
-            }
+            U3DUIStyle.ApplyButtonStyle(button, "Purchase");
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
 
         private void CreateSceneGateUI(GameObject container)
@@ -586,10 +496,7 @@ namespace U3D.Editor
             if (descTMP != null)
             {
                 descTMP.text = "Premium Scene Access Required\nPay to unlock this area";
-                descTMP.fontSize = 12;
-                descTMP.color = new Color32(50, 50, 50, 255);
-                descTMP.alignment = TextAlignmentOptions.Center;
-                descTMP.raycastTarget = false;
+                U3DUIStyle.ApplyBodyStyle(descTMP);
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -602,15 +509,9 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Unlock Scene";
-                buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255);
-            }
+            U3DUIStyle.ApplyButtonStyle(button, "Unlock Scene");
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
 
         private void CreateShopObjectUI(GameObject container)
@@ -632,10 +533,7 @@ namespace U3D.Editor
             if (titleTMP != null)
             {
                 titleTMP.text = "Creator Shop";
-                titleTMP.fontSize = 14;
-                titleTMP.color = new Color32(50, 50, 50, 255);
-                titleTMP.alignment = TextAlignmentOptions.Center;
-                titleTMP.raycastTarget = false;
+                U3DUIStyle.ApplyTitleStyle(titleTMP);
             }
 
             GameObject scrollView = DefaultControls.CreateScrollView(uiResources);
@@ -648,7 +546,9 @@ namespace U3D.Editor
             scrollRect.offsetMin = Vector2.zero;
             scrollRect.offsetMax = Vector2.zero;
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.ConfigureVerticalOnlyScrollView(scrollView);
+
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
 
         private void CreateEventGateUI(GameObject container)
@@ -669,10 +569,7 @@ namespace U3D.Editor
             if (infoTMP != null)
             {
                 infoTMP.text = "Special Event Access";
-                infoTMP.fontSize = 12;
-                infoTMP.color = new Color32(50, 50, 50, 255);
-                infoTMP.alignment = TextAlignmentOptions.Center;
-                infoTMP.raycastTarget = false;
+                U3DUIStyle.ApplyBodyStyle(infoTMP);
             }
 
             GameObject timerText = TMP_DefaultControls.CreateText(tmpResources);
@@ -689,10 +586,7 @@ namespace U3D.Editor
             if (timerTMP != null)
             {
                 timerTMP.text = "Event Active";
-                timerTMP.fontSize = 10;
-                timerTMP.color = new Color32(50, 50, 50, 255);
-                timerTMP.alignment = TextAlignmentOptions.Center;
-                timerTMP.raycastTarget = false;
+                U3DUIStyle.ApplyStatusStyle(timerTMP);
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -705,15 +599,9 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Buy Ticket";
-                buttonText.fontSize = 14;
-                buttonText.color = new Color32(50, 50, 50, 255);
-            }
+            U3DUIStyle.ApplyButtonStyle(button, "Buy Ticket");
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
 
         private void CreateScreenShopUI(GameObject container)
@@ -731,13 +619,7 @@ namespace U3D.Editor
             closeRect.offsetMin = Vector2.zero;
             closeRect.offsetMax = Vector2.zero;
 
-            var closeText = closeButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (closeText != null)
-            {
-                closeText.text = "X";
-                closeText.fontSize = 16;
-                closeText.color = new Color32(50, 50, 50, 255);
-            }
+            U3DUIStyle.ApplyButtonStyle(closeButton, "X");
 
             GameObject contentArea = DefaultControls.CreateScrollView(uiResources);
             contentArea.name = "ShopContent";
@@ -749,7 +631,9 @@ namespace U3D.Editor
             contentRect.offsetMin = Vector2.zero;
             contentRect.offsetMax = Vector2.zero;
 
-            CreateCleanStatusText(container);
+            U3DUIStyle.ConfigureVerticalOnlyScrollView(contentArea);
+
+            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
 
         private void AssignUIReferences(GameObject container, PayPalDualTransaction dualTransaction)

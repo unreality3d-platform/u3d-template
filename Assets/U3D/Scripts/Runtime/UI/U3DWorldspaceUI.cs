@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace U3D
@@ -7,6 +8,11 @@ namespace U3D
     /// Attach to a World Space Canvas or any parent transform containing UI elements.
     /// Proximity fade is measured from the local player's body position, not the camera,
     /// so third-person camera distance doesn't affect visibility.
+    ///
+    /// Labels remain hidden during the bootstrap window and begin their fade only after
+    /// U3DLoadingCamera fires OnHandoffComplete, so the fade doesn't coincide with the
+    /// camera swap. A safety timeout opens the gate anyway if no LoadingCamera exists
+    /// or if handoff never completes.
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
     public class U3DWorldspaceUI : MonoBehaviour
@@ -32,14 +38,18 @@ namespace U3D
         [Min(0.1f)]
         public float fadeSpeed = 5f;
 
+        // Safety: if no LoadingCamera exists or handoff never completes, open the fade gate
+        // after this many seconds so labels don't stay invisible forever.
+        private const float HandoffFallbackTimeout = 5f;
+
+        // Throttled search for Camera.main while it doesn't exist yet (bootstrap window).
+        private const float CameraSearchInterval = 0.25f;
+
         private CanvasGroup canvasGroup;
         private Camera targetCamera;
         private Transform _localPlayerTransform;
         private float targetAlpha;
-        private bool _hasSnappedToInitialAlpha;
-
-        // Throttled search for Camera.main while it doesn't exist yet (bootstrap window).
-        private const float CameraSearchInterval = 0.25f;
+        private bool _fadeGateOpen;
         private float _nextCameraSearchTime;
 
         void Awake()
@@ -51,6 +61,24 @@ namespace U3D
             canvasGroup.alpha = 0f;
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
+
+            // If a LoadingCamera already completed its handoff before we awoke
+            // (e.g. this component was spawned at runtime after the bootstrap window),
+            // open the gate immediately. Otherwise, subscribe to the event.
+            if (U3DLoadingCamera.HandoffComplete)
+            {
+                _fadeGateOpen = true;
+            }
+            else
+            {
+                U3DLoadingCamera.OnHandoffComplete += OnHandoffComplete;
+                StartCoroutine(HandoffFallback());
+            }
+        }
+
+        void OnDestroy()
+        {
+            U3DLoadingCamera.OnHandoffComplete -= OnHandoffComplete;
         }
 
         void Start()
@@ -77,6 +105,21 @@ namespace U3D
                 UpdateBillboardRotation();
 
             UpdateProximityFade();
+        }
+
+        private void OnHandoffComplete()
+        {
+            _fadeGateOpen = true;
+        }
+
+        private IEnumerator HandoffFallback()
+        {
+            yield return new WaitForSeconds(HandoffFallbackTimeout);
+
+            if (!_fadeGateOpen)
+            {
+                _fadeGateOpen = true;
+            }
         }
 
         void FindTargetCamera()
@@ -124,16 +167,7 @@ namespace U3D
                 targetAlpha = 1f - t;
             }
 
-            // Gate on first valid frame: don't start fading until the local player exists,
-            // so the initial distance calculation reflects the real viewpoint. Without this
-            // gate, labels would fade in during the bootstrap window based on the wrong
-            // distance source (Camera.main fallback).
-            if (!_hasSnappedToInitialAlpha && _localPlayerTransform != null)
-            {
-                _hasSnappedToInitialAlpha = true;
-            }
-
-            if (_hasSnappedToInitialAlpha)
+            if (_fadeGateOpen)
             {
                 canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, targetAlpha, fadeSpeed * Time.deltaTime);
             }

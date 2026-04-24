@@ -31,7 +31,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
                 new CreatorTool("🟢 Add Movement Instructions", "Worldspace UI showing default movement patterns and all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
-                new CreatorTool("🚧 Add Screenspace UI", "Screen overlay canvas for user interfaces", () => { }),
+                new CreatorTool("🟢 Add Screenspace UI", "Screen overlay canvas with title and body text. Good for HUDs, menus, or info overlays. Add your own buttons and content.", CreateScreenspaceUI),
                 new CreatorTool("🚧 Add Slide Presentation", "Display and cycle through image collections in a sequence, in one UI element", () => { }),
                 new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
             };
@@ -268,14 +268,8 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
+            U3DUIStyle.ApplyButtonStyle(buttonObj, "Play");
             TextMeshProUGUI buttonTMP = buttonObj.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonTMP != null)
-            {
-                buttonTMP.text = "Play";
-                buttonTMP.fontSize = 14;
-                buttonTMP.color = new Color32(50, 50, 50, 255);
-                buttonTMP.alignment = TextAlignmentOptions.Center;
-            }
 
             GameObject sliderObj = DefaultControls.CreateSlider(uiResources);
             sliderObj.name = "Progress Slider";
@@ -352,10 +346,8 @@ namespace U3D.Editor
 
         private static void CreateMovementInstructions()
         {
-            // Build instruction text: Section 1 (default patterns) + Section 2 (all bindings)
             string instructionText = BuildMovementInstructionsText();
 
-            // Create Worldspace UI canvas with U3DWorldspaceUI component
             GameObject canvasObj = new GameObject("Movement Instructions");
 
             Canvas canvas = canvasObj.AddComponent<Canvas>();
@@ -386,9 +378,7 @@ namespace U3D.Editor
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
-            Image panelImage = panelObj.GetComponent<Image>();
-            if (panelImage != null)
-                panelImage.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);
+            U3DUIStyle.ApplyPanelStyle(panelObj);
 
             // Title
             GameObject titleObj = TMP_DefaultControls.CreateText(tmpResources);
@@ -406,11 +396,7 @@ namespace U3D.Editor
             if (titleTMP != null)
             {
                 titleTMP.text = "CONTROLS";
-                titleTMP.fontSize = 22;
-                titleTMP.fontStyle = FontStyles.Bold;
-                titleTMP.color = Color.white;
-                titleTMP.alignment = TextAlignmentOptions.Center;
-                titleTMP.raycastTarget = false;
+                U3DUIStyle.ApplyTitleStyle(titleTMP);
             }
 
             // Scrollable content area
@@ -425,9 +411,13 @@ namespace U3D.Editor
             scrollRect.offsetMin = Vector2.zero;
             scrollRect.offsetMax = Vector2.zero;
 
+            // Keep scroll view background transparent so it shows the panel behind
             Image scrollBg = scrollObj.GetComponent<Image>();
             if (scrollBg != null)
                 scrollBg.color = new Color(0f, 0f, 0f, 0f);
+
+            // Vertical-only: horizontal scrolling disabled, horizontal scrollbar hidden in Play Mode
+            U3DUIStyle.ConfigureVerticalOnlyScrollView(scrollObj);
 
             Transform contentArea = scrollObj.transform.Find("Viewport/Content");
 
@@ -448,10 +438,8 @@ namespace U3D.Editor
             if (instructionTMP != null)
             {
                 instructionTMP.text = instructionText;
-                instructionTMP.fontSize = 14;
-                instructionTMP.color = new Color(0.9f, 0.9f, 0.9f, 1f);
+                U3DUIStyle.ApplyBodyStyle(instructionTMP);
                 instructionTMP.alignment = TextAlignmentOptions.TopLeft;
-                instructionTMP.raycastTarget = false;
                 instructionTMP.textWrappingMode = TextWrappingModes.Normal;
             }
 
@@ -584,7 +572,6 @@ namespace U3D.Editor
 
         private static void AddSettingsUI()
         {
-            // Check if one already exists in the scene
             var existing = Object.FindAnyObjectByType<Canvas>();
             if (existing != null && existing.gameObject.name.Contains("Settings UI"))
             {
@@ -611,6 +598,83 @@ namespace U3D.Editor
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
+        }
+
+        // ───────────────────────────────────────────
+        // Screenspace UI
+        // ───────────────────────────────────────────
+
+        private static void CreateScreenspaceUI()
+        {
+            // Check if a screenspace canvas with the same name already exists
+            GameObject existing = GameObject.Find("Screenspace UI Canvas");
+            if (existing != null)
+            {
+                EditorUtility.DisplayDialog("Screenspace UI",
+                    "A Screenspace UI Canvas already exists in the scene.\n\nFound: " + existing.name +
+                    "\n\nYou can have multiple, but you'll want to rename them to tell them apart.",
+                    "OK");
+                Selection.activeGameObject = existing;
+                EditorGUIUtility.PingObject(existing);
+                return;
+            }
+
+            GameObject canvasObj = new GameObject("Screenspace UI Canvas");
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 10;
+
+            CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            canvasObj.AddComponent<GraphicRaycaster>();
+
+            var uiResources = new DefaultControls.Resources();
+            var tmpResources = new TMP_DefaultControls.Resources();
+
+            // Default panel: centered, 400x300. Creators resize or reposition as needed.
+            GameObject panelObj = DefaultControls.CreatePanel(uiResources);
+            panelObj.name = "Panel";
+            panelObj.transform.SetParent(canvasObj.transform, false);
+            panelObj.layer = LayerMask.NameToLayer("UI");
+
+            U3DUIStyle.ApplyPanelStyle(panelObj);
+
+            RectTransform panelRect = panelObj.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRect.sizeDelta = new Vector2(400, 300);
+            panelRect.anchoredPosition = Vector2.zero;
+
+            U3DUIStyle.CreateHeader(panelObj, "Screenspace UI");
+
+            // Body text: fills the lower 80% of the panel with padding, ready for creator content.
+            GameObject textObj = TMP_DefaultControls.CreateText(tmpResources);
+            textObj.name = "Body Text";
+            textObj.transform.SetParent(panelObj.transform, false);
+            textObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0f, 0f);
+            textRect.anchorMax = new Vector2(1f, 0.8f);
+            textRect.offsetMin = new Vector2(15f, 15f);
+            textRect.offsetMax = new Vector2(-15f, -10f);
+
+            TextMeshProUGUI bodyTMP = textObj.GetComponent<TextMeshProUGUI>();
+            if (bodyTMP != null)
+            {
+                bodyTMP.text = "Replace this with your content. Add buttons, images, or whatever else you need.";
+                U3DUIStyle.ApplyBodyStyle(bodyTMP);
+                bodyTMP.textWrappingMode = TextWrappingModes.Normal;
+            }
+
+            Selection.activeGameObject = canvasObj;
+            EditorGUIUtility.PingObject(canvasObj);
+            EditorUtility.SetDirty(canvasObj);
         }
 
         // ───────────────────────────────────────────
@@ -668,8 +732,8 @@ namespace U3D.Editor
             canvasObj.AddComponent<U3DWorldspaceUI>();
 
             RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
-            canvasRect.sizeDelta = new Vector2(400, 300);
-            canvasRect.localScale = Vector3.one * 0.01f;
+            canvasRect.sizeDelta = U3DUIStyle.WorldspaceSingleElementSize;
+            canvasRect.localScale = Vector3.one * U3DUIStyle.WorldspaceCanvasScale;
 
             var uiResources = new DefaultControls.Resources();
             GameObject panelObj = DefaultControls.CreatePanel(uiResources);
@@ -683,9 +747,7 @@ namespace U3D.Editor
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
-            Image panelImage = panelObj.GetComponent<Image>();
-            if (panelImage != null)
-                panelImage.color = new Color(1f, 1f, 1f, 0.5f);
+            U3DUIStyle.ApplyPanelStyle(panelObj);
 
             var tmpResources = new TMP_DefaultControls.Resources();
             GameObject textObj = TMP_DefaultControls.CreateText(tmpResources);
@@ -694,18 +756,16 @@ namespace U3D.Editor
             textObj.layer = LayerMask.NameToLayer("UI");
 
             RectTransform textRect = textObj.GetComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0.5f, 0.5f);
-            textRect.anchorMax = new Vector2(0.5f, 0.5f);
-            textRect.sizeDelta = new Vector2(350, 250);
-            textRect.anchoredPosition = Vector2.zero;
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(10f, 10f);
+            textRect.offsetMax = new Vector2(-10f, -10f);
 
             TextMeshProUGUI tmpText = textObj.GetComponent<TextMeshProUGUI>();
             if (tmpText != null)
             {
                 tmpText.text = "Worldspace UI Text";
-                tmpText.fontSize = 18;
-                tmpText.color = Color.white;
-                tmpText.alignment = TextAlignmentOptions.Center;
+                U3DUIStyle.ApplyBodyStyle(tmpText);
             }
 
             if (SceneView.lastActiveSceneView != null)
