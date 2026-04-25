@@ -26,6 +26,9 @@ namespace U3D
         [SerializeField] private Transform contentContainer;
         [SerializeField] private bool autoSetupItems = true;
 
+        [Header("UI References")]
+        [SerializeField] private TextMeshProUGUI statusText;
+
         private Button closeButton;
 
         private void Start()
@@ -37,7 +40,28 @@ namespace U3D
                 closeButton.onClick.AddListener(CloseShop);
             }
 
+            // Find status text by name if not assigned in Inspector
+            if (statusText == null)
+            {
+                statusText = transform.Find("StatusText")?.GetComponent<TextMeshProUGUI>();
+            }
+
+            UpdatePayPalConfigurationStatus();
             SetupShopContent();
+        }
+
+        /// <summary>
+        /// Display PayPal configuration status once at shop open time.
+        /// Per-item runtime status is handled by each item's PayPalDualTransaction.
+        /// </summary>
+        private void UpdatePayPalConfigurationStatus()
+        {
+            if (statusText == null) return;
+
+            var creatorData = Resources.Load<U3DCreatorData>("U3DCreatorData");
+            bool payPalConfigured = creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail);
+
+            statusText.text = payPalConfigured ? "PayPal Connected" : "PayPal not configured";
         }
 
         private void SetupShopContent()
@@ -89,6 +113,8 @@ namespace U3D
             itemPanel.name = $"ScreenItem_{item.itemName}";
             itemPanel.transform.SetParent(contentContainer, false);
 
+            U3DUIStyle.ApplyPanelStyle(itemPanel);
+
             var panelRect = itemPanel.GetComponent<RectTransform>();
             panelRect.sizeDelta = new Vector2(350, 60);
 
@@ -102,6 +128,8 @@ namespace U3D
             buttonRect.anchorMax = new Vector2(0.95f, 0.8f);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
+
+            U3DUIStyle.ApplyButtonStyle(itemButton, $"${item.price:F2}");
 
             // Add PayPalDualTransaction to the button
             var dualTransaction = itemButton.AddComponent<PayPalDualTransaction>();
@@ -119,13 +147,6 @@ namespace U3D
                 dualTransaction.SetCreatorPayPalEmail(creatorData.PayPalEmail);
             }
 
-            var buttonText = itemButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = $"${item.price:F2}";
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
-            }
-
             // Create item info text
             GameObject itemInfo = TMP_DefaultControls.CreateText(tmpResources);
             itemInfo.name = "ItemInfo";
@@ -141,8 +162,7 @@ namespace U3D
             if (infoText != null)
             {
                 infoText.text = $"{item.itemName}\n{item.description}";
-                infoText.fontSize = 10;
-                infoText.color = new Color32(50, 50, 50, 255); // #323232
+                U3DUIStyle.ApplyStatusStyle(infoText);
                 infoText.raycastTarget = false;
             }
         }
@@ -163,6 +183,7 @@ namespace U3D
         {
             gameObject.SetActive(true);
             isVisible = true;
+            UpdatePayPalConfigurationStatus();
         }
 
         /// <summary>
@@ -192,7 +213,7 @@ namespace U3D
             {
                 for (int i = contentContainer.childCount - 1; i >= 0; i--)
                 {
-                    DestroyImmediate(contentContainer.GetChild(i).gameObject);
+                    Destroy(contentContainer.GetChild(i).gameObject);
                 }
             }
         }

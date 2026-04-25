@@ -1,6 +1,7 @@
 ﻿using Fusion;
 using System.Collections.Generic;
 using TMPro;
+using U3D;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Audio;
@@ -213,15 +214,8 @@ namespace U3D.Editor
 
             U3DVideoPlayer u3dVideo = screenObj.AddComponent<U3DVideoPlayer>();
 
-            Sprite uiSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-            Sprite uiBackground = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd");
-            Sprite uiKnob = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
-
             var uiResources = new DefaultControls.Resources();
-            uiResources.standard = uiSprite;
-
             var tmpResources = new TMP_DefaultControls.Resources();
-            tmpResources.standard = uiSprite;
 
             GameObject canvasObj = new GameObject("Video Controls Canvas");
             canvasObj.transform.SetParent(root.transform, false);
@@ -253,6 +247,8 @@ namespace U3D.Editor
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
+            U3DUIStyle.ApplyPanelStyle(panelObj);
+
             Image panelImage = panelObj.GetComponent<Image>();
             if (panelImage != null)
                 panelImage.color = new Color(1f, 1f, 1f, 0.95f);
@@ -270,6 +266,8 @@ namespace U3D.Editor
 
             U3DUIStyle.ApplyButtonStyle(buttonObj, "Play");
             TextMeshProUGUI buttonTMP = buttonObj.GetComponentInChildren<TextMeshProUGUI>();
+            // Button label raycastTarget left at Unity's default (true) so the Button hit test
+            // works through the label.
 
             GameObject sliderObj = DefaultControls.CreateSlider(uiResources);
             sliderObj.name = "Progress Slider";
@@ -287,21 +285,12 @@ namespace U3D.Editor
             slider.maxValue = 1f;
             slider.value = 0f;
 
-            Image sliderBg = sliderObj.transform.Find("Background")?.GetComponent<Image>();
-            if (sliderBg != null)
-                sliderBg.sprite = uiBackground;
-
-            Image fillImage = sliderObj.transform.Find("Fill Area/Fill")?.GetComponent<Image>();
-            if (fillImage != null)
-            {
-                fillImage.sprite = uiSprite;
-                fillImage.color = new Color(0.4f, 0.6f, 1f, 1f);
-            }
-
-            Image handleImage = sliderObj.transform.Find("Handle Slide Area/Handle")?.GetComponent<Image>();
-            if (handleImage != null)
-                handleImage.sprite = uiKnob;
-
+            // Apply U3D flat slider style with blue progress fill (Video Player exception
+            // documented in spec — blue communicates "progress" in a way a neutral fill does not).
+            U3DUIStyle.ApplySliderStyle(sliderObj, new Color(0.4f, 0.6f, 1f, 1f));
+            // Restore the Handle Slide Area offsets — sized for the Video Player's compact controls strip.
+            // ApplySliderStyle does not touch these because they're authored values that control the
+            // knob's bounds and travel range, owned by the caller.
             RectTransform handleSlideArea = sliderObj.transform.Find("Handle Slide Area")?.GetComponent<RectTransform>();
             if (handleSlideArea != null)
             {
@@ -324,9 +313,7 @@ namespace U3D.Editor
             if (timeTMP != null)
             {
                 timeTMP.text = "0:00 / 0:00";
-                timeTMP.fontSize = 11;
-                timeTMP.color = new Color32(50, 50, 50, 255);
-                timeTMP.alignment = TextAlignmentOptions.Center;
+                U3DUIStyle.ApplyStatusStyle(timeTMP);
                 timeTMP.raycastTarget = false;
             }
 
@@ -397,6 +384,7 @@ namespace U3D.Editor
             {
                 titleTMP.text = "CONTROLS";
                 U3DUIStyle.ApplyTitleStyle(titleTMP);
+                titleTMP.raycastTarget = false;
             }
 
             // Scrollable content area
@@ -411,13 +399,9 @@ namespace U3D.Editor
             scrollRect.offsetMin = Vector2.zero;
             scrollRect.offsetMax = Vector2.zero;
 
-            // Keep scroll view background transparent so it shows the panel behind
-            Image scrollBg = scrollObj.GetComponent<Image>();
-            if (scrollBg != null)
-                scrollBg.color = new Color(0f, 0f, 0f, 0f);
-
-            // Vertical-only: horizontal scrolling disabled, horizontal scrollbar hidden in Play Mode
-            U3DUIStyle.ConfigureVerticalOnlyScrollView(scrollObj);
+            // ApplyScrollViewStyle: vertical-only, transparent background, flat scrollbar sprites,
+            // narrow scrollbar width.
+            U3DUIStyle.ApplyScrollViewStyle(scrollObj);
 
             Transform contentArea = scrollObj.transform.Find("Viewport/Content");
 
@@ -441,6 +425,10 @@ namespace U3D.Editor
                 U3DUIStyle.ApplyBodyStyle(instructionTMP);
                 instructionTMP.alignment = TextAlignmentOptions.TopLeft;
                 instructionTMP.textWrappingMode = TextWrappingModes.Normal;
+                // Must be false — this text fills the entire scroll view content area.
+                // With raycastTarget = true, the text swallows drag events and creators
+                // can't scroll by clicking on the text itself.
+                instructionTMP.raycastTarget = false;
             }
 
             // Auto-size content to fit text
@@ -951,6 +939,7 @@ namespace U3D.Editor
                 bodyTMP.text = "Replace this with your content. Add buttons, images, or whatever else you need.";
                 U3DUIStyle.ApplyBodyStyle(bodyTMP);
                 bodyTMP.textWrappingMode = TextWrappingModes.Normal;
+                bodyTMP.raycastTarget = false;
             }
 
             Selection.activeGameObject = canvasObj;
@@ -1047,6 +1036,7 @@ namespace U3D.Editor
             {
                 tmpText.text = "Worldspace UI Text";
                 U3DUIStyle.ApplyBodyStyle(tmpText);
+                tmpText.raycastTarget = false;
             }
 
             if (SceneView.lastActiveSceneView != null)

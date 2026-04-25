@@ -74,6 +74,8 @@ namespace U3D
             var buttonRect = itemButton.GetComponent<RectTransform>();
             buttonRect.sizeDelta = new Vector2(250, 40);
 
+            U3DUIStyle.ApplyButtonStyle(itemButton, $"{item.itemName} - ${item.price:F2}");
+
             // Add PayPalDualTransaction to each item
             var dualTransaction = itemButton.AddComponent<PayPalDualTransaction>();
             dualTransaction.SetItemDetails(item.itemName, item.description, item.price);
@@ -88,13 +90,6 @@ namespace U3D
             if (creatorData != null && !string.IsNullOrEmpty(creatorData.PayPalEmail))
             {
                 dualTransaction.SetCreatorPayPalEmail(creatorData.PayPalEmail);
-            }
-
-            var buttonText = itemButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = $"{item.itemName} - ${item.price:F2}";
-                buttonText.color = new Color32(50, 50, 50, 255); // #323232
             }
         }
 
@@ -120,7 +115,7 @@ namespace U3D
             {
                 for (int i = itemContainer.childCount - 1; i >= 0; i--)
                 {
-                    DestroyImmediate(itemContainer.GetChild(i).gameObject);
+                    Destroy(itemContainer.GetChild(i).gameObject);
                 }
             }
         }

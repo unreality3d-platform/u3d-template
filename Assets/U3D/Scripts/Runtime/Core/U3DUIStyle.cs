@@ -2,12 +2,21 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 namespace U3D
 {
     /// <summary>
     /// Central style helper for all U3D-created UI.
-    /// Every method either sets a small, explicit subset of values or strips a sprite.
-    /// Anything not explicitly set here is left at Unity's default.
+    /// Every method either sets a small, explicit subset of visual values or strips a sprite.
+    /// Anything not explicitly set here is left at Unity's default — including raycastTarget.
+    ///
+    /// Raycast target behavior is the calling tool's responsibility. These style methods
+    /// do not touch raycastTarget. The calling tool is the only code that knows whether
+    /// a given text element is decorative (clicks pass through), part of a button
+    /// (clicks land on the Button parent), or interactive in its own right.
     ///
     /// The goal of this helper is to keep U3D tool-created UI visually consistent
     /// by routing every tool through the same style methods, rather than hardcoding
@@ -27,6 +36,25 @@ namespace U3D
         public static readonly Color32 PlaceholderColor = new Color32(150, 150, 150, 128);
 
         // ───────────────────────────────────────────
+        // Surface Color Hierarchy
+        //
+        // Three tiers of grayscale, each darker than the surface it sits on:
+        //   - Panel (Unity default white, 255) — the main surface
+        //   - InsetSurface (220) — recessed areas: input fields, slider tracks, scrollbar tracks
+        //   - ButtonNormal (240) — interactive controls: buttons, slider knobs, scrollbar thumbs
+        //
+        // ButtonNormal sits between Panel and InsetSurface so interactive controls read against
+        // either context. The contrast is intentionally subtle — controls are defined by their
+        // edges rather than by saturated color, matching U3D's flat aesthetic.
+        // ───────────────────────────────────────────
+
+        /// <summary>Slightly off-white tint for buttons, slider knobs, and scrollbar thumbs — the "draggable/clickable" surface tier. Matches across all interactive controls for consistent visual language.</summary>
+        public static readonly Color32 ButtonNormalColor = new Color32(240, 240, 240, 255);
+
+        /// <summary>Slightly darker tint for input field backgrounds, slider tracks, and scrollbar tracks — the "inset surface" tier. These are recessed areas that contain or are traveled by interactive controls.</summary>
+        public static readonly Color32 InsetSurfaceColor = new Color32(220, 220, 220, 255);
+
+        // ───────────────────────────────────────────
         // Font Sizes
         // ───────────────────────────────────────────
 
@@ -44,6 +72,52 @@ namespace U3D
 
         /// <summary>Default sizeDelta for a single-purpose worldspace UI (like the Worldspace UI sign tool).</summary>
         public static readonly Vector2 WorldspaceSingleElementSize = new Vector2(180, 100);
+
+        // ───────────────────────────────────────────
+        // Flat Shape Sprite Paths (Editor-Only Loading)
+        //
+        // U3D's flat-shape sprites used for scrollbars, sliders, input fields, and
+        // any other interactive control that needs a visible affordance without
+        // Unity's skeuomorphic default sprites. Loaded via AssetDatabase at
+        // editor-tool time; runtime callers will get null and a logged warning.
+        // ───────────────────────────────────────────
+
+        private const string FlatSquareSpritePath = "Assets/U3D/U3D_Assets/UI/U3D_FlatSquare.png";
+        private const string FlatCircleSpritePath = "Assets/U3D/U3D_Assets/UI/U3D_FlatCircle.png";
+
+        /// <summary>
+        /// Load U3D's flat square sprite, used for scrollbar thumbs, slider tracks/fills, and input field backgrounds.
+        /// Editor-only: runtime callers get null and a warning. The sprite must exist at the documented path.
+        /// </summary>
+        public static Sprite GetFlatSquareSprite()
+        {
+#if UNITY_EDITOR
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(FlatSquareSpritePath);
+            if (sprite == null)
+                Debug.LogWarning($"U3DUIStyle: Flat square sprite not found at {FlatSquareSpritePath}. Make sure the U3D template has not been moved or renamed.");
+            return sprite;
+#else
+            Debug.LogWarning("U3DUIStyle.GetFlatSquareSprite() called at runtime. Flat shape sprites are loaded via AssetDatabase and only available in the editor.");
+            return null;
+#endif
+        }
+
+        /// <summary>
+        /// Load U3D's flat circle sprite, used for slider knobs.
+        /// Editor-only: runtime callers get null and a warning. The sprite must exist at the documented path.
+        /// </summary>
+        public static Sprite GetFlatCircleSprite()
+        {
+#if UNITY_EDITOR
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(FlatCircleSpritePath);
+            if (sprite == null)
+                Debug.LogWarning($"U3DUIStyle: Flat circle sprite not found at {FlatCircleSpritePath}. Make sure the U3D template has not been moved or renamed.");
+            return sprite;
+#else
+            Debug.LogWarning("U3DUIStyle.GetFlatCircleSprite() called at runtime. Flat shape sprites are loaded via AssetDatabase and only available in the editor.");
+            return null;
+#endif
+        }
 
         // ───────────────────────────────────────────
         // Panel Styling
@@ -75,14 +149,24 @@ namespace U3D
 
         /// <summary>
         /// Apply the U3D button style to an already-created button GameObject.
-        /// Strips the button's background sprite, leaves Unity default color and hover/pressed/disabled
-        /// states alone, and styles the child TextMeshPro label if one is present.
+        /// Strips the button's background sprite, sets the Button component's normalColor to a
+        /// slightly off-white tint so the button's edges are visible against pure-white panels,
+        /// leaves Unity-default hover/pressed/disabled states alone (Unity multiplies these from
+        /// the new normal base), and styles the child TextMeshPro label if one is present.
         /// </summary>
         public static void ApplyButtonStyle(GameObject button, string label = null)
         {
             if (button == null) return;
 
             StripSprite(button);
+
+            var buttonComponent = button.GetComponent<Button>();
+            if (buttonComponent != null)
+            {
+                var colors = buttonComponent.colors;
+                colors.normalColor = ButtonNormalColor;
+                buttonComponent.colors = colors;
+            }
 
             var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)
@@ -95,39 +179,41 @@ namespace U3D
 
         // ───────────────────────────────────────────
         // Text Styling
+        //
+        // These methods set visual properties only — font size, color, alignment.
+        // They do NOT touch raycastTarget. The calling tool owns that decision because
+        // only the tool knows whether the text is decorative, part of a button, or
+        // interactive in its own right.
         // ───────────────────────────────────────────
 
-        /// <summary>Title text: 16pt, dark gray, center-aligned, not raycast-blocking.</summary>
+        /// <summary>Title text: 16pt, dark gray, center-aligned. raycastTarget is not touched.</summary>
         public static void ApplyTitleStyle(TextMeshProUGUI text)
         {
             if (text == null) return;
             text.fontSize = TitleFontSize;
             text.color = TextColor;
             text.alignment = TextAlignmentOptions.Center;
-            text.raycastTarget = false;
         }
 
-        /// <summary>Body/price text: 18pt, dark gray, center-aligned, not raycast-blocking.</summary>
+        /// <summary>Body/price text: 18pt, dark gray, center-aligned. raycastTarget is not touched.</summary>
         public static void ApplyBodyStyle(TextMeshProUGUI text)
         {
             if (text == null) return;
             text.fontSize = BodyFontSize;
             text.color = TextColor;
             text.alignment = TextAlignmentOptions.Center;
-            text.raycastTarget = false;
         }
 
-        /// <summary>Status text: 10pt, dark gray, center-aligned, not raycast-blocking.</summary>
+        /// <summary>Status text: 10pt, dark gray, center-aligned. raycastTarget is not touched.</summary>
         public static void ApplyStatusStyle(TextMeshProUGUI text)
         {
             if (text == null) return;
             text.fontSize = StatusFontSize;
             text.color = TextColor;
             text.alignment = TextAlignmentOptions.Center;
-            text.raycastTarget = false;
         }
 
-        /// <summary>Button label text: 14pt, dark gray, center-aligned. Leaves raycastTarget untouched so the button can receive clicks via its label.</summary>
+        /// <summary>Button label text: 14pt, dark gray, center-aligned. raycastTarget is not touched.</summary>
         public static void ApplyButtonTextStyle(TextMeshProUGUI text)
         {
             if (text == null) return;
@@ -136,7 +222,7 @@ namespace U3D
             text.alignment = TextAlignmentOptions.Center;
         }
 
-        /// <summary>Placeholder text for TMP_InputField: muted gray. Font size is left at whatever the input field picked.</summary>
+        /// <summary>Placeholder text for TMP_InputField: muted gray. Font size is left at whatever the input field picked. raycastTarget is not touched.</summary>
         public static void ApplyPlaceholderStyle(TextMeshProUGUI placeholder)
         {
             if (placeholder == null) return;
@@ -151,6 +237,10 @@ namespace U3D
         /// Create a styled header (panel with title text) anchored to the top of a parent container.
         /// Returns the header GameObject so callers can anchor additional content against it if needed.
         /// Replaces the per-tool CreateCleanHeaderUI methods that were duplicated across tool categories.
+        ///
+        /// The title text is created as a decorative header — raycastTarget is set to false here because
+        /// this builder fully owns the text it creates and the header is unambiguously non-interactive.
+        /// If a tool needs a clickable header, build it manually rather than using this helper.
         /// </summary>
         public static GameObject CreateHeader(GameObject parent, string title)
         {
@@ -185,6 +275,7 @@ namespace U3D
             {
                 titleTMP.text = title;
                 ApplyTitleStyle(titleTMP);
+                titleTMP.raycastTarget = false;
             }
 
             return header;
@@ -194,6 +285,9 @@ namespace U3D
         /// Create a styled status text anchored to the bottom of a parent container.
         /// Returns the TextMeshProUGUI so callers can assign it to controllers that update it at runtime.
         /// Replaces the per-tool CreateCleanStatusText methods that were duplicated across tool categories.
+        ///
+        /// The status text is created as a decorative label — raycastTarget is set to false here because
+        /// this builder fully owns the text it creates and status labels are unambiguously non-interactive.
         /// </summary>
         public static TextMeshProUGUI CreateStatusText(GameObject parent, string initialText = "")
         {
@@ -215,6 +309,7 @@ namespace U3D
             {
                 statusTMP.text = initialText;
                 ApplyStatusStyle(statusTMP);
+                statusTMP.raycastTarget = false;
             }
 
             return statusTMP;
@@ -248,6 +343,163 @@ namespace U3D
 
             scrollRect.horizontal = false;
             scrollRect.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        }
+
+        /// <summary>
+        /// Apply the full U3D scroll view style: vertical-only configuration, transparent background
+        /// (so the parent panel shows through), and U3D's flat square sprite on the vertical
+        /// scrollbar's track and thumb. The vertical scrollbar is also narrowed to 10px for a more
+        /// minimal appearance compared to Unity's 20px default.
+        ///
+        /// The scrollbar GameObject and Scrollbar component are preserved — only sprites and width
+        /// change. ScrollRect functionality (drag, mouse wheel, touch) is unaffected.
+        ///
+        /// Editor-only because the flat sprites are loaded via AssetDatabase. Runtime callers get
+        /// vertical-only configuration but no sprite swap, plus a logged warning.
+        /// </summary>
+        public static void ApplyScrollViewStyle(GameObject scrollView)
+        {
+            if (scrollView == null) return;
+
+            ConfigureVerticalOnlyScrollView(scrollView);
+
+            // Transparent scroll view background — the scroll view is structural,
+            // not decorative, so let the parent panel show through.
+            var scrollBg = scrollView.GetComponent<Image>();
+            if (scrollBg != null)
+                scrollBg.color = new Color(0f, 0f, 0f, 0f);
+
+            Sprite flatSquare = GetFlatSquareSprite();
+            if (flatSquare == null) return;
+
+            // Find the vertical scrollbar and apply the flat square to its background and thumb
+            Transform verticalScrollbar = scrollView.transform.Find("Scrollbar Vertical");
+            if (verticalScrollbar != null)
+            {
+                // Narrow the scrollbar from Unity's 20px default to a 10px minimal width
+                var scrollbarRect = verticalScrollbar.GetComponent<RectTransform>();
+                if (scrollbarRect != null)
+                    scrollbarRect.sizeDelta = new Vector2(10f, scrollbarRect.sizeDelta.y);
+
+                // Track background — inset surface tier
+                var scrollbarImage = verticalScrollbar.GetComponent<Image>();
+                if (scrollbarImage != null)
+                {
+                    scrollbarImage.sprite = flatSquare;
+                    scrollbarImage.color = InsetSurfaceColor;
+                }
+
+                // Thumb (the draggable handle) — interactive control tier, matches buttons
+                Transform handle = verticalScrollbar.Find("Sliding Area/Handle");
+                if (handle != null)
+                {
+                    var handleImage = handle.GetComponent<Image>();
+                    if (handleImage != null)
+                    {
+                        handleImage.sprite = flatSquare;
+                        handleImage.color = ButtonNormalColor;
+                    }
+                }
+            }
+
+            // The viewport also has an Image (with a Mask component) that needs a sprite
+            // to be valid — Unity's mask requires a sprite to clip against. Use the flat square.
+            Transform viewport = scrollView.transform.Find("Viewport");
+            if (viewport != null)
+            {
+                var viewportImage = viewport.GetComponent<Image>();
+                if (viewportImage != null)
+                    viewportImage.sprite = flatSquare;
+            }
+        }
+
+        // ───────────────────────────────────────────
+        // Slider Style
+        // ───────────────────────────────────────────
+
+        /// <summary>
+        /// Apply U3D's flat slider style: square sprite for background and fill, circle sprite for the
+        /// knob. Optional fillColor parameter — if provided, tints the fill (e.g., the Video Player's
+        /// blue progress fill). Otherwise the fill stays at Unity's default color.
+        ///
+        /// Does NOT modify the Handle Slide Area RectTransform offsets — those are authored values
+        /// that control the knob's bounds and travel range, set by the caller before this method
+        /// is invoked.
+        ///
+        /// Editor-only because the flat sprites are loaded via AssetDatabase.
+        /// </summary>
+        public static void ApplySliderStyle(GameObject slider, Color? fillColor = null)
+        {
+            if (slider == null) return;
+
+            Sprite flatSquare = GetFlatSquareSprite();
+            Sprite flatCircle = GetFlatCircleSprite();
+
+            // Background — inset surface tier
+            Transform background = slider.transform.Find("Background");
+            if (background != null)
+            {
+                var bgImage = background.GetComponent<Image>();
+                if (bgImage != null && flatSquare != null)
+                {
+                    bgImage.sprite = flatSquare;
+                    bgImage.color = InsetSurfaceColor;
+                }
+            }
+
+            // Fill — flat square, optional caller-supplied tint (otherwise Unity default)
+            Transform fill = slider.transform.Find("Fill Area/Fill");
+            if (fill != null)
+            {
+                var fillImage = fill.GetComponent<Image>();
+                if (fillImage != null && flatSquare != null)
+                {
+                    fillImage.sprite = flatSquare;
+                    if (fillColor.HasValue)
+                        fillImage.color = fillColor.Value;
+                }
+            }
+
+            // Handle (knob) — interactive control tier, matches buttons
+            Transform handle = slider.transform.Find("Handle Slide Area/Handle");
+            if (handle != null)
+            {
+                var handleImage = handle.GetComponent<Image>();
+                if (handleImage != null && flatCircle != null)
+                {
+                    handleImage.sprite = flatCircle;
+                    handleImage.color = ButtonNormalColor;
+                }
+            }
+        }
+
+        // ───────────────────────────────────────────
+        // Input Field Style
+        // ───────────────────────────────────────────
+
+        /// <summary>
+        /// Apply U3D's flat input field style: flat square sprite for the background, inset surface
+        /// color so the field reads as a recessed entry area against the panel. Matches slider tracks
+        /// and scrollbar tracks for consistent "inset surface" visual language.
+        ///
+        /// Does NOT style placeholder text or typed text color — call ApplyPlaceholderStyle separately
+        /// for the placeholder, and the typed text inherits TMP defaults which match the U3D text color.
+        ///
+        /// Editor-only because the flat sprite is loaded via AssetDatabase.
+        /// </summary>
+        public static void ApplyInputFieldStyle(GameObject inputField)
+        {
+            if (inputField == null) return;
+
+            Sprite flatSquare = GetFlatSquareSprite();
+            if (flatSquare == null) return;
+
+            var image = inputField.GetComponent<Image>();
+            if (image != null)
+            {
+                image.sprite = flatSquare;
+                image.color = InsetSurfaceColor;
+            }
         }
     }
 }

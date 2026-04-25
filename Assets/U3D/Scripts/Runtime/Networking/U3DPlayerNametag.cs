@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using Fusion;
 using System.Collections.Generic;
+using U3D;
 
 namespace U3D.Networking
 {
@@ -117,8 +118,9 @@ namespace U3D.Networking
             nametagRect.offsetMin = Vector2.zero;
             nametagRect.offsetMax = Vector2.zero;
 
+            U3DUIStyle.ApplyPanelStyle(panelObject);
+
             var panelImage = panelObject.GetComponent<Image>();
-            panelImage.color = new Color(0, 0, 0, 0.6f);
             panelImage.raycastTarget = false;
 
             var nameTextObject = TMP_DefaultControls.CreateText(tmpResources);
@@ -134,7 +136,7 @@ namespace U3D.Networking
             playerNameText = nameTextObject.GetComponent<TextMeshProUGUI>();
             playerNameText.text = "Player";
             playerNameText.fontSize = 24;
-            playerNameText.color = Color.white;
+            playerNameText.color = U3DUIStyle.TextColor;
             playerNameText.alignment = TextAlignmentOptions.Center;
             playerNameText.raycastTarget = false;
 

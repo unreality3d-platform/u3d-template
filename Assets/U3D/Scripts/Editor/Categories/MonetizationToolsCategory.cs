@@ -192,6 +192,9 @@ namespace U3D.Editor
             inputRect.offsetMin = Vector2.zero;
             inputRect.offsetMax = Vector2.zero;
 
+            // Apply U3D flat input field style: flat square sprite, slightly off-white background.
+            U3DUIStyle.ApplyInputFieldStyle(inputField);
+
             var inputComponent = inputField.GetComponent<TMP_InputField>();
             inputComponent.text = "5.00";
             inputComponent.contentType = TMP_InputField.ContentType.DecimalNumber;
@@ -299,6 +302,7 @@ namespace U3D.Editor
             {
                 messageTMP.text = "This premium content requires payment to access.\n\nSupport the creator and unlock this experience!";
                 U3DUIStyle.ApplyBodyStyle(messageTMP);
+                messageTMP.raycastTarget = false;
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -315,6 +319,8 @@ namespace U3D.Editor
             // through ApplyBodyStyle (18pt) rather than ApplyButtonStyle (14pt).
             // This is the "higher-emphasis" tier for a prominent CTA — if BodyFontSize
             // changes in U3DUIStyle, this button's label tracks it automatically.
+            // raycastTarget is left at Unity's button-label default (true) so clicks
+            // register through the label on the Button parent.
             U3DUIStyle.StripSprite(button);
             var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)
@@ -461,6 +467,7 @@ namespace U3D.Editor
             {
                 priceTMP.text = "$5.00";
                 U3DUIStyle.ApplyBodyStyle(priceTMP);
+                priceTMP.raycastTarget = false;
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
@@ -474,42 +481,6 @@ namespace U3D.Editor
             buttonRect.offsetMax = Vector2.zero;
 
             U3DUIStyle.ApplyButtonStyle(button, "Purchase");
-
-            U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
-        }
-
-        private void CreateSceneGateUI(GameObject container)
-        {
-            var tmpResources = new TMP_DefaultControls.Resources();
-
-            GameObject descText = TMP_DefaultControls.CreateText(tmpResources);
-            descText.name = "DescriptionText";
-            descText.transform.SetParent(container.transform, false);
-
-            var descRect = descText.GetComponent<RectTransform>();
-            descRect.anchorMin = new Vector2(0, 0.5f);
-            descRect.anchorMax = new Vector2(1, 0.7f);
-            descRect.offsetMin = new Vector2(10, 0);
-            descRect.offsetMax = new Vector2(-10, 0);
-
-            var descTMP = descText.GetComponent<TextMeshProUGUI>();
-            if (descTMP != null)
-            {
-                descTMP.text = "Premium Scene Access Required\nPay to unlock this area";
-                U3DUIStyle.ApplyBodyStyle(descTMP);
-            }
-
-            GameObject button = TMP_DefaultControls.CreateButton(tmpResources);
-            button.name = "UnlockButton";
-            button.transform.SetParent(container.transform, false);
-
-            var buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0.1f, 0.25f);
-            buttonRect.anchorMax = new Vector2(0.9f, 0.45f);
-            buttonRect.offsetMin = Vector2.zero;
-            buttonRect.offsetMax = Vector2.zero;
-
-            U3DUIStyle.ApplyButtonStyle(button, "Unlock Scene");
 
             U3DUIStyle.CreateStatusText(container, "Ready to accept payments");
         }
@@ -534,6 +505,7 @@ namespace U3D.Editor
             {
                 titleTMP.text = "Creator Shop";
                 U3DUIStyle.ApplyTitleStyle(titleTMP);
+                titleTMP.raycastTarget = false;
             }
 
             GameObject scrollView = DefaultControls.CreateScrollView(uiResources);
@@ -570,6 +542,7 @@ namespace U3D.Editor
             {
                 infoTMP.text = "Special Event Access";
                 U3DUIStyle.ApplyBodyStyle(infoTMP);
+                infoTMP.raycastTarget = false;
             }
 
             GameObject timerText = TMP_DefaultControls.CreateText(tmpResources);
@@ -587,6 +560,7 @@ namespace U3D.Editor
             {
                 timerTMP.text = "Event Active";
                 U3DUIStyle.ApplyStatusStyle(timerTMP);
+                timerTMP.raycastTarget = false;
             }
 
             GameObject button = TMP_DefaultControls.CreateButton(tmpResources);

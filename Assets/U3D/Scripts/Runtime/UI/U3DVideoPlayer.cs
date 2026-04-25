@@ -132,7 +132,27 @@ namespace U3D
             videoPlayer.targetTexture = renderTexture;
 
             if (quadRenderer != null)
-                quadRenderer.material.mainTexture = renderTexture;
+            {
+                // Replace the quad's default lit material (assigned by GameObject.CreatePrimitive)
+                // with an unlit one so scene lighting can't wash out or glare the video.
+                // Universal Render Pipeline/Unlit is part of the URP package, which this project
+                // depends on, so the shader is guaranteed to be available in editor and at runtime.
+                Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+                if (unlitShader != null)
+                {
+                    var unlitMaterial = new Material(unlitShader);
+                    unlitMaterial.mainTexture = renderTexture;
+                    quadRenderer.material = unlitMaterial;
+                }
+                else
+                {
+                    // Fallback — if URP/Unlit isn't found (unexpected, but possible if the project's
+                    // render pipeline configuration changes), keep the existing material and just
+                    // assign the texture. The video will play; it just won't be glare-immune.
+                    Debug.LogWarning("U3DVideoPlayer: Universal Render Pipeline/Unlit shader not found. Video will render with the quad's existing material, which may produce lighting glare.");
+                    quadRenderer.material.mainTexture = renderTexture;
+                }
+            }
         }
 
         private void WireControls()
