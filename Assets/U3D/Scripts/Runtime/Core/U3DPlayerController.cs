@@ -633,10 +633,12 @@ public class U3DPlayerController : NetworkBehaviour
         if (_cursorManager != null)
             _cursorManager.SetVRMode(true);
 
-        CreateHandVisuals();
-
-        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(true);
-        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(true);
+        // Hand visuals temporarily disabled — placeholder spheres rendered as magenta
+        // in WebGL builds (default Standard material missing/stripped) and were never
+        // wired to real controller poses. Real avatar-hand IK system will replace this.
+        // CreateHandVisuals();
+        // if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(true);
+        // if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(true);
 
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
@@ -784,26 +786,9 @@ public class U3DPlayerController : NetworkBehaviour
 
     private void UpdateRemoteVRVisuals()
     {
-        if (_leftHandVisual == null || _rightHandVisual == null)
-            CreateHandVisuals();
-
-        if (_leftHandVisual != null)
-        {
-            _leftHandVisual.gameObject.SetActive(true);
-            Vector3 worldLeftPos = transform.TransformPoint(NetworkLeftHandPos);
-            Quaternion worldLeftRot = transform.rotation * NetworkLeftHandRot;
-            _leftHandVisual.position = Vector3.Lerp(_leftHandVisual.position, worldLeftPos, Time.deltaTime * 15f);
-            _leftHandVisual.rotation = Quaternion.Slerp(_leftHandVisual.rotation, worldLeftRot, Time.deltaTime * 15f);
-        }
-
-        if (_rightHandVisual != null)
-        {
-            _rightHandVisual.gameObject.SetActive(true);
-            Vector3 worldRightPos = transform.TransformPoint(NetworkRightHandPos);
-            Quaternion worldRightRot = transform.rotation * NetworkRightHandRot;
-            _rightHandVisual.position = Vector3.Lerp(_rightHandVisual.position, worldRightPos, Time.deltaTime * 15f);
-            _rightHandVisual.rotation = Quaternion.Slerp(_rightHandVisual.rotation, worldRightRot, Time.deltaTime * 15f);
-        }
+        // Hand visuals temporarily disabled. Real avatar-hand IK system will replace this.
+        // Body retained empty so existing call sites in Render() remain safe and the
+        // method shape is preserved for creator projects referencing it via reflection.
     }
 
     private void HideHandVisuals()
