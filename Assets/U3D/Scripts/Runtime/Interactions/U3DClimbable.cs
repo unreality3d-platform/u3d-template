@@ -165,12 +165,30 @@ namespace U3D
 
         /// <summary>
         /// SphereCast from the player's chest toward their forward direction.
+        /// In VR, "forward" is the headset's horizontal facing — the body doesn't rotate with head look.
+        /// On desktop, "forward" is the body's forward, which already follows camera yaw.
         /// Only returns true if the hit collider belongs to this climbable surface.
         /// </summary>
         bool DetectSurface(out RaycastHit hit)
         {
             Vector3 origin = playerTransform.position + detectionOffset;
-            Vector3 direction = playerTransform.forward;
+
+            Vector3 direction;
+            if (playerController.IsInVRMode && playerController.CameraTransform != null)
+            {
+                // Use head forward, projected to horizontal so the cast doesn't dive into the floor
+                // when the user looks down at the wall base or up at the wall top.
+                direction = playerController.CameraTransform.forward;
+                direction.y = 0f;
+                if (direction.sqrMagnitude < 0.001f)
+                    direction = playerTransform.forward; // headset facing perfectly vertical — degenerate, fall back
+                else
+                    direction.Normalize();
+            }
+            else
+            {
+                direction = playerTransform.forward;
+            }
 
             if (Physics.SphereCast(origin, detectionRadius, direction, out hit, maxClimbDistance))
             {
@@ -244,7 +262,23 @@ namespace U3D
             if (angleFromUp >= ledgeAngleThreshold)
                 return false;
 
-            Vector3 nudge = playerTransform.forward * ledgeForwardNudge + Vector3.up * ledgeUpwardNudge;
+            // Forward direction matches the detection logic so the mantle nudge goes the way the player is looking.
+            Vector3 forward;
+            if (playerController.IsInVRMode && playerController.CameraTransform != null)
+            {
+                forward = playerController.CameraTransform.forward;
+                forward.y = 0f;
+                if (forward.sqrMagnitude < 0.001f)
+                    forward = playerTransform.forward;
+                else
+                    forward.Normalize();
+            }
+            else
+            {
+                forward = playerTransform.forward;
+            }
+
+            Vector3 nudge = forward * ledgeForwardNudge + Vector3.up * ledgeUpwardNudge;
 
             OnLedgeTransition?.Invoke();
             Detach();

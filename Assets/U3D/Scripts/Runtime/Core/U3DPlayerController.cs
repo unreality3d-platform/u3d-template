@@ -711,6 +711,13 @@ public class U3DPlayerController : NetworkBehaviour
             cameraYaw += turnDelta;
         }
 
+        // Don't drive locomotion while climbing — U3DClimbable owns CharacterController.Move() then
+        if (NetworkIsClimbing)
+        {
+            moveInput = vrMoveInput;
+            return;
+        }
+
         Vector3 forward = playerCamera != null ? playerCamera.transform.forward : transform.forward;
         Vector3 right = playerCamera != null ? playerCamera.transform.right : transform.right;
 
@@ -742,6 +749,8 @@ public class U3DPlayerController : NetworkBehaviour
         {
             characterController.Move(moveVelocity * Runner.DeltaTime);
         }
+
+        moveInput = vrMoveInput;
 
         NetworkPosition = transform.position;
         NetworkRotation = transform.rotation;
@@ -1451,6 +1460,15 @@ public class U3DPlayerController : NetworkBehaviour
     public Vector2 MoveInput => moveInput;
     public bool JumpPressedThisFrame => _jumpPressedPending;
     public CharacterController CharacterController => characterController;
+
+    /// <summary>
+    /// The local player's camera transform. In VR this is the headset; on desktop, the standard player camera.
+    /// Climbable surfaces use this for facing detection so VR users can target walls by looking at them.
+    /// </summary>
+    public Transform CameraTransform => playerCamera != null ? playerCamera.transform : null;
+
+    /// <summary>True when this player is in a WebXR immersive session.</summary>
+    public bool IsInVR => _isInVRMode;
 
     // ==================== PUBLIC ACCESSORS FOR FEATURE FLAGS ====================
     // Read-only exposure of Inspector toggles so editor tools (like Movement
