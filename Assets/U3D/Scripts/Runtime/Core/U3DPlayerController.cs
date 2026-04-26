@@ -1038,9 +1038,21 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!enableAdvancedCamera || cameraPivot == null) return;
 
+        bool wasLeftMouseDragging = isLeftMouseDragging;
+
         isLeftMouseDragging = input.LeftMouseHeld;
         isRightMouseDragging = input.RightMouseHeld;
         isBothMouseForward = input.BothMouseHeld;
+
+        // MMO-style left-drag release: snap cameraYaw back to body yaw so the
+        // camera returns to the body's forward direction on release. Without
+        // this, cameraYaw drifts during the drag and the next pivot update
+        // produces a visible rotation snap (most noticeable as side-to-side
+        // shake during rapid double-clicks like teleport).
+        if (wasLeftMouseDragging && !isLeftMouseDragging && !isRightMouseDragging && !isBothMouseForward)
+        {
+            cameraYaw = transform.eulerAngles.y;
+        }
 
         Vector2 processedInput = _smoothedMouseInput;
 
