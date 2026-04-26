@@ -1250,6 +1250,13 @@ public class U3DPlayerController : NetworkBehaviour
             characterController.enabled = true;
 
             velocity = Vector3.zero;
+
+            // Discard stale mouse smoothing state — prevents post-teleport camera shake
+            // from buffered samples being averaged with new input across the snap.
+            _mouseInputBuffer.Clear();
+            _mouseTimeBuffer.Clear();
+            _smoothedMouseInput = Vector2.zero;
+            lookInput = Vector2.zero;
         }
     }
 
