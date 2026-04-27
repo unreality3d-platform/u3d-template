@@ -15,6 +15,9 @@ public class U3DAvatarManager : NetworkBehaviour
     [SerializeField] private Vector3 avatarOffset = Vector3.zero;
     [SerializeField] private bool followPlayerRotation = true;
     [SerializeField] private bool hideInFirstPerson = true;
+    [Header("VR Hand IK")]
+    [Tooltip("XR input actions asset. Used by the auto-attached U3DAvatarHandIK to read VR controller poses. Should reference the same U3DInputActions asset used by the player controller.")]
+    [SerializeField] private UnityEngine.InputSystem.InputActionAsset xrInputActions;
 
     // Core Components
     private U3DPlayerController playerController;
@@ -22,6 +25,7 @@ public class U3DAvatarManager : NetworkBehaviour
     private Animator avatarAnimator;
     private Avatar avatarAsset;
     private SkinnedMeshRenderer[] avatarRenderers;
+    private U3DAvatarHandIK avatarHandIK;
 
     // CLEAN: Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
@@ -85,6 +89,13 @@ public class U3DAvatarManager : NetworkBehaviour
             // Get all SkinnedMeshRenderers for visibility control
             avatarRenderers = avatarInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
 
+            // Auto-attach VR hand IK. Works for any humanoid avatar (default and creator-supplied).
+            // If the avatar isn't humanoid, U3DAvatarHandIK logs a warning and disables itself.
+            avatarHandIK = avatarInstance.GetComponent<U3DAvatarHandIK>();
+            if (avatarHandIK == null)
+                avatarHandIK = avatarInstance.AddComponent<U3DAvatarHandIK>();
+            avatarHandIK.Initialize(playerController, xrInputActions);
+
             isInitialized = true;
         }
         catch (System.Exception e)
@@ -147,17 +158,39 @@ public class U3DAvatarManager : NetworkBehaviour
 
     void UpdateAvatarVisibility()
     {
-        if (avatarRenderers == null || !Object.HasStateAuthority) return;
+        if (avatarRenderers == null) return;
 
-        bool shouldHide = hideInFirstPerson && playerController.IsFirstPerson;
+        // Per-client visibility decision: every client decides what to show for every
+        // avatar based on the avatar owner's networked state. This replaces the old
+        // gate that only let the owning client update visibility, which left remote
+        // viewers' renderers stuck in whatever state the FBX shipped with.
+        bool shouldShow = (avatarHandIK != null)
+            ? avatarHandIK.ShouldRender(hideInFirstPerson)
+            : ResolveVisibilityFallback();
 
         foreach (var renderer in avatarRenderers)
         {
-            if (renderer != null)
-            {
-                renderer.enabled = !shouldHide;
-            }
+            if (renderer != null && renderer.enabled != shouldShow)
+                renderer.enabled = shouldShow;
         }
+    }
+
+    /// <summary>
+    /// Visibility resolution used when the IK component isn't available (e.g. non-humanoid
+    /// avatar). Mirrors the IK component's logic so behavior stays consistent.
+    /// </summary>
+    bool ResolveVisibilityFallback()
+    {
+        if (playerController == null) return true;
+
+        bool isLocal = playerController.IsLocalPlayer;
+        bool inVR = playerController.NetworkIsInVR;
+        bool isFirstPerson = playerController.NetworkIsFirstPerson;
+
+        if (!isLocal) return true;
+        if (inVR) return true;
+        if (hideInFirstPerson && isFirstPerson) return false;
+        return true;
     }
 
     // Utility properties (unchanged)

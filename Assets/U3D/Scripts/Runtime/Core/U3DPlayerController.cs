@@ -132,6 +132,7 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Quaternion NetworkLeftHandRot { get; set; }
     [HideInInspector][Networked] public Vector3 NetworkRightHandPos { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
+    [HideInInspector][Networked] public NetworkBool NetworkIsFirstPerson { get; set; }
 
     // --- CHANGE 1: Networked rideable reference for remote player platform sync ---
     [HideInInspector][Networked] public NetworkBehaviourId NetworkRideableRef { get; set; }
@@ -181,8 +182,7 @@ public class U3DPlayerController : NetworkBehaviour
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
     private bool _isInVRMode = false;
-    private Transform _leftHandVisual;
-    private Transform _rightHandVisual;
+    private U3D.U3DAvatarHandIK _avatarHandIK;
     private U3D.XR.U3DWebXRManager _webXRManager;
 
     private const float VR_SNAP_TURN_ANGLE = 45f;
@@ -293,8 +293,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (_isLocalPlayer && _webXRManager != null)
             _webXRManager.UnregisterLocalPlayer(this);
 
-        if (_leftHandVisual != null) Destroy(_leftHandVisual.gameObject);
-        if (_rightHandVisual != null) Destroy(_rightHandVisual.gameObject);
+        // Hand visuals are part of the avatar instance and get destroyed with it.
     }
 
     void InitializeCameraPivot()
@@ -633,13 +632,6 @@ public class U3DPlayerController : NetworkBehaviour
         if (_cursorManager != null)
             _cursorManager.SetVRMode(true);
 
-        // Hand visuals temporarily disabled — placeholder spheres rendered as magenta
-        // in WebGL builds (default Standard material missing/stripped) and were never
-        // wired to real controller poses. Real avatar-hand IK system will replace this.
-        // CreateHandVisuals();
-        // if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(true);
-        // if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(true);
-
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
@@ -649,13 +641,13 @@ public class U3DPlayerController : NetworkBehaviour
             playerCamera.transform.localPosition = firstPersonPosition;
             playerCamera.transform.localRotation = Quaternion.identity;
         }
+
+        // Hand visuals and head-chop are owned by U3DAvatarHandIK on the avatar instance.
+        // It reads NetworkIsInVR every LateUpdate and adjusts itself. No work to do here.
     }
 
     private void ExitVRMode()
     {
-        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(false);
-        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(false);
-
         if (cameraPivot != null && playerCamera != null)
         {
             playerCamera.transform.SetParent(cameraPivot);
@@ -670,32 +662,16 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (_cursorManager != null)
             _cursorManager.SetVRMode(false);
+
+        // U3DAvatarHandIK observes NetworkIsInVR going false and lerps weight to 0,
+        // restoring the head bone scale and yielding arm control to the Animator.
     }
 
     private void CreateHandVisuals()
     {
-        if (_leftHandVisual == null)
-        {
-            var leftHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            leftHandGO.name = "LeftHandVisual";
-            leftHandGO.transform.SetParent(transform);
-            leftHandGO.transform.localScale = Vector3.one * 0.1f;
-            var collider = leftHandGO.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            leftHandGO.SetActive(false);
-            _leftHandVisual = leftHandGO.transform;
-        }
-        if (_rightHandVisual == null)
-        {
-            var rightHandGO = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            rightHandGO.name = "RightHandVisual";
-            rightHandGO.transform.SetParent(transform);
-            rightHandGO.transform.localScale = Vector3.one * 0.1f;
-            var collider = rightHandGO.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            rightHandGO.SetActive(false);
-            _rightHandVisual = rightHandGO.transform;
-        }
+        // Hand visuals are now driven by U3DAvatarHandIK on the avatar instance,
+        // which reads real controller poses and applies them via humanoid IK.
+        // This method is kept as a no-op so any external references still compile.
     }
 
     private void HandleVRMovement(U3DNetworkInputData input)
@@ -764,37 +740,26 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
 
+        // Camera (head) pitch is still tracked here for compatibility with the existing
+        // remote camera-rotation logic in Render(). The full head pose (NetworkHeadPosition,
+        // NetworkHeadRotation) and hand poses (NetworkLeftHandPos/Rot, NetworkRightHandPos/Rot)
+        // are written by U3DAvatarHandIK on the avatar instance during LateUpdate.
         if (playerCamera != null)
         {
-            NetworkHeadPosition = playerCamera.transform.localPosition;
-            NetworkHeadRotation = playerCamera.transform.localRotation;
             NetworkCameraPitch = playerCamera.transform.localEulerAngles.x;
-        }
-
-        if (_leftHandVisual != null && _leftHandVisual.gameObject.activeSelf)
-        {
-            NetworkLeftHandPos = _leftHandVisual.localPosition;
-            NetworkLeftHandRot = _leftHandVisual.localRotation;
-        }
-
-        if (_rightHandVisual != null && _rightHandVisual.gameObject.activeSelf)
-        {
-            NetworkRightHandPos = _rightHandVisual.localPosition;
-            NetworkRightHandRot = _rightHandVisual.localRotation;
         }
     }
 
     private void UpdateRemoteVRVisuals()
     {
-        // Hand visuals temporarily disabled. Real avatar-hand IK system will replace this.
-        // Body retained empty so existing call sites in Render() remain safe and the
-        // method shape is preserved for creator projects referencing it via reflection.
+        // Remote VR avatar visuals (arm IK, head pose, head-chop) are owned by
+        // U3DAvatarHandIK on each remote player's avatar instance, which reads from
+        // the owning controller's [Networked] slots every frame. No work here.
     }
 
     private void HideHandVisuals()
     {
-        if (_leftHandVisual != null) _leftHandVisual.gameObject.SetActive(false);
-        if (_rightHandVisual != null) _rightHandVisual.gameObject.SetActive(false);
+        // No-op. Hand visuals are owned by U3DAvatarHandIK on the avatar instance.
     }
 
     // ==================== END VR/WebXR MODE HANDLING ====================
@@ -1270,6 +1235,9 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (!_isLocalPlayer) return;
         if (_isInVRMode) return;
+
+        // Publish first-person state for remote viewers' visibility logic.
+        NetworkIsFirstPerson = isFirstPerson;
 
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
         {

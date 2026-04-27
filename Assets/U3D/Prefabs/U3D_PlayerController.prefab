@@ -390,6 +390,12 @@ MonoBehaviour:
   _NetworkLeftHandRot: {x: 0, y: 0, z: 0, w: 0}
   _NetworkRightHandPos: {x: 0, y: 0, z: 0}
   _NetworkRightHandRot: {x: 0, y: 0, z: 0, w: 0}
+  _NetworkIsFirstPerson:
+    _value: 0
+  _NetworkRideableRef:
+    Object:
+      Raw: 0
+    Behaviour: 0
 --- !u!114 &3303798439634689199
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -430,6 +436,7 @@ MonoBehaviour:
   avatarOffset: {x: 0, y: 0, z: 0}
   followPlayerRotation: 1
   hideInFirstPerson: 1
+  xrInputActions: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
 --- !u!114 &8590291952775574450
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -751,6 +758,22 @@ MonoBehaviour:
       m_Calls: []
     m_ActionId: 020bf672-c371-40e9-bbc1-aef9e1387e6d
     m_ActionName: 'Player/AutoRunToggle[/Keyboard/numLock]'
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 9b8c2aa6-707d-4e21-a328-31d1af89428c
+    m_ActionName: XR/LeftHandPosition
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 471ed779-a1f3-4baf-961a-cf63dc516d34
+    m_ActionName: XR/LeftHandRotation
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: b95cd03e-c304-41b4-996e-ebc1ccb00c58
+    m_ActionName: XR/RightHandPosition
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: c7139932-ab9c-4cad-9e37-a870c21fbf12
+    m_ActionName: XR/RightHandRotation
   m_NeverAutoSwitchControlSchemes: 0
   m_DefaultControlScheme: 
   m_DefaultActionMap: Player
