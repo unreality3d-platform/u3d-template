@@ -157,22 +157,17 @@ namespace U3D
                 return;
             }
 
-            var xrMap = xrInputActions.FindActionMap("XR", throwIfNotFound: false);
-            if (xrMap == null)
+            var playerMap = xrInputActions.FindActionMap("Player", throwIfNotFound: false);
+            if (playerMap == null)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] XR action map not found in InputActionAsset. Local VR pose input disabled.");
+                Debug.LogWarning("[U3DAvatarHandIK] Player action map not found in InputActionAsset. Local VR pose input disabled.");
                 return;
             }
 
-            _leftHandPositionAction = xrMap.FindAction("LeftHandPosition", throwIfNotFound: false);
-            _leftHandRotationAction = xrMap.FindAction("LeftHandRotation", throwIfNotFound: false);
-            _rightHandPositionAction = xrMap.FindAction("RightHandPosition", throwIfNotFound: false);
-            _rightHandRotationAction = xrMap.FindAction("RightHandRotation", throwIfNotFound: false);
-
-            if (_leftHandPositionAction != null) _leftHandPositionAction.Enable();
-            if (_leftHandRotationAction != null) _leftHandRotationAction.Enable();
-            if (_rightHandPositionAction != null) _rightHandPositionAction.Enable();
-            if (_rightHandRotationAction != null) _rightHandRotationAction.Enable();
+            _leftHandPositionAction = playerMap.FindAction("LeftHandPosition", throwIfNotFound: false);
+            _leftHandRotationAction = playerMap.FindAction("LeftHandRotation", throwIfNotFound: false);
+            _rightHandPositionAction = playerMap.FindAction("RightHandPosition", throwIfNotFound: false);
+            _rightHandRotationAction = playerMap.FindAction("RightHandRotation", throwIfNotFound: false);
 
             _xrActionsBound = _leftHandPositionAction != null
                 && _leftHandRotationAction != null
@@ -183,14 +178,6 @@ namespace U3D
             {
                 Debug.LogWarning("[U3DAvatarHandIK] One or more XR pose actions could not be resolved. Verify the XR map in U3DInputActions has LeftHandPosition / LeftHandRotation / RightHandPosition / RightHandRotation actions.");
             }
-        }
-
-        void OnDisable()
-        {
-            if (_leftHandPositionAction != null) _leftHandPositionAction.Disable();
-            if (_leftHandRotationAction != null) _leftHandRotationAction.Disable();
-            if (_rightHandPositionAction != null) _rightHandPositionAction.Disable();
-            if (_rightHandRotationAction != null) _rightHandRotationAction.Disable();
         }
 
         void LateUpdate()
