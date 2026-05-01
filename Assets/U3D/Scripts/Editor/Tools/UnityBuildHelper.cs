@@ -12,7 +12,7 @@ namespace U3D.Editor
     {
         private static bool _isBuildInProgress = false;
 
-        public static async Task<UnityBuildResult> BuildWebGL(string outputPath, System.Action<string> onProgress = null)
+        public static async Task<UnityBuildResult> BuildWebGL(string outputPath, System.Action<string> onProgress = null, string[] scenePaths = null)
         {
             // Prevent multiple simultaneous builds
             if (_isBuildInProgress)
@@ -31,8 +31,9 @@ namespace U3D.Editor
             {
                 onProgress?.Invoke("🔍 Validating build requirements...");
 
-                // Enhanced build validation
-                var validationResult = ValidateExtendedBuildRequirements();
+                // Enhanced build validation — pass scenePaths so validation checks the
+                // explicit list when provided instead of reading EditorBuildSettings
+                var validationResult = ValidateExtendedBuildRequirements(scenePaths);
                 if (!validationResult.IsValid)
                 {
                     return new UnityBuildResult
@@ -70,11 +71,19 @@ namespace U3D.Editor
                 // Clean and prepare output directory
                 await PrepareOutputDirectory(outputPath);
 
-                // Get all scenes in build settings
-                var scenes = EditorBuildSettings.scenes
-                    .Where(scene => scene.enabled)
-                    .Select(scene => scene.path)
-                    .ToArray();
+                // Use explicit scene list if provided, otherwise fall back to Build Settings
+                string[] scenes;
+                if (scenePaths != null && scenePaths.Length > 0)
+                {
+                    scenes = scenePaths;
+                }
+                else
+                {
+                    scenes = EditorBuildSettings.scenes
+                        .Where(scene => scene.enabled)
+                        .Select(scene => scene.path)
+                        .ToArray();
+                }
 
                 if (scenes.Length == 0)
                 {
@@ -274,7 +283,7 @@ namespace U3D.Editor
             });
         }
 
-        private static BuildValidationResult ValidateExtendedBuildRequirements()
+        private static BuildValidationResult ValidateExtendedBuildRequirements(string[] scenePaths = null)
         {
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL))
             {
@@ -285,14 +294,31 @@ namespace U3D.Editor
                 };
             }
 
-            var enabledScenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).ToArray();
-            if (enabledScenes.Length == 0)
+            // When explicit scene paths are provided, validate those instead of Build Settings
+            if (scenePaths != null && scenePaths.Length > 0)
             {
-                return new BuildValidationResult
+                // Verify all provided scene paths actually exist on disk
+                var missingScenes = scenePaths.Where(p => !File.Exists(p)).ToArray();
+                if (missingScenes.Length > 0)
                 {
-                    IsValid = false,
-                    ErrorMessage = "No scenes are enabled in Build Settings. Please add at least one scene to build."
-                };
+                    return new BuildValidationResult
+                    {
+                        IsValid = false,
+                        ErrorMessage = $"Scene file(s) not found: {string.Join(", ", missingScenes)}"
+                    };
+                }
+            }
+            else
+            {
+                var enabledScenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).ToArray();
+                if (enabledScenes.Length == 0)
+                {
+                    return new BuildValidationResult
+                    {
+                        IsValid = false,
+                        ErrorMessage = "No scenes are enabled in Build Settings. Please add at least one scene to build."
+                    };
+                }
             }
 
             if (PlayerSettings.WebGL.memorySize < 128)

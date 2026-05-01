@@ -9,7 +9,9 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace U3D.Editor
 {
@@ -39,6 +41,11 @@ namespace U3D.Editor
         //Thumbnail checking cache - only check when repository is selected
         private Dictionary<string, bool> thumbnailCheckCache = new Dictionary<string, bool>();
         private string lastSelectedRepositoryForThumbnailCheck = "";
+
+        // Scene confirmation state — build-scoped toggles, never writes to EditorBuildSettings
+        private string activeScenePath = "";
+        private string activeSceneName = "";
+        private Dictionary<string, bool> buildSceneToggles = new Dictionary<string, bool>();
 
         private enum PublishStep
         {
@@ -93,6 +100,8 @@ namespace U3D.Editor
             selectedOptionIndex = -1;
             previousSelectedOptionIndex = -1;
             currentStatus = "";
+
+            RefreshBuildSceneList();
         }
 
         private void MarkPublishSuccess(string successUrl, string repositoryName)
@@ -159,6 +168,78 @@ namespace U3D.Editor
             currentStatus = "";
             isPublishing = false;
             shouldCreateNewRepository = true;
+        }
+
+        /// <summary>
+        /// Reads the active scene and EditorBuildSettings to populate the scene confirmation UI.
+        /// Does NOT modify EditorBuildSettings. Toggle state persists within the editor session
+        /// so creators don't have to re-deselect scenes they already excluded.
+        /// </summary>
+        private void RefreshBuildSceneList()
+        {
+            var scene = SceneManager.GetActiveScene();
+            activeScenePath = scene.path;
+            activeSceneName = scene.name;
+
+            // Build the toggle dictionary from EditorBuildSettings.scenes
+            // Preserve existing toggle state for scenes we've already seen
+            var freshToggles = new Dictionary<string, bool>();
+            foreach (var buildScene in EditorBuildSettings.scenes)
+            {
+                if (!buildScene.enabled)
+                    continue;
+
+                if (buildSceneToggles.TryGetValue(buildScene.path, out bool existingState))
+                {
+                    // Preserve the creator's previous toggle choice
+                    freshToggles[buildScene.path] = existingState;
+                }
+                else
+                {
+                    // New scene — default to on
+                    freshToggles[buildScene.path] = true;
+                }
+            }
+
+            // If the active scene isn't in Build Settings at all, add it as toggled on
+            if (!freshToggles.ContainsKey(activeScenePath) && !string.IsNullOrEmpty(activeScenePath))
+            {
+                freshToggles[activeScenePath] = true;
+            }
+
+            // The active scene is always included — force it on
+            if (!string.IsNullOrEmpty(activeScenePath))
+            {
+                freshToggles[activeScenePath] = true;
+            }
+
+            buildSceneToggles = freshToggles;
+        }
+
+        /// <summary>
+        /// Returns the scene paths the creator has chosen to include in this build.
+        /// The active scene is always first (Unity treats index 0 as the entry scene).
+        /// </summary>
+        private string[] GetSelectedScenePaths()
+        {
+            var selected = new List<string>();
+
+            // Active scene is always first
+            if (!string.IsNullOrEmpty(activeScenePath))
+            {
+                selected.Add(activeScenePath);
+            }
+
+            // Add other toggled-on scenes
+            foreach (var kvp in buildSceneToggles)
+            {
+                if (kvp.Value && kvp.Key != activeScenePath)
+                {
+                    selected.Add(kvp.Key);
+                }
+            }
+
+            return selected.ToArray();
         }
 
         public void DrawTab()
@@ -294,6 +375,9 @@ namespace U3D.Editor
                 currentStatus = "";
                 IsComplete = false;
             }
+
+            // Refresh scene list in case the creator switched scenes
+            RefreshBuildSceneList();
         }
 
         private void DrawReadyToPublish()
@@ -510,12 +594,100 @@ namespace U3D.Editor
             }
         }
 
+        /// <summary>
+        /// Draws the scene confirmation section showing the active scene and toggles for
+        /// other enabled scenes. This never modifies EditorBuildSettings — toggles only
+        /// affect which scenes are passed to BuildWebGL for this specific build.
+        /// </summary>
+        private void DrawSceneConfirmation()
+        {
+            // Refresh in case the creator switched scenes since last draw
+            var currentActiveScene = SceneManager.GetActiveScene();
+            if (currentActiveScene.path != activeScenePath)
+            {
+                RefreshBuildSceneList();
+            }
+
+            EditorGUILayout.Space(5);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            var headerStyle = new GUIStyle(EditorStyles.boldLabel);
+            headerStyle.normal.textColor = EditorGUIUtility.isProSkin
+                ? new Color(0.3f, 0.7f, 1f)
+                : new Color(0.1f, 0.35f, 0.6f);
+            EditorGUILayout.LabelField("🎬 Build Scenes", headerStyle);
+
+            // Active scene — always included, shown prominently
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.Toggle(true, GUILayout.Width(20));
+            EditorGUI.EndDisabledGroup();
+
+            var activeStyle = new GUIStyle(EditorStyles.boldLabel);
+            activeStyle.normal.textColor = EditorGUIUtility.isProSkin
+                ? Color.green
+                : new Color(0f, 0.5f, 0f);
+
+            if (!string.IsNullOrEmpty(activeSceneName))
+            {
+                EditorGUILayout.LabelField($"{activeSceneName}  (active scene — entry point)", activeStyle);
+            }
+            else
+            {
+                EditorGUILayout.LabelField("No scene open", EditorStyles.boldLabel);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            // Other enabled scenes with toggles
+            var otherScenes = buildSceneToggles.Keys
+                .Where(path => path != activeScenePath)
+                .OrderBy(path => path)
+                .ToList();
+
+            if (otherScenes.Count > 0)
+            {
+                EditorGUILayout.Space(3);
+                EditorGUILayout.LabelField("Other enabled scenes in Build Settings:", EditorStyles.miniLabel);
+
+                foreach (var scenePath in otherScenes)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    var sceneName = Path.GetFileNameWithoutExtension(scenePath);
+                    bool included = buildSceneToggles[scenePath];
+                    bool newValue = EditorGUILayout.Toggle(included, GUILayout.Width(20));
+                    if (newValue != included)
+                    {
+                        buildSceneToggles[scenePath] = newValue;
+                    }
+                    EditorGUILayout.LabelField(sceneName, EditorStyles.label);
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+
+            // Warning if the active scene wasn't in Build Settings
+            bool activeSceneInBuildSettings = EditorBuildSettings.scenes
+                .Any(s => s.enabled && s.path == activeScenePath);
+            if (!activeSceneInBuildSettings && !string.IsNullOrEmpty(activeScenePath))
+            {
+                EditorGUILayout.Space(3);
+                EditorGUILayout.HelpBox(
+                    $"💡 \"{activeSceneName}\" is not in your Build Settings. It will be included automatically for this build.",
+                    MessageType.Info);
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
         private void DrawRepositoryOptions()
         {
             if (availableOptions.Count == 0)
             {
                 EditorGUILayout.HelpBox("No GitHub repositories found. A new repository will be created.", MessageType.Info);
 
+                // Show scene confirmation even with no repos
+                DrawSceneConfirmation();
+
+                EditorGUILayout.Space(5);
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
                 {
@@ -578,6 +750,50 @@ namespace U3D.Editor
                     "You can also choose to update any of your existing Unity projects below.",
                     MessageType.Info);
                 EditorGUILayout.Space(5);
+            }
+
+            // Validation state computed once for use inside the loop
+            bool canPublish = selectedOptionIndex >= 0;
+            string validationError = null;
+            ProjectOption selectedOption = null;
+
+            if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
+            {
+                selectedOption = availableOptions[selectedOptionIndex];
+            }
+
+            if (canPublish && selectedOption != null)
+            {
+                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
+                {
+                    if (!ValidateProductName(cachedProductName, out validationError))
+                    {
+                        canPublish = false;
+                    }
+                    else
+                    {
+                        var hasConflictingRepo = availableOptions.Any(opt =>
+                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
+                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
+
+                        if (hasConflictingRepo)
+                        {
+                            validationError = $"Repository '{GitHubAPI.SanitizeRepositoryName(cachedProductName)}' already exists. Use the Update option above or change the Product Name.";
+                            canPublish = false;
+                        }
+                    }
+                }
+                else if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
+                {
+                    canPublish = true;
+                }
+            }
+
+            // Also block publish if no scenes are selected
+            if (canPublish && GetSelectedScenePaths().Length == 0)
+            {
+                canPublish = false;
+                validationError = "No scenes selected for build. At least one scene must be included.";
             }
 
             // Draw radio button options
@@ -771,11 +987,11 @@ namespace U3D.Editor
                     EditorGUILayout.Space(5);
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
-                    var headerStyle = new GUIStyle(EditorStyles.boldLabel);
-                    headerStyle.normal.textColor = EditorGUIUtility.isProSkin
+                    var thumbnailHeaderStyle = new GUIStyle(EditorStyles.boldLabel);
+                    thumbnailHeaderStyle.normal.textColor = EditorGUIUtility.isProSkin
                         ? new Color(0.3f, 0.7f, 1f)
                         : new Color(0.1f, 0.35f, 0.6f);
-                    EditorGUILayout.LabelField("📷 Optional: Add a Thumbnail", headerStyle);
+                    EditorGUILayout.LabelField("📷 Optional: Add a Thumbnail", thumbnailHeaderStyle);
 
                     EditorGUILayout.LabelField("If you want to include a thumbnail for unreality3d.com to display:", EditorStyles.wordWrappedLabel);
                     EditorGUILayout.Space(3);
@@ -826,6 +1042,49 @@ namespace U3D.Editor
 
                 EditorGUILayout.EndVertical();
                 EditorGUILayout.EndHorizontal();
+
+                // Scene confirmation + Make It Live button — only under the selected option
+                if (isSelected)
+                {
+                    DrawSceneConfirmation();
+
+                    EditorGUILayout.Space(5);
+
+                    // Validation error shown right above the button
+                    if (!canPublish && !string.IsNullOrEmpty(validationError))
+                    {
+                        EditorGUILayout.HelpBox($"⚠️ {validationError}", MessageType.Warning);
+                    }
+
+                    GUI.enabled = canPublish;
+                    if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
+                    {
+                        if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
+                        {
+                            var targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
+                            shouldCreateNewRepository = true;
+                            EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
+                            _ = StartFirebasePublishProcess();
+                        }
+                        else
+                        {
+                            var targetRepositoryName = selectedOption.RepositoryName;
+                            shouldCreateNewRepository = false;
+
+                            if (EditorUtility.DisplayDialog("Confirm Repository Update",
+                                $"You are about to update the existing repository '{targetRepositoryName}'.\n\n" +
+                                "This will overwrite the current content with your new build.\n\n" +
+                                "Are you sure you want to continue?",
+                                "Yes, Update", "Cancel"))
+                            {
+                                EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
+                                _ = StartFirebasePublishProcess();
+                            }
+                        }
+                    }
+                    GUI.enabled = true;
+                }
+
                 EditorGUILayout.EndVertical();
 
                 // Make entire row clickable for selection
@@ -844,97 +1103,6 @@ namespace U3D.Editor
                 EditorGUIUtility.AddCursorRect(rowRect, MouseCursor.Link);
 
                 EditorGUILayout.Space(3);
-            }
-
-            EditorGUILayout.Space(10);
-
-            // Publish button validation
-            bool canPublish = selectedOptionIndex >= 0;
-            string validationError = null;
-
-            // Get the selected option for validation
-            ProjectOption selectedOption = null;
-            if (selectedOptionIndex >= 0 && selectedOptionIndex < availableOptions.Count)
-            {
-                selectedOption = availableOptions[selectedOptionIndex];
-            }
-
-            // Validate based on what's actually selected
-            if (canPublish && selectedOption != null)
-            {
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
-                {
-                    // For Create validate Product Name
-                    if (!ValidateProductName(cachedProductName, out validationError))
-                    {
-                        canPublish = false;
-                    }
-                    else
-                    {
-                        // Check if Product Name conflicts with existing repo
-                        var hasConflictingRepo = availableOptions.Any(opt =>
-                            opt.Type == ProjectOption.OptionType.UpdateExisting &&
-                            string.Equals(opt.RepositoryName, GitHubAPI.SanitizeRepositoryName(cachedProductName), StringComparison.OrdinalIgnoreCase));
-
-                        if (hasConflictingRepo)
-                        {
-                            validationError = $"Repository '{GitHubAPI.SanitizeRepositoryName(cachedProductName)}' already exists. Use the Update option above or change the Product Name.";
-                            canPublish = false;
-                        }
-                    }
-                }
-                else if (selectedOption.Type == ProjectOption.OptionType.UpdateExisting)
-                {
-                    // For Update Existing: always allow (no additional validation needed)
-                    canPublish = true;
-                }
-            }
-
-            GUI.enabled = canPublish;
-            if (GUILayout.Button("Make It Live!", GUILayout.Height(50)))
-            {
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
-                {
-                    // Use current Product Name for new repository
-                    var targetRepositoryName = GitHubAPI.SanitizeRepositoryName(cachedProductName);
-                    shouldCreateNewRepository = true;
-                    EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
-                }
-                else
-                {
-                    // Update existing repository with confirmation
-                    var targetRepositoryName = selectedOption.RepositoryName;
-                    shouldCreateNewRepository = false;
-
-                    // Show confirmation dialog for updates
-                    if (EditorUtility.DisplayDialog("Confirm Repository Update",
-                        $"You are about to update the existing repository '{targetRepositoryName}'.\n\n" +
-                        "This will overwrite the current content with your new build.\n\n" +
-                        "Are you sure you want to continue?",
-                        "Yes, Update", "Cancel"))
-                    {
-                        EditorPrefs.SetString("U3D_TargetRepository", targetRepositoryName);
-                        _ = StartFirebasePublishProcess();
-                    }
-                    else
-                    {
-                        GUI.enabled = true;
-                        return; // User cancelled
-                    }
-                }
-
-                if (selectedOption.Type == ProjectOption.OptionType.CreateNew)
-                {
-                    _ = StartFirebasePublishProcess();
-                }
-            }
-            GUI.enabled = true;
-
-            // Show validation errors
-            if (!canPublish && !string.IsNullOrEmpty(validationError))
-            {
-                EditorGUILayout.Space(5);
-                EditorGUILayout.HelpBox($"⚠️ {validationError}", MessageType.Warning);
             }
         }
 
@@ -1140,10 +1308,13 @@ namespace U3D.Editor
                 var buildPath = Path.Combine(Path.GetDirectoryName(Application.dataPath), "WebGL");
                 currentStatus = $"Building to: {buildPath}";
 
+                // Pass the creator's scene selection to BuildWebGL
+                var scenePaths = GetSelectedScenePaths();
+
                 var buildResult = await UnityBuildHelper.BuildWebGL(buildPath, (status) =>
                 {
                     currentStatus = status;
-                });
+                }, scenePaths);
 
                 //Copy thumbnail from Assets/_MyAssets to build output if it exists
                 if (buildResult.Success)
