@@ -30,6 +30,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
                 new CreatorTool("🟢 Add URL Link", "Click to open a URL in a new browser tab. Adds an Interact Trigger wired to open the link.", ApplyURLLink, true),
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
+                new CreatorTool("🟢 Add Mirror", "Reflective surface for vanity mirrors, avatar viewing, or scene composition. Each mirror creates its own render texture asset in Assets/U3D/U3D_Assets/Mirrors/.", CreateMirror),
                 new CreatorTool("🟢 Add Instructions", "Worldspace UI showing default movement and control patterns with all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
                 new CreatorTool("🟢 Add Screenspace UI", "Screen overlay canvas with title and body text. Good for HUDs, menus, or info overlays. Add your own buttons and content.", CreateScreenspaceUI),
@@ -321,6 +322,84 @@ namespace U3D.Editor
             u3dVideo.progressSlider = slider;
             u3dVideo.timeDisplay = timeTMP;
             u3dVideo.playPauseButtonText = buttonTMP;
+
+            Selection.activeGameObject = root;
+            EditorGUIUtility.PingObject(root);
+            EditorUtility.SetDirty(root);
+        }
+
+        // ───────────────────────────────────────────
+        // Mirror
+        // ───────────────────────────────────────────
+
+        private const string MIRROR_RT_FOLDER = "Assets/U3D/U3D_Assets/Mirrors";
+
+        private static void CreateMirror()
+        {
+            // Ensure the render texture folder exists.
+            if (!AssetDatabase.IsValidFolder(MIRROR_RT_FOLDER))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/U3D/U3D_Assets"))
+                {
+                    if (!AssetDatabase.IsValidFolder("Assets/U3D"))
+                        AssetDatabase.CreateFolder("Assets", "U3D");
+                    AssetDatabase.CreateFolder("Assets/U3D", "U3D_Assets");
+                }
+                AssetDatabase.CreateFolder("Assets/U3D/U3D_Assets", "Mirrors");
+            }
+
+            // Create the render texture asset with a unique name so multiple mirrors don't collide.
+            string rtPath = AssetDatabase.GenerateUniqueAssetPath(MIRROR_RT_FOLDER + "/MirrorRenderTexture.renderTexture");
+            RenderTexture rt = new RenderTexture(1024, 1536, 24, RenderTextureFormat.Default);
+            rt.name = System.IO.Path.GetFileNameWithoutExtension(rtPath);
+            AssetDatabase.CreateAsset(rt, rtPath);
+            AssetDatabase.SaveAssets();
+
+            // Create the material that displays the render texture on the mirror surface.
+            string matPath = AssetDatabase.GenerateUniqueAssetPath(MIRROR_RT_FOLDER + "/MirrorMaterial.mat");
+            Material mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            mat.SetTexture("_BaseMap", rt);
+            // Render Face = Both. Required because the negative X scale on the mirror quad
+            // (used to flip the image left-to-right) inverts the quad's normals.
+            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+            AssetDatabase.CreateAsset(mat, matPath);
+            AssetDatabase.SaveAssets();
+
+            // Root.
+            GameObject root = new GameObject("Mirror");
+            PositionInScene(root);
+
+            // Mirror surface quad. Faces along the root's local +Z by default.
+            GameObject surfaceObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            surfaceObj.name = "Mirror Surface";
+            surfaceObj.transform.SetParent(root.transform, false);
+            // Negative X scale flips the quad's UVs so the camera feed reads as a mirror image
+            // (raise your right hand, the reflection raises its left). Standard Unity mirror trick.
+            surfaceObj.transform.localScale = new Vector3(-2f, 3f, 1f);
+
+            MeshRenderer surfaceRenderer = surfaceObj.GetComponent<MeshRenderer>();
+            if (surfaceRenderer != null)
+                surfaceRenderer.sharedMaterial = mat;
+
+            // Reflection camera. Faces opposite the mirror surface so it looks out at the room
+            // the player is standing in, not through the back of the mirror.
+            GameObject camObj = new GameObject("Reflection Camera");
+            camObj.transform.SetParent(root.transform, false);
+            camObj.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+            Camera reflectionCam = camObj.AddComponent<Camera>();
+            reflectionCam.targetTexture = rt;
+            reflectionCam.clearFlags = CameraClearFlags.Skybox;
+            // Don't tag this MainCamera and don't let it become the audio listener — the player controller owns both.
+
+            AudioListener stowawayListener = camObj.GetComponent<AudioListener>();
+            if (stowawayListener != null)
+                Object.DestroyImmediate(stowawayListener);
+
+            // Mirror driver.
+            U3DMirror mirror = root.AddComponent<U3DMirror>();
+            mirror.reflectionCamera = reflectionCam;
+            mirror.mirrorSurface = surfaceObj.transform;
 
             Selection.activeGameObject = root;
             EditorGUIUtility.PingObject(root);

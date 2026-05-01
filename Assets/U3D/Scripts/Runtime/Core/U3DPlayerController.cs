@@ -638,7 +638,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (cameraPivot != null && playerCamera != null)
         {
             playerCamera.transform.SetParent(transform);
-            playerCamera.transform.localPosition = firstPersonPosition;
+            playerCamera.transform.localPosition = Vector3.zero;
             playerCamera.transform.localRotation = Quaternion.identity;
         }
 
