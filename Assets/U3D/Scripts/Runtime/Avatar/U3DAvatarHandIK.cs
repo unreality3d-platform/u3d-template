@@ -1,15 +1,19 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR;
+#if WEBXR_ENABLED
+using WebXR;
+#endif
 
 namespace U3D
 {
     /// <summary>
     /// Drives a humanoid avatar's arm IK from VR controller poses.
     ///
-    /// Local VR player: reads controller poses directly from the Input System
-    /// (XR action map in U3DInputActions), solves two-bone IK on shoulder/upperArm/
-    /// lowerArm/hand, also writes rig-local pose to the owning U3DPlayerController's
-    /// [Networked] slots so remote viewers can replicate.
+    /// Local VR player: reads controller poses directly from De-Panther's WebXRController
+    /// components, solves two-bone IK on shoulder/upperArm/lowerArm/hand, also writes
+    /// rig-local pose to the owning U3DPlayerController's [Networked] slots so remote
+    /// viewers can replicate.
     ///
     /// Remote viewer of any player: reads NetworkLeftHandPos/Rot, NetworkRightHandPos/Rot,
     /// NetworkIsInVR from the owning U3DPlayerController. If owner is in VR, applies same
@@ -22,11 +26,21 @@ namespace U3D
     ///
     /// Auto-attached to the avatar instance by U3DAvatarManager. Creators do not need
     /// to add this component manually.
+    ///
+    /// Note on input source: this component originally read XR controller poses through
+    /// the new Input System using <XRController>{LeftHand}/devicePosition bindings, then
+    /// tried Unity's XR Input subsystem (InputDevices.GetDevicesAtXRNode), but neither
+    /// approach exposes left and right hand poses independently in De-Panther's WebXR
+    /// runtime. We use De-Panther's own WebXRController components: each one has a hand
+    /// property (LEFT/RIGHT/NONE) and its transform is updated every frame with the
+    /// controller pose. If the scene doesn't already have WebXRController instances
+    /// (the U3D rig doesn't include them by default), this component creates them at
+    /// runtime as children of the player root when VR mode begins.
     /// </summary>
     public class U3DAvatarHandIK : MonoBehaviour
     {
         [Header("Input (set by U3DAvatarManager)")]
-        [Tooltip("Reference to the XR input actions asset. Auto-assigned by U3DAvatarManager on spawn.")]
+        [Tooltip("Reference to the XR input actions asset. Retained for backward compatibility; pose data is now read directly from WebXRController components and this field is unused at runtime.")]
         [SerializeField] private InputActionAsset xrInputActions;
 
         [Header("IK Tuning")]
@@ -40,6 +54,13 @@ namespace U3D
         [Tooltip("How far the elbow bends down. 0 = elbow points sideways, 1 = elbow points down. 0.3 is natural for arms held in front.")]
         [Range(0f, 1f)]
         [SerializeField] private float elbowDownwardHint = 0.3f;
+
+        [SerializeField] private Vector3 leftHandRotationOffset = new Vector3(0f, -90f, -90f);
+        [SerializeField] private Vector3 rightHandRotationOffset = new Vector3(0f, 90f, 90f);
+
+        [Header("Debug")]
+        [Tooltip("Show on-screen pose data overlay in VR. For diagnostic use only — disable for production.")]
+        [SerializeField] private bool showDebugOverlay = false;
 
         // Owning controller (the player this avatar belongs to)
         private U3DPlayerController _playerController;
@@ -68,12 +89,17 @@ namespace U3D
         private Vector3 _originalHeadScale;
         private bool _headScaleCached;
 
-        // Input System actions (resolved from xrInputActions on Start)
-        private InputAction _leftHandPositionAction;
-        private InputAction _leftHandRotationAction;
-        private InputAction _rightHandPositionAction;
-        private InputAction _rightHandRotationAction;
-        private bool _xrActionsBound;
+#if WEBXR_ENABLED
+        // De-Panther WebXRController references. Either found in the scene if the creator
+        // placed them there, or created at runtime if not. De-Panther writes the controller
+        // pose to each component's transform every frame, and exposes a hand property
+        // (LEFT/RIGHT/NONE) for handedness. This is the canonical De-Panther API for
+        // per-hand controller data and works when Unity's XR Input subsystem returns
+        // nothing on WebGL/WebXR.
+        private WebXRController _leftHandController;
+        private WebXRController _rightHandController;
+#endif
+        private bool _xrActionsBound;  // True when at least one controller has been resolved.
 
         // IK weight state (lerped each frame)
         private float _currentIKWeight;
@@ -81,6 +107,11 @@ namespace U3D
 
         // Head-chop state
         private bool _headChopActive;
+
+        // Debug overlay state
+        private GameObject _debugPanel;
+        private TextMesh _debugText;
+        private int _debugFrameCounter;
 
         public bool IsReady => _animator != null
             && _leftHand != null && _rightHand != null
@@ -97,7 +128,8 @@ namespace U3D
             xrInputActions = xrActions;
 
             CacheBones();
-            BindXRActions();
+            // WebXRController references are resolved per-frame in LateUpdate via BindXRActions.
+            // No setup needed at initialization time.
         }
 
         void CacheBones()
@@ -142,6 +174,7 @@ namespace U3D
             }
 
             // Cache original head scale once for head-chop restoration
+
             if (_head != null && !_headScaleCached)
             {
                 _originalHeadScale = _head.localScale;
@@ -149,36 +182,77 @@ namespace U3D
             }
         }
 
+        /// <summary>
+        /// Locate or create De-Panther WebXRController instances for left and right hands.
+        /// First tries to find existing ones in the scene (if a creator placed them);
+        /// if none found, creates them as children of the player root. Once created,
+        /// they're cached and reused.
+        /// </summary>
         void BindXRActions()
         {
-            if (xrInputActions == null)
+#if WEBXR_ENABLED
+            // Skip if both refs are still alive.
+            bool needScan = (_leftHandController == null) || (_rightHandController == null);
+            if (!needScan)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] No XR InputActionAsset assigned. Local VR pose input disabled.");
+                _xrActionsBound = true;
                 return;
             }
 
-            var playerMap = xrInputActions.FindActionMap("Player", throwIfNotFound: false);
-            if (playerMap == null)
+            // First try to find existing WebXRController instances in the scene.
+            var existing = Object.FindObjectsByType<WebXRController>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+
+            for (int i = 0; i < existing.Length; i++)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] Player action map not found in InputActionAsset. Local VR pose input disabled.");
-                return;
+                var c = existing[i];
+                if (c == null) continue;
+
+                if (c.hand == WebXRControllerHand.LEFT && _leftHandController == null)
+                {
+                    _leftHandController = c;
+                }
+                else if (c.hand == WebXRControllerHand.RIGHT && _rightHandController == null)
+                {
+                    _rightHandController = c;
+                }
             }
 
-            _leftHandPositionAction = playerMap.FindAction("LeftHandPosition", throwIfNotFound: false);
-            _leftHandRotationAction = playerMap.FindAction("LeftHandRotation", throwIfNotFound: false);
-            _rightHandPositionAction = playerMap.FindAction("RightHandPosition", throwIfNotFound: false);
-            _rightHandRotationAction = playerMap.FindAction("RightHandRotation", throwIfNotFound: false);
-
-            _xrActionsBound = _leftHandPositionAction != null
-                && _leftHandRotationAction != null
-                && _rightHandPositionAction != null
-                && _rightHandRotationAction != null;
-
-            if (!_xrActionsBound)
+            // Create any controllers that weren't found in the scene. They live as
+            // children of the player root, which is the WebXR tracking origin in U3D's
+            // rig (the camera, which De-Panther drives, is also parented to the player
+            // root). De-Panther's WebXRController will write world-space pose to the
+            // GameObject's transform every frame once the WebXR session is active.
+            if (_leftHandController == null && _playerController != null)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] One or more XR pose actions could not be resolved. Verify the XR map in U3DInputActions has LeftHandPosition / LeftHandRotation / RightHandPosition / RightHandRotation actions.");
+                _leftHandController = CreateRuntimeController(WebXRControllerHand.LEFT);
             }
+            if (_rightHandController == null && _playerController != null)
+            {
+                _rightHandController = CreateRuntimeController(WebXRControllerHand.RIGHT);
+            }
+
+            _xrActionsBound = (_leftHandController != null) || (_rightHandController != null);
+#else
+            _xrActionsBound = false;
+#endif
         }
+
+#if WEBXR_ENABLED
+        WebXRController CreateRuntimeController(WebXRControllerHand handAssignment)
+        {
+            string label = handAssignment == WebXRControllerHand.LEFT ? "U3D_WebXRController_L" : "U3D_WebXRController_R";
+            GameObject go = new GameObject(label);
+            go.transform.SetParent(_playerController.transform, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+
+            var ctrl = go.AddComponent<WebXRController>();
+            ctrl.hand = handAssignment;
+            return ctrl;
+        }
+#endif
 
         void LateUpdate()
         {
@@ -186,6 +260,22 @@ namespace U3D
 
             bool isLocalPlayer = _playerController.IsLocalPlayer;
             bool ownerInVR = _playerController.NetworkIsInVR;
+
+            // Refresh WebXRController references each frame (cheap when refs are alive).
+            if (isLocalPlayer && ownerInVR)
+            {
+                BindXRActions();
+            }
+
+            if (showDebugOverlay && isLocalPlayer && ownerInVR)
+            {
+                EnsureDebugPanel();
+                UpdateDebugOverlay();
+            }
+            else if (_debugPanel != null)
+            {
+                _debugPanel.SetActive(false);
+            }
 
             // Decide IK target weight based on owner state. Local VR player has authoritative
             // controller pose data. Remote viewer of a VR player reads networked rig-local pose.
@@ -199,7 +289,7 @@ namespace U3D
 
             // For local VR player, read controller poses every frame and write to networked
             // slots regardless of weight (so remote viewers see fresh data even during fade-out).
-            if (isLocalPlayer && ownerInVR && _xrActionsBound)
+            if (isLocalPlayer && ownerInVR)
             {
                 ReadAndPublishLocalControllerPoses();
             }
@@ -216,7 +306,7 @@ namespace U3D
             Vector3 leftTargetWorldPos, rightTargetWorldPos;
             Quaternion leftTargetWorldRot, rightTargetWorldRot;
 
-            if (isLocalPlayer && _xrActionsBound)
+            if (isLocalPlayer && ownerInVR)
             {
                 ResolveLocalTargets(out leftTargetWorldPos, out leftTargetWorldRot,
                                     out rightTargetWorldPos, out rightTargetWorldRot);
@@ -261,45 +351,112 @@ namespace U3D
             _rightHand.rotation = Quaternion.Slerp(animRightHand, ikRightHand, _currentIKWeight);
         }
 
+        void EnsureDebugPanel()
+        {
+            if (_debugPanel != null)
+            {
+                if (!_debugPanel.activeSelf) _debugPanel.SetActive(true);
+                return;
+            }
+            if (_playerController == null || _playerController.CameraTransform == null) return;
+
+            _debugPanel = new GameObject("U3DHandIK_DebugPanel");
+            _debugPanel.transform.SetParent(_playerController.CameraTransform, false);
+            _debugPanel.transform.localPosition = new Vector3(0f, 0f, 0.5f);
+            _debugPanel.transform.localRotation = Quaternion.identity;
+            _debugPanel.transform.localScale = Vector3.one;
+
+            _debugText = _debugPanel.AddComponent<TextMesh>();
+            _debugText.fontSize = 64;
+            _debugText.characterSize = 0.012f;
+            _debugText.anchor = TextAnchor.MiddleCenter;
+            _debugText.alignment = TextAlignment.Left;
+            _debugText.color = Color.yellow;
+
+            // Render on top of geometry
+            _debugText.GetComponent<MeshRenderer>().material.renderQueue = 4000;
+        }
+
+        void UpdateDebugOverlay()
+        {
+            if (_debugPanel == null) return;
+
+            _debugFrameCounter++;
+
+#if WEBXR_ENABLED
+            string lFound = _leftHandController != null ? "FOUND" : "NULL";
+            string rFound = _rightHandController != null ? "FOUND" : "NULL";
+
+            Vector3 lp = Vector3.zero;
+            Quaternion lr = Quaternion.identity;
+            if (_leftHandController != null)
+            {
+                lp = _leftHandController.transform.position;
+                lr = _leftHandController.transform.rotation;
+            }
+
+            Vector3 rp = Vector3.zero;
+            Quaternion rr = Quaternion.identity;
+            if (_rightHandController != null)
+            {
+                rp = _rightHandController.transform.position;
+                rr = _rightHandController.transform.rotation;
+            }
+
+            string lName = _leftHandController != null ? _leftHandController.gameObject.name : "(none)";
+            string rName = _rightHandController != null ? _rightHandController.gameObject.name : "(none)";
+#else
+            string lFound = "WEBXR_DISABLED";
+            string rFound = "WEBXR_DISABLED";
+            Vector3 lp = Vector3.zero;
+            Quaternion lr = Quaternion.identity;
+            Vector3 rp = Vector3.zero;
+            Quaternion rr = Quaternion.identity;
+            string lName = "(disabled)";
+            string rName = "(disabled)";
+#endif
+
+            _debugText.text =
+                $"Frame: {_debugFrameCounter}\n" +
+                $"L Ctrl {lFound}: {lName}\n" +
+                $"R Ctrl {rFound}: {rName}\n" +
+                $"L-Pos: ({lp.x:F2}, {lp.y:F2}, {lp.z:F2})\n" +
+                $"L-Rot: ({lr.x:F2}, {lr.y:F2}, {lr.z:F2}, {lr.w:F2})\n" +
+                $"R-Pos: ({rp.x:F2}, {rp.y:F2}, {rp.z:F2})\n" +
+                $"R-Rot: ({rr.x:F2}, {rr.y:F2}, {rr.z:F2}, {rr.w:F2})";
+        }
+
         void ReadAndPublishLocalControllerPoses()
         {
-            // Controller poses from the Input System are reported in XR-rig local space
-            // (i.e., relative to the XR Origin / camera offset). For U3D, the XR origin
-            // is effectively the player root, and the offset is firstPersonPosition (the
-            // head height). The player camera transform reflects this once VR is active —
-            // its local space IS the XR-rig space.
+            // De-Panther's WebXRController writes the controller pose directly to its
+            // transform every frame, in world space. We sample those world-space transforms
+            // and convert to rig-local (relative to player root) for the networked slots,
+            // so remote viewers can reconstruct world-space targets via playerRoot.TransformPoint.
             //
-            // We want to network rig-local pose (relative to player root) so remote
-            // viewers can reconstruct world-space targets via playerRoot.TransformPoint.
+            // If a controller reference is null this frame, leave its networked slot
+            // untouched so transient dropouts don't cause arm collapse.
             Transform playerRoot = _playerController.transform;
             Transform cam = _playerController.CameraTransform;
             if (cam == null) return;
 
-            Vector3 leftLocalPos = _leftHandPositionAction.ReadValue<Vector3>();
-            Quaternion leftLocalRot = _leftHandRotationAction.ReadValue<Quaternion>();
-            Vector3 rightLocalPos = _rightHandPositionAction.ReadValue<Vector3>();
-            Quaternion rightLocalRot = _rightHandRotationAction.ReadValue<Quaternion>();
+#if WEBXR_ENABLED
+            if (_leftHandController != null)
+            {
+                Transform t = _leftHandController.transform;
+                _playerController.NetworkLeftHandPos = playerRoot.InverseTransformPoint(t.position);
+                _playerController.NetworkLeftHandRot = Quaternion.Inverse(playerRoot.rotation) * t.rotation;
+            }
 
-            // Controller poses arrive relative to XR origin (head-tracking local space).
-            // Convert to world via the camera's parent (the player root) since the camera's
-            // local position IS the XR-origin offset within the player root.
-            //
-            // Convert pose: world = playerRoot.position + playerRoot.rotation * controllerLocal
-            // Then store back as rig-local relative to playerRoot for networking.
-            Vector3 leftWorldPos = playerRoot.TransformPoint(leftLocalPos);
-            Quaternion leftWorldRot = playerRoot.rotation * leftLocalRot;
-            Vector3 rightWorldPos = playerRoot.TransformPoint(rightLocalPos);
-            Quaternion rightWorldRot = playerRoot.rotation * rightLocalRot;
+            if (_rightHandController != null)
+            {
+                Transform t = _rightHandController.transform;
+                _playerController.NetworkRightHandPos = playerRoot.InverseTransformPoint(t.position);
+                _playerController.NetworkRightHandRot = Quaternion.Inverse(playerRoot.rotation) * t.rotation;
+            }
+#endif
 
-            // Re-encode as rig-local for the networked slots. This is identical to the
-            // input we just read (round-trip through TransformPoint/InverseTransformPoint),
-            // but going through world ensures we're consistent with how remote viewers
-            // will reconstruct: any future change to XR-rig handling stays consistent.
-            _playerController.NetworkLeftHandPos = playerRoot.InverseTransformPoint(leftWorldPos);
-            _playerController.NetworkLeftHandRot = Quaternion.Inverse(playerRoot.rotation) * leftWorldRot;
-            _playerController.NetworkRightHandPos = playerRoot.InverseTransformPoint(rightWorldPos);
-            _playerController.NetworkRightHandRot = Quaternion.Inverse(playerRoot.rotation) * rightWorldRot;
-
+            // Head pose is driven by the camera transform (the WebXRCamera component
+            // applies the headset pose to the camera every frame).
             _playerController.NetworkHeadPosition = playerRoot.InverseTransformPoint(cam.position);
             _playerController.NetworkHeadRotation = Quaternion.Inverse(playerRoot.rotation) * cam.rotation;
         }
@@ -308,16 +465,15 @@ namespace U3D
             out Vector3 leftPos, out Quaternion leftRot,
             out Vector3 rightPos, out Quaternion rightRot)
         {
+            // Local targets read from the networked slots that ReadAndPublishLocalControllerPoses
+            // just wrote to. This makes the local player's IK use the same data path as remote
+            // viewers, so any networking-side transformation (compression, interpolation) is
+            // applied identically and the local view matches what others see.
             Transform playerRoot = _playerController.transform;
-            Vector3 leftLocal = _leftHandPositionAction.ReadValue<Vector3>();
-            Quaternion leftLocalRot = _leftHandRotationAction.ReadValue<Quaternion>();
-            Vector3 rightLocal = _rightHandPositionAction.ReadValue<Vector3>();
-            Quaternion rightLocalRot = _rightHandRotationAction.ReadValue<Quaternion>();
-
-            leftPos = playerRoot.TransformPoint(leftLocal);
-            leftRot = playerRoot.rotation * leftLocalRot;
-            rightPos = playerRoot.TransformPoint(rightLocal);
-            rightRot = playerRoot.rotation * rightLocalRot;
+            leftPos = playerRoot.TransformPoint(_playerController.NetworkLeftHandPos);
+            leftRot = playerRoot.rotation * _playerController.NetworkLeftHandRot;
+            rightPos = playerRoot.TransformPoint(_playerController.NetworkRightHandPos);
+            rightRot = playerRoot.rotation * _playerController.NetworkRightHandRot;
         }
 
         void ResolveRemoteTargets(
@@ -409,7 +565,13 @@ namespace U3D
             Quaternion lowerDeltaAdjusted = Quaternion.FromToRotation(lowerBindForwardAfterUpper, lowerForward);
             lowerRotation = lowerDeltaAdjusted * (upperDelta * lowerArm.rotation);
 
-            handRotation = targetRot;
+            // Apply per-hand rotation offset. WebXR controller pose and Mecanim humanoid
+            // hand bone orientation use different axis conventions; the offset is a fixed
+            // correction. The two offsets are mirror images of each other so both hands
+            // rotate symmetrically about the avatar's centerline.
+            Vector3 offsetEuler = isLeftSide ? leftHandRotationOffset : rightHandRotationOffset;
+            Quaternion handOffset = Quaternion.Euler(offsetEuler);
+            handRotation = targetRot * handOffset;
         }
 
         void UpdateHeadChop(bool shouldChop)
