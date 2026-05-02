@@ -361,7 +361,7 @@ namespace U3D.Editor
             mat.SetTexture("_BaseMap", rt);
             // Render Face = Both. Required because the negative X scale on the mirror quad
             // (used to flip the image left-to-right) inverts the quad's normals.
-            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
+            mat.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Back);
             AssetDatabase.CreateAsset(mat, matPath);
             AssetDatabase.SaveAssets();
 
@@ -389,8 +389,13 @@ namespace U3D.Editor
 
             Camera reflectionCam = camObj.AddComponent<Camera>();
             reflectionCam.targetTexture = rt;
-            reflectionCam.clearFlags = CameraClearFlags.Skybox;
             // Don't tag this MainCamera and don't let it become the audio listener — the player controller owns both.
+            reflectionCam.clearFlags = CameraClearFlags.Skybox;
+            // Wide FOV reduces the size mismatch where objects close to the mirror appear larger
+            // in the reflection than in the scene. Creators can tune this on the Reflection Camera
+            // child in the Inspector if they want a different look.
+            reflectionCam.fieldOfView = 120f;
+
 
             AudioListener stowawayListener = camObj.GetComponent<AudioListener>();
             if (stowawayListener != null)

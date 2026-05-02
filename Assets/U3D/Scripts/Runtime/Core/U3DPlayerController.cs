@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using U3D;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.XR;
 
+[DefaultExecutionOrder(100)]
 [RequireComponent(typeof(CharacterController), typeof(PlayerInput))]
+
 public class U3DPlayerController : NetworkBehaviour
 {
     [Header("Basic Movement")]
@@ -133,8 +136,6 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Vector3 NetworkRightHandPos { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
     [HideInInspector][Networked] public NetworkBool NetworkIsFirstPerson { get; set; }
-
-    // --- CHANGE 1: Networked rideable reference for remote player platform sync ---
     [HideInInspector][Networked] public NetworkBehaviourId NetworkRideableRef { get; set; }
 
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
@@ -184,6 +185,13 @@ public class U3DPlayerController : NetworkBehaviour
     private bool _isInVRMode = false;
     private U3D.U3DAvatarHandIK _avatarHandIK;
     private U3D.XR.U3DWebXRManager _webXRManager;
+    // Head-bone camera lock (VR)
+    private TrackedPoseDriver _headTrackedPoseDriver;
+    private TrackedPoseDriver.TrackingType _headOriginalTrackingType;
+    private Transform _avatarHeadBone;
+    private Vector3 _vrEyeOffsetHeadLocal;
+    private bool _vrEyeOffsetCaptured;
+    private U3DAvatarManager _avatarManager;
 
     private const float VR_SNAP_TURN_ANGLE = 45f;
     private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
@@ -363,6 +371,12 @@ public class U3DPlayerController : NetworkBehaviour
         currentCameraDistance = 0f;
         targetFOV = defaultFOV;
         playerCamera.fieldOfView = defaultFOV;
+
+        _headTrackedPoseDriver = playerCamera.GetComponent<TrackedPoseDriver>();
+        if (_headTrackedPoseDriver != null)
+            _headOriginalTrackingType = _headTrackedPoseDriver.trackingType;
+
+        _avatarManager = GetComponent<U3DAvatarManager>();
 
         InitializeCameraPivot();
         LoadPlayerPreferences();
@@ -549,7 +563,6 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
-        // --- CHANGE 4: Remote player rideable parenting ---
         // Resolve the networked rideable ref. When the remote player mounts a platform,
         // parent this proxy to the same platform so it rides along smoothly.
         // When they dismount, unparent and resume normal world-space interpolation.
@@ -609,6 +622,7 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleLocalCameraRender()
     {
         if (!enableMovement || !_isLocalPlayer || playerCamera == null) return;
+        if (_isInVRMode) return;
         if (!IsCursorLocked()) return;
         playerCamera.transform.localRotation = Quaternion.Euler(cameraPitch, 0f, 0f);
     }
@@ -635,19 +649,35 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
+        // Switch to rotation-only tracking so the headset drives only camera orientation,
+        // not position. Camera world position will be locked to the avatar's head bone
+        // each frame in LateUpdate.
+        if (_headTrackedPoseDriver != null)
+            _headTrackedPoseDriver.trackingType = TrackedPoseDriver.TrackingType.RotationOnly;
+
+        // Resolve the avatar's head bone. May be null if the avatar hasn't finished
+        // spawning yet — LateUpdate will retry until it succeeds.
+        TryResolveHeadBone();
+
+        // Reparent the camera to the player root so the TPD's localRotation writes
+        // compose correctly with body yaw (snap-turn / thumbstick rotation).
         if (cameraPivot != null && playerCamera != null)
         {
             playerCamera.transform.SetParent(transform);
-            playerCamera.transform.localPosition = Vector3.zero;
             playerCamera.transform.localRotation = Quaternion.identity;
         }
-
-        // Hand visuals and head-chop are owned by U3DAvatarHandIK on the avatar instance.
-        // It reads NetworkIsInVR every LateUpdate and adjusts itself. No work to do here.
     }
 
     private void ExitVRMode()
     {
+        // Restore full headset tracking for any future entry.
+        if (_headTrackedPoseDriver != null)
+            _headTrackedPoseDriver.trackingType = _headOriginalTrackingType;
+
+        // Reset capture state so the next VR entry recaptures from the current pose.
+        _vrEyeOffsetCaptured = false;
+        _avatarHeadBone = null;
+
         if (cameraPivot != null && playerCamera != null)
         {
             playerCamera.transform.SetParent(cameraPivot);
@@ -662,9 +692,53 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (_cursorManager != null)
             _cursorManager.SetVRMode(false);
+    }
 
-        // U3DAvatarHandIK observes NetworkIsInVR going false and lerps weight to 0,
-        // restoring the head bone scale and yielding arm control to the Animator.
+    private void TryResolveHeadBone()
+    {
+        if (_avatarHeadBone != null) return;
+        if (_avatarManager == null) return;
+
+        Animator avatarAnimator = _avatarManager.GetAvatarAnimator();
+        if (avatarAnimator == null || !avatarAnimator.isHuman) return;
+
+        _avatarHeadBone = avatarAnimator.GetBoneTransform(HumanBodyBones.Head);
+    }
+
+    private void CaptureVREyeOffset()
+    {
+        // Capture the eye offset from the camera prefab's manually tuned position.
+        // The camera prefab sits at firstPersonPosition relative to the player root.
+        // We want to express that same world-space target relative to the head bone,
+        // in the head bone's local space, so the offset rotates correctly with the
+        // head bone if the avatar's body yaws.
+        if (_avatarHeadBone == null || playerCamera == null) return;
+
+        Vector3 desiredCameraWorldPos = transform.TransformPoint(firstPersonPosition);
+        _vrEyeOffsetHeadLocal = _avatarHeadBone.InverseTransformPoint(desiredCameraWorldPos);
+        _vrEyeOffsetCaptured = true;
+    }
+
+    void LateUpdate()
+    {
+        if (!_isInVRMode || !_isLocalPlayer || playerCamera == null) return;
+
+        // Try to resolve the head bone if we don't have it yet (avatar may have
+        // spawned after EnterVRMode ran).
+        if (_avatarHeadBone == null)
+        {
+            TryResolveHeadBone();
+            if (_avatarHeadBone == null) return;
+        }
+
+        // Capture the eye offset on the first frame the head bone is available.
+        if (!_vrEyeOffsetCaptured)
+            CaptureVREyeOffset();
+
+        // Lock the camera's world position to the head bone's pose, with the captured
+        // eye offset applied in head-bone-local space. Rotation is left alone — the
+        // Tracked Pose Driver writes that from the headset.
+        playerCamera.transform.position = _avatarHeadBone.TransformPoint(_vrEyeOffsetHeadLocal);
     }
 
     private void CreateHandVisuals()
@@ -1546,7 +1620,6 @@ public class U3DPlayerController : NetworkBehaviour
         characterController.enabled = false;
         transform.SetParent(rideable.transform, true);
 
-        // --- CHANGE 2: Tell remote clients which platform we're on ---
         NetworkRideableRef = rideable;
     }
 
@@ -1562,7 +1635,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         NetworkPosition = transform.position;
 
-        // --- CHANGE 3: Clear the networked ref so remote clients unparent ---
         NetworkRideableRef = default;
     }
 

@@ -362,7 +362,7 @@ namespace U3D
 
             _debugPanel = new GameObject("U3DHandIK_DebugPanel");
             _debugPanel.transform.SetParent(_playerController.CameraTransform, false);
-            _debugPanel.transform.localPosition = new Vector3(0f, 0f, 0.5f);
+            _debugPanel.transform.localPosition = new Vector3(0f, 0f, 0.75f);
             _debugPanel.transform.localRotation = Quaternion.identity;
             _debugPanel.transform.localScale = Vector3.one;
 
@@ -416,14 +416,47 @@ namespace U3D
             string rName = "(disabled)";
 #endif
 
+            // TPD diagnostic: read the TPD state directly from the camera so we can
+            // see whether the headset rotation write is landing.
+            string tpdDiag = "(no camera)";
+            if (_playerController != null && _playerController.CameraTransform != null)
+            {
+                Transform camT = _playerController.CameraTransform;
+                var tpd = camT.GetComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+                Vector3 camLocalEuler = camT.localEulerAngles;
+                Vector3 camWorldEuler = camT.eulerAngles;
+
+                if (tpd != null)
+                {
+                    string tpdEnabled = tpd.enabled ? "ON" : "OFF";
+                    string tpdType = tpd.trackingType.ToString();
+                    string posEnabled = (tpd.positionInput.action != null && tpd.positionInput.action.enabled) ? "Y" : "N";
+                    string rotEnabled = (tpd.rotationInput.action != null && tpd.rotationInput.action.enabled) ? "Y" : "N";
+                    tpdDiag = $"TPD {tpdEnabled} {tpdType} pos:{posEnabled} rot:{rotEnabled}";
+                }
+                else
+                {
+                    tpdDiag = "TPD MISSING";
+                }
+                tpdDiag += $"\nCamLocal: ({camLocalEuler.x:F0},{camLocalEuler.y:F0},{camLocalEuler.z:F0})";
+                tpdDiag += $"\nCamWorld: ({camWorldEuler.x:F0},{camWorldEuler.y:F0},{camWorldEuler.z:F0})";
+
+                // Body yaw for comparison — if camWorld matches body yaw and never deviates, TPD is dead.
+                if (_playerController.transform != null)
+                {
+                    float bodyYaw = _playerController.transform.eulerAngles.y;
+                    tpdDiag += $"\nBodyYaw: {bodyYaw:F0}";
+                }
+            }
+
             _debugText.text =
                 $"Frame: {_debugFrameCounter}\n" +
                 $"L Ctrl {lFound}: {lName}\n" +
                 $"R Ctrl {rFound}: {rName}\n" +
                 $"L-Pos: ({lp.x:F2}, {lp.y:F2}, {lp.z:F2})\n" +
-                $"L-Rot: ({lr.x:F2}, {lr.y:F2}, {lr.z:F2}, {lr.w:F2})\n" +
                 $"R-Pos: ({rp.x:F2}, {rp.y:F2}, {rp.z:F2})\n" +
-                $"R-Rot: ({rr.x:F2}, {rr.y:F2}, {rr.z:F2}, {rr.w:F2})";
+                $"---\n" +
+                $"{tpdDiag}";
         }
 
         void ReadAndPublishLocalControllerPoses()
