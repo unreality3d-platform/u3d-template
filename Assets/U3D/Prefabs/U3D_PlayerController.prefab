@@ -69,7 +69,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.01
+  near clip plane: 0.03
   far clip plane: 1000
   field of view: 60
   orthographic: 0
@@ -466,6 +466,7 @@ MonoBehaviour:
     Object:
       Raw: 0
     Behaviour: 0
+  vrEyeOffset: {x: 0, y: 0, z: 0.08}
 --- !u!114 &3303798439634689199
 MonoBehaviour:
   m_ObjectHideFlags: 0

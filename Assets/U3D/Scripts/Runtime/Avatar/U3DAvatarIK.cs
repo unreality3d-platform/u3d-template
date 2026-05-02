@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.XR;
 #if WEBXR_ENABLED
 using WebXR;
@@ -8,21 +9,24 @@ using WebXR;
 namespace U3D
 {
     /// <summary>
-    /// Drives a humanoid avatar's arm IK from VR controller poses.
+    /// Drives a humanoid avatar's pose from VR input. Owns arm IK (shoulder/upper/lower/hand)
+    /// and head bone rotation. Renamed from U3DAvatarHandIK in May 2026 when head bone
+    /// driving was added — the original name covered only the arm solve.
     ///
     /// Local VR player: reads controller poses directly from De-Panther's WebXRController
-    /// components, solves two-bone IK on shoulder/upperArm/lowerArm/hand, also writes
-    /// rig-local pose to the owning U3DPlayerController's [Networked] slots so remote
-    /// viewers can replicate.
+    /// components, solves two-bone IK on shoulder/upperArm/lowerArm/hand, applies camera
+    /// rotation to the head bone, and writes rig-local pose to the owning U3DPlayerController's
+    /// [Networked] slots so remote viewers can replicate.
     ///
     /// Remote viewer of any player: reads NetworkLeftHandPos/Rot, NetworkRightHandPos/Rot,
-    /// NetworkIsInVR from the owning U3DPlayerController. If owner is in VR, applies same
-    /// IK solve to that avatar's arms. If owner is not in VR, IK weight lerps to zero and
-    /// the Animator's locomotion clip drives arms unmodified.
+    /// NetworkHeadRotation, NetworkIsInVR from the owning U3DPlayerController. If owner is
+    /// in VR, applies same IK solve to that avatar's arms and same rotation to its head
+    /// bone. If owner is not in VR, IK weight lerps to zero and the Animator's locomotion
+    /// clip drives arms and head unmodified.
     ///
     /// Runs in LateUpdate after the Animator evaluates so it can override the animated
-    /// arm pose. Per-frame IK weight blends between animator output and IK output for
-    /// smooth VR mode transitions.
+    /// arm and head pose. Per-frame IK weight blends between animator output and IK output
+    /// for smooth VR mode transitions.
     ///
     /// Auto-attached to the avatar instance by U3DAvatarManager. Creators do not need
     /// to add this component manually.
@@ -37,7 +41,8 @@ namespace U3D
     /// (the U3D rig doesn't include them by default), this component creates them at
     /// runtime as children of the player root when VR mode begins.
     /// </summary>
-    public class U3DAvatarHandIK : MonoBehaviour
+    [MovedFrom(false, "U3D", null, "U3DAvatarHandIK")]
+    public class U3DAvatarIK : MonoBehaviour
     {
         [Header("Input (set by U3DAvatarManager)")]
         [Tooltip("Reference to the XR input actions asset. Retained for backward compatibility; pose data is now read directly from WebXRController components and this field is unused at runtime.")]
@@ -57,6 +62,8 @@ namespace U3D
 
         [SerializeField] private Vector3 leftHandRotationOffset = new Vector3(0f, -90f, -90f);
         [SerializeField] private Vector3 rightHandRotationOffset = new Vector3(0f, 90f, 90f);
+        [Tooltip("Fixed Euler offset applied to the avatar head bone in VR. Mecanim head bone bind orientation rarely matches the camera/HMD orientation; this corrects the difference. Tune empirically for each avatar rig.")]
+        [SerializeField] private Vector3 headRotationOffset = new Vector3(0f, -90f, 0f);
 
         [Header("Debug")]
         [Tooltip("Show on-screen pose data overlay in VR. For diagnostic use only — disable for production.")]
@@ -84,10 +91,6 @@ namespace U3D
         private float _leftLowerArmLength;
         private float _rightUpperArmLength;
         private float _rightLowerArmLength;
-
-        // Cached original head scale for head-chop restoration
-        private Vector3 _originalHeadScale;
-        private bool _headScaleCached;
 
 #if WEBXR_ENABLED
         // De-Panther WebXRController references. Either found in the scene if the creator
@@ -137,13 +140,13 @@ namespace U3D
             _animator = GetComponent<Animator>();
             if (_animator == null)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] No Animator on avatar instance. Hand IK disabled.");
+                Debug.LogWarning("[U3DAvatarIK] No Animator on avatar instance. IK disabled.");
                 return;
             }
 
             if (_animator.avatar == null || !_animator.avatar.isHuman)
             {
-                Debug.LogWarning("[U3DAvatarHandIK] Avatar is not humanoid. Hand IK disabled.");
+                Debug.LogWarning("[U3DAvatarIK] Avatar is not humanoid. IK disabled.");
                 return;
             }
 
@@ -171,14 +174,6 @@ namespace U3D
             {
                 _rightUpperArmLength = Vector3.Distance(_rightUpperArm.position, _rightLowerArm.position);
                 _rightLowerArmLength = Vector3.Distance(_rightLowerArm.position, _rightHand.position);
-            }
-
-            // Cache original head scale once for head-chop restoration
-
-            if (_head != null && !_headScaleCached)
-            {
-                _originalHeadScale = _head.localScale;
-                _headScaleCached = true;
             }
         }
 
@@ -279,7 +274,7 @@ namespace U3D
 
             // Decide IK target weight based on owner state. Local VR player has authoritative
             // controller pose data. Remote viewer of a VR player reads networked rig-local pose.
-            // Owner not in VR: IK off, animator drives arms.
+            // Owner not in VR: IK off, animator drives arms and head.
             _targetIKWeight = ownerInVR ? 1f : 0f;
 
             float lerpStep = (ikTransitionTime > 0.001f)
@@ -294,11 +289,13 @@ namespace U3D
                 ReadAndPublishLocalControllerPoses();
             }
 
-            // Head-chop only for the local player in VR. Local-only visual; never networked.
-            UpdateHeadChop(isLocalPlayer && ownerInVR);
-
             // Skip IK math entirely if weight is effectively zero.
             if (_currentIKWeight < 0.001f) return;
+
+            // Drive the head bone from NetworkHeadRotation. Done before arm IK so the
+            // arm solver's target reconstruction (which doesn't use the head) is unaffected,
+            // and so the head pose is set in the same frame the arms are.
+            ApplyHeadRotation();
 
             // Resolve target wrist pose in world space for both arms. Source depends on
             // whether this is the local player (read from input directly) or a remote
@@ -360,7 +357,7 @@ namespace U3D
             }
             if (_playerController == null || _playerController.CameraTransform == null) return;
 
-            _debugPanel = new GameObject("U3DHandIK_DebugPanel");
+            _debugPanel = new GameObject("U3DAvatarIK_DebugPanel");
             _debugPanel.transform.SetParent(_playerController.CameraTransform, false);
             _debugPanel.transform.localPosition = new Vector3(0f, 0f, 0.75f);
             _debugPanel.transform.localRotation = Quaternion.identity;
@@ -522,6 +519,43 @@ namespace U3D
         }
 
         /// <summary>
+        /// Drives the avatar's humanoid head bone from NetworkHeadRotation, which the
+        /// owning controller publishes every VR frame as the camera's rotation in
+        /// player-root-local space. Local and remote viewers both read from the same
+        /// networked slot so the local avatar's head bone tracks the HMD identically
+        /// to how remote viewers see it — no divergence between viewpoints.
+        ///
+        /// Runs in LateUpdate after the Animator evaluates, so the write overrides
+        /// any animator-authored head pose for the duration of the VR session. When
+        /// the owner exits VR, the IK weight lerps to zero and the animator's head
+        /// channel resumes uncontested.
+        ///
+        /// headRotationOffset corrects for the Mecanim head bone's bind orientation
+        /// not matching the camera/HMD orientation. Same pattern as the per-hand
+        /// rotation offsets.
+        /// </summary>
+        void ApplyHeadRotation()
+        {
+            if (_head == null) return;
+
+            Transform playerRoot = _playerController.transform;
+            Quaternion headRotLocal = _playerController.NetworkHeadRotation;
+
+            // Sanity: the slot is initialized to identity and may briefly be identity
+            // during the spawn frame before the local player writes a real value.
+            // Identity is harmless to apply (head sits in bind orientation aligned
+            // with body yaw) so no early-return needed here.
+
+            Quaternion headOffset = Quaternion.Euler(headRotationOffset);
+            Quaternion targetWorldRot = playerRoot.rotation * headRotLocal * headOffset;
+
+            // Cache animator output so the IK weight lerp blends smoothly during the
+            // VR-on/VR-off transition. Same pattern the arms use above.
+            Quaternion animHead = _head.rotation;
+            _head.rotation = Quaternion.Slerp(animHead, targetWorldRot, _currentIKWeight);
+        }
+
+        /// <summary>
         /// Two-bone IK solve. Given a fixed shoulder/upper-arm root and a target wrist
         /// pose, computes upper-arm and lower-arm rotations that place the hand at the
         /// target with the elbow bent in a natural direction.
@@ -605,22 +639,6 @@ namespace U3D
             Vector3 offsetEuler = isLeftSide ? leftHandRotationOffset : rightHandRotationOffset;
             Quaternion handOffset = Quaternion.Euler(offsetEuler);
             handRotation = targetRot * handOffset;
-        }
-
-        void UpdateHeadChop(bool shouldChop)
-        {
-            if (_head == null) return;
-
-            if (shouldChop && !_headChopActive)
-            {
-                _head.localScale = Vector3.one * 0.0001f;
-                _headChopActive = true;
-            }
-            else if (!shouldChop && _headChopActive)
-            {
-                _head.localScale = _originalHeadScale;
-                _headChopActive = false;
-            }
         }
 
         /// <summary>

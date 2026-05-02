@@ -15,8 +15,8 @@ public class U3DAvatarManager : NetworkBehaviour
     [SerializeField] private Vector3 avatarOffset = Vector3.zero;
     [SerializeField] private bool followPlayerRotation = true;
     [SerializeField] private bool hideInFirstPerson = true;
-    [Header("VR Hand IK")]
-    [Tooltip("XR input actions asset. Used by the auto-attached U3DAvatarHandIK to read VR controller poses. Should reference the same U3DInputActions asset used by the player controller.")]
+    [Header("VR IK")]
+    [Tooltip("XR input actions asset. Used by the auto-attached U3DAvatarIK to read VR controller poses. Should reference the same U3DInputActions asset used by the player controller.")]
     [SerializeField] private UnityEngine.InputSystem.InputActionAsset xrInputActions;
 
     // Core Components
@@ -25,7 +25,7 @@ public class U3DAvatarManager : NetworkBehaviour
     private Animator avatarAnimator;
     private Avatar avatarAsset;
     private SkinnedMeshRenderer[] avatarRenderers;
-    private U3DAvatarHandIK avatarHandIK;
+    private U3DAvatarIK avatarIK;
 
     // CLEAN: Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
@@ -89,12 +89,12 @@ public class U3DAvatarManager : NetworkBehaviour
             // Get all SkinnedMeshRenderers for visibility control
             avatarRenderers = avatarInstance.GetComponentsInChildren<SkinnedMeshRenderer>();
 
-            // Auto-attach VR hand IK. Works for any humanoid avatar (default and creator-supplied).
-            // If the avatar isn't humanoid, U3DAvatarHandIK logs a warning and disables itself.
-            avatarHandIK = avatarInstance.GetComponent<U3DAvatarHandIK>();
-            if (avatarHandIK == null)
-                avatarHandIK = avatarInstance.AddComponent<U3DAvatarHandIK>();
-            avatarHandIK.Initialize(playerController, xrInputActions);
+            // Auto-attach VR IK. Works for any humanoid avatar (default and creator-supplied).
+            // If the avatar isn't humanoid, U3DAvatarIK logs a warning and disables itself.
+            avatarIK = avatarInstance.GetComponent<U3DAvatarIK>();
+            if (avatarIK == null)
+                avatarIK = avatarInstance.AddComponent<U3DAvatarIK>();
+            avatarIK.Initialize(playerController, xrInputActions);
 
             isInitialized = true;
         }
@@ -164,8 +164,8 @@ public class U3DAvatarManager : NetworkBehaviour
         // avatar based on the avatar owner's networked state. This replaces the old
         // gate that only let the owning client update visibility, which left remote
         // viewers' renderers stuck in whatever state the FBX shipped with.
-        bool shouldShow = (avatarHandIK != null)
-            ? avatarHandIK.ShouldRender(hideInFirstPerson)
+        bool shouldShow = (avatarIK != null)
+            ? avatarIK.ShouldRender(hideInFirstPerson)
             : ResolveVisibilityFallback();
 
         foreach (var renderer in avatarRenderers)

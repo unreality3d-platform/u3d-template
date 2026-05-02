@@ -183,7 +183,6 @@ public class U3DPlayerController : NetworkBehaviour
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
     private bool _isInVRMode = false;
-    private U3D.U3DAvatarHandIK _avatarHandIK;
     private U3D.XR.U3DWebXRManager _webXRManager;
     // Head-bone camera lock (VR)
     private TrackedPoseDriver _headTrackedPoseDriver;
@@ -192,6 +191,10 @@ public class U3DPlayerController : NetworkBehaviour
     private Vector3 _vrEyeOffsetHeadLocal;
     private bool _vrEyeOffsetCaptured;
     private U3DAvatarManager _avatarManager;
+
+    [Header("VR Eye Offset")]
+    [Tooltip("Camera position relative to the avatar's head bone, expressed in player-root-local space (Z forward, Y up). Default (0, 0, 0.08) places the camera at the head bone with eyes ~8cm forward of the avatar's facing direction. Adjust to dial in eye height and forward placement.")]
+    [SerializeField] private Vector3 vrEyeOffset = new Vector3(0f, 0f, 0.08f);
 
     private const float VR_SNAP_TURN_ANGLE = 45f;
     private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
@@ -707,15 +710,21 @@ public class U3DPlayerController : NetworkBehaviour
 
     private void CaptureVREyeOffset()
     {
-        // Capture the eye offset from the camera prefab's manually tuned position.
-        // The camera prefab sits at firstPersonPosition relative to the player root.
-        // We want to express that same world-space target relative to the head bone,
-        // in the head bone's local space, so the offset rotates correctly with the
-        // head bone if the avatar's body yaws.
-        if (_avatarHeadBone == null || playerCamera == null) return;
+        // Convert vrEyeOffset (authored in player-root-local space) to head-bone-local
+        // space. This decouples the offset's authoring axes from the head bone's local
+        // axis convention (which varies by rig — some bones use Z forward, some use X
+        // up, etc. — there's no Mecanim standard for bone-local orientation).
+        //
+        // Procedure: take the offset in player-root-local space, transform to world
+        // space via player root, then express in head-bone-local space. Captured once
+        // per VR session entry; subsequent LateUpdate writes use the captured value
+        // directly, so this conversion overhead is paid only at session start.
+        if (_avatarHeadBone == null) return;
 
-        Vector3 desiredCameraWorldPos = transform.TransformPoint(firstPersonPosition);
-        _vrEyeOffsetHeadLocal = _avatarHeadBone.InverseTransformPoint(desiredCameraWorldPos);
+        Vector3 offsetWorld = transform.TransformVector(vrEyeOffset);
+        Vector3 headWorldPos = _avatarHeadBone.position;
+        Vector3 desiredCameraWorld = headWorldPos + offsetWorld;
+        _vrEyeOffsetHeadLocal = _avatarHeadBone.InverseTransformPoint(desiredCameraWorld);
         _vrEyeOffsetCaptured = true;
     }
 
