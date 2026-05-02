@@ -119,6 +119,7 @@ sysinfo.txt
 /[Bb]uild/
 Build/
 ##WEBGL_DEPLOY_IGNORE_END##
+WebGL/index.html
 
 # Other build outputs (always ignored)
 *.apk
