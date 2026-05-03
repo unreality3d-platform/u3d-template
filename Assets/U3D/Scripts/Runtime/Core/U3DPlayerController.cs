@@ -188,13 +188,12 @@ public class U3DPlayerController : NetworkBehaviour
     private TrackedPoseDriver _headTrackedPoseDriver;
     private TrackedPoseDriver.TrackingType _headOriginalTrackingType;
     private Transform _avatarHeadBone;
-    private Vector3 _vrEyeOffsetHeadLocal;
-    private bool _vrEyeOffsetCaptured;
+    private Transform _rawHmdReference;
     private U3DAvatarManager _avatarManager;
 
     [Header("VR Eye Offset")]
     [Tooltip("Camera position relative to the avatar's head bone, expressed in player-root-local space (Z forward, Y up). Default (0, 0, 0.08) places the camera at the head bone with eyes ~8cm forward of the avatar's facing direction. Adjust to dial in eye height and forward placement.")]
-    [SerializeField] private Vector3 vrEyeOffset = new Vector3(0f, 0f, 0.08f);
+    [SerializeField] private Vector3 vrEyeOffset = new Vector3(0f, 0.2f, 0.08f);
 
     private const float VR_SNAP_TURN_ANGLE = 45f;
     private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
@@ -669,6 +668,39 @@ public class U3DPlayerController : NetworkBehaviour
             playerCamera.transform.SetParent(transform);
             playerCamera.transform.localRotation = Quaternion.identity;
         }
+
+        // Create the raw HMD reference. This is a separate transform that tracks the
+        // IRL HMD position via a position-only TrackedPoseDriver. It is not rendered
+        // through, not parented to the avatar, and never repositioned by us — De-Panther
+        // writes raw HMD pose to it every frame. U3DAvatarIK reads its position to
+        // compute the IRL head-to-hand vector for hand placement, since the player
+        // camera is locked to the avatar head bone and no longer reflects IRL head
+        // position.
+        EnsureRawHmdReference();
+    }
+
+    private void EnsureRawHmdReference()
+    {
+        if (_rawHmdReference != null) return;
+
+        GameObject hmdRefGO = new GameObject("U3D_RawHmdReference");
+        hmdRefGO.transform.SetParent(transform, false);
+        hmdRefGO.transform.localPosition = Vector3.zero;
+        hmdRefGO.transform.localRotation = Quaternion.identity;
+
+        // Use the same legacy TPD that drives the player camera rotation. Position
+        // tracking only — we don't need rotation here, the player camera handles that.
+        // The legacy TPD is the one De-Panther actually feeds in 0.22.x; the Input
+        // System TPD does not receive pose data per the documented behavior.
+        var tpd = hmdRefGO.AddComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
+        tpd.SetPoseSource(
+            UnityEngine.SpatialTracking.TrackedPoseDriver.DeviceType.GenericXRDevice,
+            UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Center);
+        tpd.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.PositionOnly;
+        tpd.updateType = UnityEngine.SpatialTracking.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
+        tpd.UseRelativeTransform = false;
+
+        _rawHmdReference = hmdRefGO.transform;
     }
 
     private void ExitVRMode()
@@ -677,9 +709,16 @@ public class U3DPlayerController : NetworkBehaviour
         if (_headTrackedPoseDriver != null)
             _headTrackedPoseDriver.trackingType = _headOriginalTrackingType;
 
-        // Reset capture state so the next VR entry recaptures from the current pose.
-        _vrEyeOffsetCaptured = false;
+        // Clear head bone reference so the next VR entry re-resolves it from the
+        // current avatar (which may have changed if a creator swapped avatars).
         _avatarHeadBone = null;
+
+        // Tear down the raw HMD reference. It will be recreated on next VR entry.
+        if (_rawHmdReference != null)
+        {
+            Destroy(_rawHmdReference.gameObject);
+            _rawHmdReference = null;
+        }
 
         if (cameraPivot != null && playerCamera != null)
         {
@@ -708,26 +747,6 @@ public class U3DPlayerController : NetworkBehaviour
         _avatarHeadBone = avatarAnimator.GetBoneTransform(HumanBodyBones.Head);
     }
 
-    private void CaptureVREyeOffset()
-    {
-        // Convert vrEyeOffset (authored in player-root-local space) to head-bone-local
-        // space. This decouples the offset's authoring axes from the head bone's local
-        // axis convention (which varies by rig — some bones use Z forward, some use X
-        // up, etc. — there's no Mecanim standard for bone-local orientation).
-        //
-        // Procedure: take the offset in player-root-local space, transform to world
-        // space via player root, then express in head-bone-local space. Captured once
-        // per VR session entry; subsequent LateUpdate writes use the captured value
-        // directly, so this conversion overhead is paid only at session start.
-        if (_avatarHeadBone == null) return;
-
-        Vector3 offsetWorld = transform.TransformVector(vrEyeOffset);
-        Vector3 headWorldPos = _avatarHeadBone.position;
-        Vector3 desiredCameraWorld = headWorldPos + offsetWorld;
-        _vrEyeOffsetHeadLocal = _avatarHeadBone.InverseTransformPoint(desiredCameraWorld);
-        _vrEyeOffsetCaptured = true;
-    }
-
     void LateUpdate()
     {
         if (!_isInVRMode || !_isLocalPlayer || playerCamera == null) return;
@@ -740,19 +759,29 @@ public class U3DPlayerController : NetworkBehaviour
             if (_avatarHeadBone == null) return;
         }
 
-        // Capture the eye offset on the first frame the head bone is available.
-        if (!_vrEyeOffsetCaptured)
-            CaptureVREyeOffset();
-
-        // Lock the camera's world position to the head bone's pose, with the captured
-        // eye offset applied in head-bone-local space. Rotation is left alone — the
-        // Tracked Pose Driver writes that from the headset.
-        playerCamera.transform.position = _avatarHeadBone.TransformPoint(_vrEyeOffsetHeadLocal);
+        // Lock the camera's world position to the head bone, plus the eye offset
+        // expressed in player-root-local space. Using transform.TransformVector
+        // (player root) instead of head-bone-local conversion keeps Y axis stable
+        // regardless of HMD rotation — the player root never tilts, so player-root
+        // Y is always world Y, and player-root Z stays "forward" as the body yaws
+        // via snap-turn or thumbstick rotation.
+        //
+        // The previous approach captured vrEyeOffset once in head-bone-local space
+        // and re-applied via _avatarHeadBone.TransformPoint. That introduced two
+        // problems: (1) Inspector edits to vrEyeOffset didn't propagate after the
+        // capture frame, and (2) Mecanim head bone local axes are rig-dependent
+        // and rarely aligned with world Y, so vrEyeOffset.y mostly projected onto
+        // wrong axes — visible as ~10% of the intended Y change reaching the
+        // camera. Live read with TransformVector fixes both.
+        //
+        // Rotation is left alone — the Tracked Pose Driver writes that from the
+        // headset every frame.
+        playerCamera.transform.position = _avatarHeadBone.position + transform.TransformVector(vrEyeOffset);
     }
 
     private void CreateHandVisuals()
     {
-        // Hand visuals are now driven by U3DAvatarHandIK on the avatar instance,
+        // Hand visuals are now driven by U3DAvatarIK on the avatar instance,
         // which reads real controller poses and applies them via humanoid IK.
         // This method is kept as a no-op so any external references still compile.
     }
@@ -1531,6 +1560,14 @@ public class U3DPlayerController : NetworkBehaviour
     public bool EnableTeleport => enableTeleport;
     public bool EnableViewZoom => enableViewZoom;
     public bool EnableAdvancedCamera => enableAdvancedCamera;
+
+    /// <summary>
+    /// Transform that tracks raw IRL HMD pose via TrackedPoseDriver. Used by
+    /// U3DAvatarIK to compute the IRL head-to-hand vector for hand placement.
+    /// Null in non-VR mode. The transform's rotation is not driven (we only
+    /// need position); use CameraTransform for rotation needs.
+    /// </summary>
+    public Transform RawHmdReference => _rawHmdReference;
 
     public void SetPosition(Vector3 position)
     {

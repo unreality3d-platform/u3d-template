@@ -438,12 +438,30 @@ namespace U3D
                 tpdDiag += $"\nCamLocal: ({camLocalEuler.x:F0},{camLocalEuler.y:F0},{camLocalEuler.z:F0})";
                 tpdDiag += $"\nCamWorld: ({camWorldEuler.x:F0},{camWorldEuler.y:F0},{camWorldEuler.z:F0})";
 
-                // Body yaw for comparison — if camWorld matches body yaw and never deviates, TPD is dead.
                 if (_playerController.transform != null)
                 {
                     float bodyYaw = _playerController.transform.eulerAngles.y;
                     tpdDiag += $"\nBodyYaw: {bodyYaw:F0}";
                 }
+            }
+
+            // Geometry diagnostic: world positions of camera, avatar head bone, and
+            // player root, plus the offsets between them. Tells us where the camera
+            // actually sits on the avatar rig (no guessing — measured values).
+            string geomDiag = "(no geom)";
+            if (_playerController != null && _playerController.CameraTransform != null)
+            {
+                Transform camT = _playerController.CameraTransform;
+                Transform rootT = _playerController.transform;
+                Vector3 camPos = camT.position;
+                Vector3 rootPos = rootT.position;
+                Vector3 headPos = (_head != null) ? _head.position : Vector3.zero;
+
+                geomDiag = $"Cam:  ({camPos.x:F2},{camPos.y:F2},{camPos.z:F2})";
+                geomDiag += $"\nHead: ({headPos.x:F2},{headPos.y:F2},{headPos.z:F2})";
+                geomDiag += $"\nRoot: ({rootPos.x:F2},{rootPos.y:F2},{rootPos.z:F2})";
+                geomDiag += $"\nC-H:  ({(camPos.x - headPos.x):F2},{(camPos.y - headPos.y):F2},{(camPos.z - headPos.z):F2})";
+                geomDiag += $"\nH-R:  ({(headPos.x - rootPos.x):F2},{(headPos.y - rootPos.y):F2},{(headPos.z - rootPos.z):F2})";
             }
 
             _debugText.text =
@@ -453,34 +471,57 @@ namespace U3D
                 $"L-Pos: ({lp.x:F2}, {lp.y:F2}, {lp.z:F2})\n" +
                 $"R-Pos: ({rp.x:F2}, {rp.y:F2}, {rp.z:F2})\n" +
                 $"---\n" +
-                $"{tpdDiag}";
+                $"{tpdDiag}\n" +
+                $"---\n" +
+                $"{geomDiag}";
         }
 
         void ReadAndPublishLocalControllerPoses()
         {
-            // De-Panther's WebXRController writes the controller pose directly to its
-            // transform every frame, in world space. We sample those world-space transforms
-            // and convert to rig-local (relative to player root) for the networked slots,
-            // so remote viewers can reconstruct world-space targets via playerRoot.TransformPoint.
+            // De-Panther's WebXRController writes pose to its transform every frame in
+            // WebXR reference space. We compute the IRL head-to-hand vector by
+            // subtracting the IRL HMD's pose (read from the player controller's raw
+            // HMD reference, which is a position-only TPD-driven transform) from the
+            // controller's pose. Both are in WebXR space, so the subtraction yields a
+            // clean IRL vector. Then we anchor that vector to the avatar's head bone
+            // world position to place hands relative to the avatar rig.
+            //
+            // The locked-to-avatar player camera CANNOT be used as the IRL HMD reference
+            // because U3DPlayerController.LateUpdate overrides the camera's world position
+            // to follow the avatar head bone — it no longer reflects where the IRL HMD
+            // actually is. The raw HMD reference exists specifically as the unmoved
+            // De-Panther TPD output for this purpose.
             //
             // If a controller reference is null this frame, leave its networked slot
             // untouched so transient dropouts don't cause arm collapse.
             Transform playerRoot = _playerController.transform;
             Transform cam = _playerController.CameraTransform;
+            Transform rawHmd = _playerController.RawHmdReference;
             if (cam == null) return;
+
+            // Fallback: if the raw HMD reference doesn't exist yet (e.g. first frame
+            // of VR mode before EnterVRMode finished), fall back to the camera transform.
+            // The hand placement will be slightly off for that one frame, which is
+            // imperceptible.
+            Vector3 irlHmdPos = (rawHmd != null) ? rawHmd.position : cam.position;
+            Vector3 headBoneWorld = (_head != null) ? _head.position : cam.position;
 
 #if WEBXR_ENABLED
             if (_leftHandController != null)
             {
                 Transform t = _leftHandController.transform;
-                _playerController.NetworkLeftHandPos = playerRoot.InverseTransformPoint(t.position);
+                Vector3 irlHeadToHand = t.position - irlHmdPos;
+                Vector3 handWorld = headBoneWorld + irlHeadToHand;
+                _playerController.NetworkLeftHandPos = playerRoot.InverseTransformPoint(handWorld);
                 _playerController.NetworkLeftHandRot = Quaternion.Inverse(playerRoot.rotation) * t.rotation;
             }
 
             if (_rightHandController != null)
             {
                 Transform t = _rightHandController.transform;
-                _playerController.NetworkRightHandPos = playerRoot.InverseTransformPoint(t.position);
+                Vector3 irlHeadToHand = t.position - irlHmdPos;
+                Vector3 handWorld = headBoneWorld + irlHeadToHand;
+                _playerController.NetworkRightHandPos = playerRoot.InverseTransformPoint(handWorld);
                 _playerController.NetworkRightHandRot = Quaternion.Inverse(playerRoot.rotation) * t.rotation;
             }
 #endif
