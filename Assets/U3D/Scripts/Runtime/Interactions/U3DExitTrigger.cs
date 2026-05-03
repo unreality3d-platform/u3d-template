@@ -50,7 +50,7 @@ namespace U3D
             if (triggerOnce && alreadyTriggered)
                 return;
 
-            if (isNetworked && !Object.HasStateAuthority)
+            if (isNetworked && (Object == null || !Object.HasStateAuthority))
                 return;
 
             if (requireTag && !other.CompareTag(requiredTag))
@@ -77,7 +77,7 @@ namespace U3D
 
         public void ResetTrigger()
         {
-            if (isNetworked && Object.HasStateAuthority)
+            if (isNetworked && Object != null && Object.HasStateAuthority)
             {
                 NetworkHasTriggered = false;
                 NetworkLastTriggerTime = 0f;

@@ -19,15 +19,6 @@
       },
       "url": "https://package.openupm.com"
     },
-    "com.de-panther.webxr-interactions": {
-      "version": "0.22.0",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {
-        "com.de-panther.webxr": "0.22.0"
-      },
-      "url": "https://package.openupm.com"
-    },
     "com.unity.ai.navigation": {
       "version": "2.0.11",
       "depth": 0,
