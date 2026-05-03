@@ -47,12 +47,22 @@ namespace U3D.Editor
         private string activeSceneName = "";
         private Dictionary<string, bool> buildSceneToggles = new Dictionary<string, bool>();
 
+        // GitHub Actions polling state — used by the WaitingForGitHub step to
+        // confirm the published URL is actually live before showing success.
+        private bool githubActionsComplete = false;
+        private string githubActionsRunHtmlUrl = "";
+        private const string CHUNK_WORKFLOW_FILENAME = "reassemble-chunks.yml";
+        private const int GITHUB_ACTIONS_POLL_INTERVAL_MS = 8000;
+        private const int GITHUB_ACTIONS_FIND_RUN_TIMEOUT_MS = 60000;
+        private const int GITHUB_ACTIONS_TOTAL_TIMEOUT_MS = 480000;
+
         private enum PublishStep
         {
             Ready,
             BuildingLocally,
             CreatingRepository,
             DeployingToGitHub,
+            WaitingForGitHub,
             Complete
         }
 
@@ -91,6 +101,8 @@ namespace U3D.Editor
             githubConnected = false;
             projectBuilt = false;
             deploymentComplete = false;
+            githubActionsComplete = false;
+            githubActionsRunHtmlUrl = "";
             isPublishing = false;
 
             // Force repository options to reload on initialization
@@ -113,6 +125,7 @@ namespace U3D.Editor
             githubConnected = true;
             projectBuilt = true;
             deploymentComplete = true;
+            githubActionsComplete = true;
 
             // Mark that we just published (for this session only)
             EditorPrefs.SetBool("U3D_JustPublished", true);
@@ -163,6 +176,8 @@ namespace U3D.Editor
             githubConnected = false;
             projectBuilt = false;
             deploymentComplete = false;
+            githubActionsComplete = false;
+            githubActionsRunHtmlUrl = "";
             currentStep = PublishStep.Ready;
             IsComplete = false;
             currentStatus = "";
@@ -370,6 +385,8 @@ namespace U3D.Editor
                 isPublishing = false;
                 projectBuilt = false;
                 deploymentComplete = false;
+                githubActionsComplete = false;
+                githubActionsRunHtmlUrl = "";
                 githubConnected = false;
                 publishUrl = "";
                 currentStatus = "";
@@ -1156,23 +1173,23 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Publishing Progress", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            DrawStep("Local Unity Build",
+            DrawStep("Build",
                 projectBuilt,
                 currentStep == PublishStep.BuildingLocally,
-                "✓ Unity WebGL build completed",
-                "🔨 Building Unity WebGL locally...");
+                "✓ Project built",
+                "🔨 Building your project...");
 
-            DrawStep("GitHub Repository",
-                githubConnected,
-                currentStep == PublishStep.CreatingRepository,
-                "✓ GitHub repository ready",
-                "🔗 Setting up GitHub repository...");
-
-            DrawStep("Deploy to Web",
+            DrawStep("Upload",
                 deploymentComplete,
                 currentStep == PublishStep.DeployingToGitHub,
-                "✓ Your content is now live!",
-                "🚀 Deploying to GitHub Pages...");
+                "✓ Project uploaded",
+                "📤 Uploading your project...");
+
+            DrawStep("Go Live",
+                githubActionsComplete,
+                currentStep == PublishStep.WaitingForGitHub,
+                "✓ Your URL is live!",
+                "🌐 Finalizing — your URL goes live in 1–2 minutes...");
         }
 
         private void DrawStep(string stepName, bool isComplete, bool isActive, string completeMessage, string activeMessage)
@@ -1202,6 +1219,8 @@ namespace U3D.Editor
         private async System.Threading.Tasks.Task StartFirebasePublishProcess()
         {
             isPublishing = true;
+            githubActionsComplete = false;
+            githubActionsRunHtmlUrl = "";
 
             try
             {
@@ -1218,7 +1237,7 @@ namespace U3D.Editor
 
                 // Step 1: Build Unity WebGL locally
                 currentStep = PublishStep.BuildingLocally;
-                currentStatus = "Building Unity WebGL locally...";
+                currentStatus = "Building your project...";
 
                 var buildResult = await BuildUnityProjectLocally();
                 if (!buildResult.Success)
@@ -1227,7 +1246,7 @@ namespace U3D.Editor
                 }
 
                 projectBuilt = true;
-                currentStatus = "Unity build completed successfully";
+                currentStatus = "Project built successfully";
 
                 // Re-validate authentication before the deployment step
                 // (Build process can take 30+ minutes, token might expire)
@@ -1239,9 +1258,16 @@ namespace U3D.Editor
                     throw new System.Exception("Authentication expired during build. Please log out and log back in, then try deploying again.");
                 }
 
-                // Step 2: Deploy via Firebase Cloud Functions
+                // Step 2: Upload + push to GitHub via Firebase Cloud Functions.
+                // After this step returns success, the build IS pushed to GitHub
+                // but GitHub Actions still has to assemble and publish to Pages.
                 currentStep = PublishStep.DeployingToGitHub;
-                currentStatus = "Deploying via Firebase Cloud Functions...";
+                currentStatus = "Uploading your project...";
+
+                // Capture the moment we kicked off the deploy. We use this as a
+                // floor when searching GitHub Actions for the workflow run we
+                // just triggered, so we don't accidentally match an older run.
+                var publishStartUtc = DateTime.UtcNow.AddSeconds(-30); // small buffer for clock skew
 
                 var deployResult = await DeployViaFirebaseStorage(buildResult.BuildPath);
                 if (!deployResult.Success)
@@ -1255,8 +1281,25 @@ namespace U3D.Editor
                 var repositoryName = deployResult.RepositoryName ?? deployResult.ProjectName ?? GitHubAPI.SanitizeRepositoryName(cachedProductName);
                 var successUrl = deployResult.ProfessionalUrl ?? $"https://unreality3d.com/{creatorUsername}/{repositoryName}/";
 
+                // Step 3: Wait for GitHub Actions to finish so we only show
+                // "Live!" when the URL is actually serving the new build.
+                currentStep = PublishStep.WaitingForGitHub;
+                currentStatus = "Project uploaded — waiting for GitHub to finalize your deployment...";
+
+                var actionsResult = await WaitForGitHubActionsCompletion(
+                    GitHubTokenManager.GitHubUsername,
+                    repositoryName,
+                    publishStartUtc);
+
+                if (!actionsResult.Success)
+                {
+                    githubActionsRunHtmlUrl = actionsResult.RunHtmlUrl;
+                    throw new System.Exception(actionsResult.ErrorMessage);
+                }
+
+                githubActionsRunHtmlUrl = actionsResult.RunHtmlUrl;
                 MarkPublishSuccess(successUrl, repositoryName);
-                currentStatus = "Publishing completed successfully!";
+                currentStatus = "Your URL is live!";
                 ShowDeploymentSummary(repositoryName);
             }
             catch (System.Exception ex)
@@ -1278,13 +1321,28 @@ namespace U3D.Editor
                                  "Technical details: " + ex.Message;
                 }
 
-                EditorUtility.DisplayDialog("Publishing Failed", userMessage, "OK");
+                // If the failure was specifically the GitHub Actions wait, offer
+                // the link to the Actions tab so the creator can check status.
+                if (currentStep == PublishStep.WaitingForGitHub && !string.IsNullOrEmpty(githubActionsRunHtmlUrl))
+                {
+                    if (EditorUtility.DisplayDialog("Deployment Status Unclear",
+                        userMessage + "\n\nWould you like to open the GitHub Actions page to check the status yourself?",
+                        "Open Actions Page", "Close"))
+                    {
+                        Application.OpenURL(githubActionsRunHtmlUrl);
+                    }
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("Publishing Failed", userMessage, "OK");
+                }
 
                 currentStep = PublishStep.Ready;
                 currentStatus = $"Publishing failed: {ex.Message}";
                 githubConnected = false;
                 projectBuilt = false;
                 deploymentComplete = false;
+                githubActionsComplete = false;
             }
             finally
             {
@@ -1540,6 +1598,196 @@ namespace U3D.Editor
             EditorGUILayout.LabelField("Share this link with anyone to let them play your creation!", EditorStyles.wordWrappedMiniLabel);
 
             EditorGUILayout.EndVertical();
+        }
+        /// <summary>
+        /// Result of waiting for the GitHub Actions workflow that finalizes the
+        /// deployment to GitHub Pages. Success means the workflow completed
+        /// successfully and the published URL should now serve the new build.
+        /// </summary>
+        private class GitHubActionsWaitResult
+        {
+            public bool Success { get; set; }
+            public string ErrorMessage { get; set; }
+            public string RunHtmlUrl { get; set; }
+        }
+
+        /// <summary>
+        /// Polls the GitHub Actions API for the chunk-reassembly workflow run
+        /// that was just triggered by deployFromStorage, and waits for it to
+        /// complete. The workflow's deploy job is what actually publishes the
+        /// build to GitHub Pages, so we can only honestly report "live" once
+        /// this finishes successfully.
+        ///
+        /// Stage A: find the run created at or after publishStartUtc (up to ~60s)
+        /// Stage B: wait for status == completed (up to total timeout)
+        ///
+        /// Total budget: GITHUB_ACTIONS_TOTAL_TIMEOUT_MS (8 minutes).
+        /// </summary>
+        private async Task<GitHubActionsWaitResult> WaitForGitHubActionsCompletion(string owner, string repo, DateTime publishStartUtc)
+        {
+            if (!GitHubTokenManager.HasValidToken)
+            {
+                return new GitHubActionsWaitResult
+                {
+                    Success = false,
+                    ErrorMessage = "GitHub token is not available — cannot check deployment status."
+                };
+            }
+
+            var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // ---- Stage A: find the workflow run we just triggered ----
+            currentStatus = "Project uploaded — looking for GitHub deployment...";
+
+            long? runId = null;
+            string runHtmlUrl = "";
+            var findRunStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            while (findRunStopwatch.ElapsedMilliseconds < GITHUB_ACTIONS_FIND_RUN_TIMEOUT_MS)
+            {
+                try
+                {
+                    using (var client = GitHubAPI.CreateAuthenticatedClient())
+                    {
+                        var url = $"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{CHUNK_WORKFLOW_FILENAME}/runs?per_page=5&event=workflow_dispatch";
+                        var response = await client.GetAsync(url);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var responseText = await response.Content.ReadAsStringAsync();
+                            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                            if (data.ContainsKey("workflow_runs") && data["workflow_runs"] != null)
+                            {
+                                var runs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(data["workflow_runs"].ToString());
+
+                                foreach (var run in runs)
+                                {
+                                    if (!run.ContainsKey("created_at") || run["created_at"] == null)
+                                        continue;
+
+                                    var createdAtString = run["created_at"].ToString();
+                                    if (!DateTime.TryParse(createdAtString, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime createdAt))
+                                        continue;
+
+                                    var createdAtUtc = createdAt.ToUniversalTime();
+                                    if (createdAtUtc < publishStartUtc)
+                                        continue;
+
+                                    // Match — this is the run our deploy triggered.
+                                    if (run.ContainsKey("id") && run["id"] != null)
+                                    {
+                                        runId = long.Parse(run["id"].ToString());
+                                    }
+                                    if (run.ContainsKey("html_url") && run["html_url"] != null)
+                                    {
+                                        runHtmlUrl = run["html_url"].ToString();
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"GitHub Actions API returned {response.StatusCode} while looking for workflow run.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Error querying GitHub Actions for workflow run: {ex.Message}");
+                }
+
+                if (runId.HasValue)
+                    break;
+
+                await Task.Delay(GITHUB_ACTIONS_POLL_INTERVAL_MS);
+            }
+
+            if (!runId.HasValue)
+            {
+                return new GitHubActionsWaitResult
+                {
+                    Success = false,
+                    ErrorMessage = "Could not find the GitHub deployment workflow run. Your build was uploaded successfully, but we couldn't confirm GitHub started the deployment."
+                };
+            }
+
+            // ---- Stage B: wait for the run to complete ----
+            currentStatus = "GitHub is finalizing your deployment — this usually takes 1–2 minutes...";
+
+            while (totalStopwatch.ElapsedMilliseconds < GITHUB_ACTIONS_TOTAL_TIMEOUT_MS)
+            {
+                try
+                {
+                    using (var client = GitHubAPI.CreateAuthenticatedClient())
+                    {
+                        var url = $"https://api.github.com/repos/{owner}/{repo}/actions/runs/{runId.Value}";
+                        var response = await client.GetAsync(url);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var responseText = await response.Content.ReadAsStringAsync();
+                            var run = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                            var status = run.ContainsKey("status") && run["status"] != null
+                                ? run["status"].ToString()
+                                : "";
+                            var conclusion = run.ContainsKey("conclusion") && run["conclusion"] != null
+                                ? run["conclusion"].ToString()
+                                : "";
+
+                            // Update friendly status as the workflow progresses
+                            if (status == "queued")
+                            {
+                                currentStatus = "GitHub deployment queued — starting shortly...";
+                            }
+                            else if (status == "in_progress")
+                            {
+                                currentStatus = "GitHub is finalizing your deployment — almost there...";
+                            }
+
+                            if (status == "completed")
+                            {
+                                if (conclusion == "success")
+                                {
+                                    return new GitHubActionsWaitResult
+                                    {
+                                        Success = true,
+                                        RunHtmlUrl = runHtmlUrl
+                                    };
+                                }
+
+                                // Completed with a non-success conclusion (failure, cancelled, timed_out, etc.)
+                                return new GitHubActionsWaitResult
+                                {
+                                    Success = false,
+                                    ErrorMessage = $"GitHub deployment finished with status \"{conclusion}\". Your build was uploaded but the final publish step did not succeed.",
+                                    RunHtmlUrl = runHtmlUrl
+                                };
+                            }
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"GitHub Actions API returned {response.StatusCode} while polling run {runId.Value}.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Error polling GitHub Actions run: {ex.Message}");
+                }
+
+                await Task.Delay(GITHUB_ACTIONS_POLL_INTERVAL_MS);
+            }
+
+            // Total timeout exhausted
+            return new GitHubActionsWaitResult
+            {
+                Success = false,
+                ErrorMessage = "GitHub deployment is taking longer than expected. Your build was uploaded successfully, but we couldn't confirm it finished publishing within 8 minutes.",
+                RunHtmlUrl = runHtmlUrl
+            };
         }
     }
 
