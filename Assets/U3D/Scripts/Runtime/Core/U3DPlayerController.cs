@@ -1529,6 +1529,7 @@ public class U3DPlayerController : NetworkBehaviour
     public bool IsFlying => isFlying;
     public bool IsAutoRunning => isAutoRunning;
     public bool IsFirstPerson => isFirstPerson;
+    public bool IsCameraTransitioning => isTransitioning;
     public Vector3 Velocity => velocity;
     public float CurrentSpeed => GetCurrentSpeed();
     public bool IsLocalPlayer => _isLocalPlayer;

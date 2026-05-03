@@ -706,7 +706,9 @@ namespace U3D
             if (inVR) return true;
 
             // Local desktop player: respect the creator's hideInFirstPerson preference.
-            if (hideInFirstPersonPref && isFirstPerson) return false;
+            // Delay the hide until the scroll transition completes so the avatar doesn't
+            // vanish while the camera is still pulling in from third person.
+            if (hideInFirstPersonPref && isFirstPerson && !_playerController.IsCameraTransitioning) return false;
 
             return true;
         }

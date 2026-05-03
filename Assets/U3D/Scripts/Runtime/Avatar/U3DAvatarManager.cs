@@ -27,7 +27,7 @@ public class U3DAvatarManager : NetworkBehaviour
     private SkinnedMeshRenderer[] avatarRenderers;
     private U3DAvatarIK avatarIK;
 
-    // CLEAN: Simple animation system
+    // Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
     private bool isInitialized = false;
 
