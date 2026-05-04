@@ -79,15 +79,6 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "AutoRun",
-                    "type": "Button",
-                    "id": "b1f16450-a6df-49e8-aa84-333fa795951b",
-                    "expectedControlType": "",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": false
-                },
-                {
                     "name": "PerspectiveSwitch",
                     "type": "Value",
                     "id": "46d2cf46-d0ec-4b60-9118-d8a0de612228",
@@ -595,7 +586,7 @@
                 {
                     "name": "",
                     "id": "c4d24907-cca0-4d1c-8e27-830a38b5022f",
-                    "path": "<XRController>{LeftHand}/{Primary2DAxisClick}",
+                    "path": "<XRController>{LeftHand}/{SecondaryButton}",
                     "interactions": "",
                     "processors": "",
                     "groups": ";XR",
@@ -632,6 +623,17 @@
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",
+                    "action": "Zoom",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "51dab109-edb5-40e7-8867-b6e170b237e7",
+                    "path": "<XRController>{RightHand}/{SecondaryButton}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
                     "action": "Zoom",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -688,39 +690,6 @@
                     "processors": "",
                     "groups": ";XR",
                     "action": "Fly",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "96a9d8ff-ad10-4324-a24c-64fe62e1de57",
-                    "path": "<Keyboard>/numLock",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Keyboard&Mouse",
-                    "action": "AutoRun",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "7e1d5b9b-c60f-452f-9215-8b845f7f17f8",
-                    "path": "<Gamepad>/rightShoulder",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Gamepad",
-                    "action": "AutoRun",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "e3dcd727-7d7c-411d-9be2-c03ea2ef8c2a",
-                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";XR",
-                    "action": "AutoRun",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -885,6 +854,17 @@
                     "interactions": "",
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
+                    "action": "AutoRunToggle",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "833c8938-51d8-4ac0-8c8c-f7b465b16626",
+                    "path": "<Gamepad>/rightShoulder",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Gamepad",
                     "action": "AutoRunToggle",
                     "isComposite": false,
                     "isPartOfComposite": false

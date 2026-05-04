@@ -7041,7 +7041,7 @@ MonoBehaviour:
   maxGrabDistance: 2
   grabKey: 114
   handBoneName: RightHand
-  grabOffset: {x: 0, y: 0, z: 0}
+  grabOffset: {x: 0, y: 0.25, z: 0}
   allowMultiGrab: 1
   startActive: 0
   labelUI: {fileID: 1924854879}
