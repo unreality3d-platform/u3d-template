@@ -1,8 +1,8 @@
 {
   "dependencies": {
     "com.de-panther.webxr": {
-      "version": "0.22.1",
-      "depth": 0,
+      "version": "0.23.0",
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.xr.management": "3.2.13"
@@ -16,6 +16,15 @@
       "dependencies": {
         "com.unity.nuget.newtonsoft-json": "2.0.0",
         "com.unity.cloud.gltfast": "5.2.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.de-panther.webxr-interactions": {
+      "version": "0.23.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.de-panther.webxr": "0.23.0"
       },
       "url": "https://package.openupm.com"
     },
