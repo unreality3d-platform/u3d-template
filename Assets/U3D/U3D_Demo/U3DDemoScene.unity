@@ -3974,6 +3974,18 @@ PrefabInstance:
       value: U3DCoin
       objectReference: {fileID: 0}
     - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
+      propertyPath: grabOffset.x
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
+      propertyPath: grabOffset.y
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
+      propertyPath: grabOffset.z
+      value: -0.05
+      objectReference: {fileID: 0}
+    - target: {fileID: 5988252520029349151, guid: b4e8fffd7de49fc4188bef9fa7ab539f, type: 3}
       propertyPath: useRadiusDetection
       value: 1
       objectReference: {fileID: 0}

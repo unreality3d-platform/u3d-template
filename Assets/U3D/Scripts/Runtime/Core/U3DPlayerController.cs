@@ -184,6 +184,8 @@ public class U3DPlayerController : NetworkBehaviour
 
     private bool _isInVRMode = false;
     private U3D.XR.U3DWebXRManager _webXRManager;
+    private U3D.XR.U3DVRTeleporter _vrTeleporter;
+    private bool _vrLocomotionSuppressed;
     // Head-bone camera lock (VR)
     private TrackedPoseDriver _headTrackedPoseDriver;
     private TrackedPoseDriver.TrackingType _headOriginalTrackingType;
@@ -195,9 +197,6 @@ public class U3DPlayerController : NetworkBehaviour
     [Tooltip("Camera position relative to the avatar's head bone, expressed in player-root-local space (Z forward, Y up). Default (0, 0, 0.08) places the camera at the head bone with eyes ~8cm forward of the avatar's facing direction. Adjust to dial in eye height and forward placement.")]
     [SerializeField] private Vector3 vrEyeOffset = new Vector3(0f, 0.2f, 0.08f);
 
-    private const float VR_SNAP_TURN_ANGLE = 45f;
-    private const float VR_SNAP_TURN_COOLDOWN = 0.3f;
-    private float _lastSnapTurnTime = 0f;
     private const float VR_MOVEMENT_SPEED_MULTIPLIER = 1.0f;
 
     // Rideable support
@@ -651,32 +650,26 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
-        // Switch to rotation-only tracking so the headset drives only camera orientation,
-        // not position. Camera world position will be locked to the avatar's head bone
-        // each frame in LateUpdate.
         if (_headTrackedPoseDriver != null)
             _headTrackedPoseDriver.trackingType = TrackedPoseDriver.TrackingType.RotationOnly;
 
-        // Resolve the avatar's head bone. May be null if the avatar hasn't finished
-        // spawning yet — LateUpdate will retry until it succeeds.
         TryResolveHeadBone();
 
-        // Reparent the camera to the player root so the TPD's localRotation writes
-        // compose correctly with body yaw (snap-turn / thumbstick rotation).
         if (cameraPivot != null && playerCamera != null)
         {
             playerCamera.transform.SetParent(transform);
             playerCamera.transform.localRotation = Quaternion.identity;
         }
 
-        // Create the raw HMD reference. This is a separate transform that tracks the
-        // IRL HMD position via a position-only TrackedPoseDriver. It is not rendered
-        // through, not parented to the avatar, and never repositioned by us — De-Panther
-        // writes raw HMD pose to it every frame. U3DAvatarIK reads its position to
-        // compute the IRL head-to-hand vector for hand placement, since the player
-        // camera is locked to the avatar head bone and no longer reflects IRL head
-        // position.
         EnsureRawHmdReference();
+
+        // Create and wire up the VR teleporter
+        if (_vrTeleporter == null)
+        {
+            var go = new GameObject("U3DVRTeleporter");
+            _vrTeleporter = go.AddComponent<U3D.XR.U3DVRTeleporter>();
+            _vrTeleporter.Initialize(this, playerCamera);
+        }
     }
 
     private void EnsureRawHmdReference()
@@ -705,20 +698,25 @@ public class U3DPlayerController : NetworkBehaviour
 
     private void ExitVRMode()
     {
-        // Restore full headset tracking for any future entry.
         if (_headTrackedPoseDriver != null)
             _headTrackedPoseDriver.trackingType = _headOriginalTrackingType;
 
-        // Clear head bone reference so the next VR entry re-resolves it from the
-        // current avatar (which may have changed if a creator swapped avatars).
         _avatarHeadBone = null;
 
-        // Tear down the raw HMD reference. It will be recreated on next VR entry.
         if (_rawHmdReference != null)
         {
             Destroy(_rawHmdReference.gameObject);
             _rawHmdReference = null;
         }
+
+        if (_vrTeleporter != null)
+        {
+            _vrTeleporter.CancelAim();
+            Destroy(_vrTeleporter.gameObject);
+            _vrTeleporter = null;
+        }
+
+        _vrLocomotionSuppressed = false;
 
         if (cameraPivot != null && playerCamera != null)
         {
@@ -801,7 +799,18 @@ public class U3DPlayerController : NetworkBehaviour
             cameraYaw += turnDelta;
         }
 
-        // Don't drive locomotion while climbing — U3DClimbable owns CharacterController.Move() then
+        // VR teleport aim gesture: Move Y above threshold suppresses locomotion.
+        // UpdateAiming returns true while the player is aiming. When the stick
+        // drops below threshold after aiming, the teleporter fires internally.
+        // We call this in FixedUpdateNetwork so the teleport position write
+        // happens within the Fusion tick and NetworkPosition is updated correctly.
+        if (_vrTeleporter != null)
+        {
+            _vrLocomotionSuppressed = _vrTeleporter.UpdateAiming(vrMoveInput.y);
+            if (_vrLocomotionSuppressed) return;
+        }
+
+        // Don't drive locomotion while climbing
         if (NetworkIsClimbing)
         {
             moveInput = vrMoveInput;
@@ -1270,7 +1279,9 @@ public class U3DPlayerController : NetworkBehaviour
 
     void HandleTeleportFusion(U3DNetworkInputData input)
     {
-        if (!enableTeleport || !_isLocalPlayer) return;
+        // VR teleport is handled entirely by U3DVRTeleporter via HandleVRMovement.
+        // The desktop Teleport button binding must not fire in VR.
+        if (!enableTeleport || !_isLocalPlayer || _isInVRMode) return;
 
         var pressed = input.Buttons.GetPressed(_buttonsPrevious);
         if (pressed.IsSet(U3DInputButtons.Teleport))

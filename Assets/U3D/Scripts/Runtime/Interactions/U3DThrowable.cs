@@ -477,20 +477,13 @@ namespace U3D
 
         private Vector3 GetThrowDirection()
         {
-            bool isThirdPerson = playerController != null && !playerController.IsFirstPerson;
-
-            if (isThirdPerson && playerTransform != null)
-            {
-                return playerTransform.forward;
-            }
-            else if (playerCamera != null)
-            {
+            if (playerCamera != null)
                 return playerCamera.transform.forward;
-            }
-            else
-            {
-                return Vector3.forward;
-            }
+
+            if (playerTransform != null)
+                return playerTransform.forward;
+
+            return Vector3.forward;
         }
 
         public override void FixedUpdateNetwork()
