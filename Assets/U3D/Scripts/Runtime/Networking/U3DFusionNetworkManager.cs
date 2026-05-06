@@ -799,6 +799,9 @@ namespace U3D.Networking
 
             input.Set(data);
 
+            // Clear edge-triggered button presses so they fire once per press, not on
+            // every tick OnInput is called (Fusion may invoke OnInput multiple times
+            // per Unity frame during resimulation/prediction).
             _jumpPressed = false;
             _sprintPressed = false;
             _crouchPressed = false;
@@ -806,8 +809,13 @@ namespace U3D.Networking
             _interactPressed = false;
             _teleportPressed = false;
             _perspectiveScrollValue = 0f;
-            _cachedLookInput = Vector2.zero; 
-            _cachedMovementInput = Vector2.zero;
+
+            // Do NOT clear _cachedMovementInput or _cachedLookInput here. These are
+            // continuous axis values that should persist across multiple OnInput calls
+            // within the same Unity frame. PollVRInput / Update will overwrite them
+            // with current values on the next Unity frame. Clearing them caused
+            // phantom zero readings between Update cycles, which broke the VR teleport
+            // gesture's release-to-fire detection (false-fire on every other tick).
         }
 
         public InputAction GetMoveAction() => _moveAction;
