@@ -399,19 +399,13 @@ namespace U3D.Networking
             if (_lookAction != null)
                 lookValue = _lookAction.ReadValue<Vector2>();
 
-            if (moveValue.magnitude > 0.1f)
-                _cachedMovementInput = moveValue;
-            else if (_cachedMovementInput.magnitude > 0.1f)
-                _cachedMovementInput = Vector2.Lerp(_cachedMovementInput, Vector2.zero, 0.3f);
-            else
-                _cachedMovementInput = Vector2.zero;
-
-            if (lookValue.magnitude > 0.1f)
-                _cachedLookInput = lookValue;
-            else if (_cachedLookInput.magnitude > 0.1f)
-                _cachedLookInput = Vector2.Lerp(_cachedLookInput, Vector2.zero, 0.3f);
-            else
-                _cachedLookInput = Vector2.zero;
+            // Read raw stick values directly. The previous lerp-toward-zero smoothing
+            // caused phantom release events when input frames were briefly missed,
+            // which broke the teleport gesture's release-to-fire detection. Walking
+            // already feels fine without smoothing — the stick is held continuously
+            // and reads stable per-frame values.
+            _cachedMovementInput = moveValue;
+            _cachedLookInput = lookValue;
 
             if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
                 _jumpPressed = true;
@@ -420,10 +414,8 @@ namespace U3D.Networking
             {
                 float triggerValue = _sprintAction.ReadValue<float>();
                 bool triggerDown = triggerValue > 0.5f;
-
                 if (triggerDown && !_vrSprintTriggerWasDown)
                     _sprintPressed = true;
-
                 _vrSprintTriggerWasDown = triggerDown;
             }
 
@@ -438,6 +430,9 @@ namespace U3D.Networking
 
             if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
                 _teleportPressed = true;
+
+            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
+                _autoRunTogglePressed = true;
 
             _leftMouseHeld = false;
             _rightMouseHeld = false;

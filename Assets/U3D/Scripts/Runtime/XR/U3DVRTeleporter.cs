@@ -1,68 +1,80 @@
-﻿using UnityEngine;
+﻿// U3DVRTeleporter.cs
+// Assets/U3D/Scripts/Runtime/XR/U3DVRTeleporter.cs
+
+using UnityEngine;
 
 namespace U3D.XR
 {
     /// <summary>
-    /// Handles VR-specific teleport targeting and execution for U3DPlayerController.
-    /// Uses a parabolic arc from the player camera forward, aimed by head direction.
-    /// Activated by the Move axis hold-override gesture: Move Y above aim threshold
-    /// suppresses locomotion and shows the arc; releasing below the threshold fires
-    /// the teleport if a valid target was found.
+    /// VR teleport with click-to-arm gesture and flick-forward-to-fire.
+    ///
+    /// Three states:
+    ///  - Off: normal locomotion, no visuals, no teleport.
+    ///  - Armed (idle): locomotion suppressed, no visuals. Stick click toggles back to Off.
+    ///  - Aiming: stick pushed forward past 0.8. Arc + reticle visible. Releasing below 0.5
+    ///    fires teleport (if valid) and returns to Armed. Stick click cancels back to Off.
+    ///
+    /// Appearance is driven entirely by the assigned ArcMaterial. Validity is communicated
+    /// by reticle presence: reticle appears only at valid landing points.
     /// </summary>
     public class U3DVRTeleporter : MonoBehaviour
     {
-        [Header("Gesture Thresholds")]
-        [Tooltip("Move Y must exceed this value to enter aim mode and suppress locomotion.")]
-        [SerializeField] private float aimThreshold = 0.8f;
+        // ── Tuning constants (not creator-exposed) ─────────────────────────────
+        private const float ArcVelocity = 12f;
+        private const float ArcGravity = 14f;
+        private const int ArcSegments = 30;
+        private const float MaxArcDistance = 25f;
+        private const float ArcStepTime = 0.1f;
 
-        [Header("Arc Physics")]
-        [Tooltip("Initial velocity magnitude of the simulated arc projectile.")]
-        [SerializeField] private float arcVelocity = 8f;
-        [Tooltip("Gravity applied to the arc simulation. Does not affect player gravity.")]
-        [SerializeField] private float arcGravity = 18f;
-        [Tooltip("Number of line segments used to draw the arc. Higher = smoother but more costly.")]
-        [SerializeField] private int arcSegments = 30;
-        [Tooltip("Maximum world-space distance a teleport destination can be from the player.")]
-        [SerializeField] private float maxArcDistance = 20f;
-        [Tooltip("Layer mask for valid teleport surfaces. Defaults to Default layer.")]
-        [SerializeField] private LayerMask teleportLayerMask = 1;
+        private const float ArcLineWidth = 0.02f;
+        private const float ReticleRadius = 0.4f;
+        private const int ReticleSegments = 32;
 
-        [Header("Visuals")]
-        [Tooltip("Color of the arc line and reticle when a valid target is found.")]
-        [SerializeField] private Color validColor = new Color(0.3f, 0.8f, 1f, 1f);
-        [Tooltip("Color of the arc line and reticle when no valid target is found.")]
-        [SerializeField] private Color invalidColor = new Color(1f, 0.3f, 0.3f, 1f);
-        [Tooltip("Width of the arc line renderer.")]
-        [SerializeField] private float arcLineWidth = 0.02f;
-        [Tooltip("Radius of the ground reticle circle.")]
-        [SerializeField] private float reticleRadius = 0.4f;
-        [Tooltip("Number of segments used to draw the reticle circle.")]
-        [SerializeField] private int reticleSegments = 32;
+        private const float AimEnterThreshold = 0.8f;
+        private const float AimReleaseThreshold = 0.5f;
 
-        // State
-        private bool _isAiming;
-        private bool _wasAimingLastFrame;
+        // Head-local offset for arc origin: down 0.3m, forward 0.2m from the eye position.
+        // Keeps the arc visible without obstructing forward view.
+        private static readonly Vector3 ArcOriginHeadLocalOffset = new Vector3(0f, -0.3f, 0.2f);
+
+        // Material slot — assigned by U3DPlayerController immediately after AddComponent
+        // and before Initialize(). The arc and reticle render in whatever color/opacity
+        // this material defines.
+        public Material ArcMaterial;
+
+        // ── State ──────────────────────────────────────────────────────────────
+        private enum TeleportState { Off, Armed, Aiming }
+        private TeleportState _state = TeleportState.Off;
         private bool _hasValidTarget;
         private Vector3 _targetPosition;
 
-        // Visual components — created at runtime, destroyed with this component
+        // Visuals
         private LineRenderer _arcLine;
         private LineRenderer _reticleLine;
         private GameObject _visualRoot;
 
-        // Owner reference — set by U3DPlayerController on Start/Spawned
+        // Owner references
         private U3DPlayerController _controller;
         private Camera _playerCamera;
+        private int _teleportLayerMask;
 
-        public bool IsAiming => _isAiming;
+        // ── Public API ─────────────────────────────────────────────────────────
 
-        /// <summary>Called by U3DPlayerController after Spawned to wire up references.</summary>
+        /// <summary>True while the teleporter is consuming the left stick (Armed or Aiming).</summary>
+        public bool IsArmed => _state != TeleportState.Off;
+
         public void Initialize(U3DPlayerController controller, Camera camera)
         {
             _controller = controller;
             _playerCamera = camera;
+            _teleportLayerMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("Player"));
             BuildVisuals();
-            SetVisualsActive(false);
+            HideVisuals();
+        }
+
+        public void UpdateCamera(Camera camera)
+        {
+            _playerCamera = camera;
         }
 
         void OnDestroy()
@@ -71,105 +83,168 @@ namespace U3D.XR
                 Destroy(_visualRoot);
         }
 
-        // ── Public API called from U3DPlayerController ─────────────────────────
-
         /// <summary>
-        /// Called every Update (Render) frame while in VR mode.
-        /// Reads the current Move Y value, manages aim state, and updates visuals.
-        /// Returns true if locomotion should be suppressed this frame.
+        /// Called when the Teleport button (left stick click) is pressed.
+        /// Toggles between Off and Armed. If currently Aiming, click cancels back to Off
+        /// without firing.
         /// </summary>
-        public bool UpdateAiming(float moveY)
+        public void OnTeleportButtonPressed()
         {
-            _wasAimingLastFrame = _isAiming;
-            _isAiming = moveY >= aimThreshold;
-
-            if (_isAiming)
+            if (_state == TeleportState.Off)
             {
-                SimulateAndDraw();
+                _state = TeleportState.Armed;
             }
             else
             {
-                if (_wasAimingLastFrame && _hasValidTarget)
-                    ExecuteTeleport();
-
+                _state = TeleportState.Off;
                 _hasValidTarget = false;
-                SetVisualsActive(false);
+                HideVisuals();
             }
-
-            return _isAiming;
         }
 
-        /// <summary>Cleans up aim state without firing — call on VR exit or dismount.</summary>
+        /// <summary>
+        /// Called every FixedUpdateNetwork tick while in VR mode.
+        /// Returns true if locomotion should be suppressed this frame.
+        /// </summary>
+        public bool Tick(float stickY)
+        {
+            switch (_state)
+            {
+                case TeleportState.Off:
+                    return false;
+
+                case TeleportState.Armed:
+                    if (stickY > AimEnterThreshold)
+                        _state = TeleportState.Aiming;
+                    return true;
+
+                case TeleportState.Aiming:
+                    if (stickY < AimReleaseThreshold)
+                    {
+                        // Release: fire if valid, then return to Armed (ready to flick again).
+                        if (_hasValidTarget)
+                            ExecuteTeleport();
+                        _hasValidTarget = false;
+                        _state = TeleportState.Armed;
+                        HideVisuals();
+                    }
+                    else
+                    {
+                        SimulateAndDraw();
+                    }
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Cleans up state without firing — call on VR exit.</summary>
         public void CancelAim()
         {
-            _isAiming = false;
-            _wasAimingLastFrame = false;
+            _state = TeleportState.Off;
             _hasValidTarget = false;
-            SetVisualsActive(false);
+            HideVisuals();
         }
 
-        // ── Internal ────────────────────────────────────────────────────────────
+        // ── Internal ───────────────────────────────────────────────────────────
 
         private void SimulateAndDraw()
         {
-            if (_playerCamera == null) return;
+            if (_playerCamera == null || _controller == null)
+                return;
 
-            Vector3 origin = _playerCamera.transform.position;
-            // Head-directed: flatten to horizon, project forward with slight downward pitch
-            Vector3 forward = _playerCamera.transform.forward;
-            // Use a mild downward arc regardless of actual head pitch so the arc
-            // always reaches the ground even when the player looks straight ahead.
-            Vector3 flatForward = new Vector3(forward.x, Mathf.Min(forward.y, -0.1f), forward.z).normalized;
-            Vector3 velocity = flatForward * arcVelocity;
+            // Origin: anchored to the same eye position the camera uses in VR, then offset
+            // down and forward in head-local space so the arc doesn't obstruct forward view.
+            Vector3 eyePos = _controller.GetVREyePosition();
+            Vector3 camRight = _playerCamera.transform.right;
+            Vector3 camUp = _playerCamera.transform.up;
+            Vector3 camForward = _playerCamera.transform.forward;
 
-            Vector3[] points = new Vector3[arcSegments];
+            Vector3 origin = eyePos
+                + camRight * ArcOriginHeadLocalOffset.x
+                + camUp * ArcOriginHeadLocalOffset.y
+                + camForward * ArcOriginHeadLocalOffset.z;
+
+            // Aim direction: camera-forward, clamped so we never launch above horizontal.
+            Vector3 aimDir = new Vector3(camForward.x, Mathf.Min(camForward.y, 0f), camForward.z);
+            if (aimDir.sqrMagnitude < 0.0001f)
+                aimDir = Vector3.down;
+            else
+                aimDir.Normalize();
+
+            Vector3 launchVelocity = aimDir * ArcVelocity;
+
+            Vector3[] points = new Vector3[ArcSegments];
             _hasValidTarget = false;
             _targetPosition = Vector3.zero;
 
-            float stepTime = 0.1f;
+            Transform controllerTransform = _controller.transform;
+            int hitIndex = -1;
 
-            for (int i = 0; i < arcSegments; i++)
+            for (int i = 0; i < ArcSegments; i++)
             {
-                float t = i * stepTime;
-                points[i] = origin + velocity * t + Vector3.down * (arcGravity * t * t * 0.5f);
+                float t = i * ArcStepTime;
+                points[i] = origin + launchVelocity * t + Vector3.down * (ArcGravity * t * t * 0.5f);
 
-                if (i > 0)
+                if (i == 0) continue;
+
+                Vector3 segStart = points[i - 1];
+                Vector3 segEnd = points[i];
+                Vector3 dir = segEnd - segStart;
+                float segLen = dir.magnitude;
+
+                if (Vector3.Distance(origin, segEnd) > MaxArcDistance)
                 {
-                    Vector3 segStart = points[i - 1];
-                    Vector3 segEnd = points[i];
-                    Vector3 dir = segEnd - segStart;
-                    float segLen = dir.magnitude;
+                    TruncateArc(points, i);
+                    hitIndex = i - 1;
+                    break;
+                }
 
-                    if (Vector3.Distance(origin, segEnd) > maxArcDistance)
+                if (segLen > 0.0001f)
+                {
+                    RaycastHit[] hits = Physics.RaycastAll(segStart, dir / segLen, segLen, _teleportLayerMask);
+                    RaycastHit best = default;
+                    bool foundValid = false;
+                    float closest = float.MaxValue;
+
+                    for (int h = 0; h < hits.Length; h++)
                     {
-                        TruncateArc(points, i);
-                        break;
+                        var hit = hits[h];
+                        if (hit.collider.isTrigger) continue;
+                        if (hit.collider.transform == controllerTransform ||
+                            hit.collider.transform.IsChildOf(controllerTransform))
+                            continue;
+                        if (hit.distance < closest)
+                        {
+                            closest = hit.distance;
+                            best = hit;
+                            foundValid = true;
+                        }
                     }
 
-                    if (Physics.Raycast(segStart, dir.normalized, out RaycastHit hit, segLen, teleportLayerMask))
+                    if (foundValid)
                     {
-                        // Snap end point to the hit, truncate remainder
-                        points[i] = hit.point;
+                        points[i] = best.point;
                         TruncateArc(points, i + 1);
                         _hasValidTarget = true;
-                        _targetPosition = hit.point;
+                        _targetPosition = best.point;
+                        hitIndex = i;
                         break;
                     }
                 }
             }
 
-            Color lineColor = _hasValidTarget ? validColor : invalidColor;
-            DrawArc(points, lineColor);
-            DrawReticle(_hasValidTarget ? _targetPosition : points[arcSegments - 1], _hasValidTarget, lineColor);
-            SetVisualsActive(true);
+            if (hitIndex < 0) hitIndex = ArcSegments - 1;
+
+            DrawArc(points);
+            DrawReticle(_targetPosition, _hasValidTarget);
+            ShowVisuals();
         }
 
         private void TruncateArc(Vector3[] points, int usedCount)
         {
-            // Fill remaining segments with the last valid point so the
-            // LineRenderer has no zero-length degenerate segments.
+            if (usedCount <= 0 || usedCount >= points.Length) return;
             Vector3 last = points[usedCount - 1];
-            for (int j = usedCount; j < arcSegments; j++)
+            for (int j = usedCount; j < points.Length; j++)
                 points[j] = last;
         }
 
@@ -182,23 +257,17 @@ namespace U3D.XR
             Vector3 teleportPos = _targetPosition;
             teleportPos.y += playerHeight * 0.5f + 0.1f;
 
-            cc.enabled = false;
-            _controller.transform.position = teleportPos;
-            cc.enabled = true;
-
-            _controller.NetworkPosition = teleportPos;
-            _controller.NetworkRotation = _controller.transform.rotation;
+            // SetPosition handles unparenting, CC toggle, velocity zero, and network writes.
+            _controller.SetPosition(teleportPos);
         }
-
-        // ── Visuals ─────────────────────────────────────────────────────────────
 
         private void BuildVisuals()
         {
             _visualRoot = new GameObject("VRTeleportVisuals");
-            _visualRoot.transform.SetParent(null); // world space — not parented to player
+            _visualRoot.transform.SetParent(null);
 
-            _arcLine = CreateLineRenderer("ArcLine", arcLineWidth, arcSegments);
-            _reticleLine = CreateLineRenderer("ReticleLine", arcLineWidth * 1.5f, reticleSegments + 1);
+            _arcLine = CreateLineRenderer("ArcLine", ArcLineWidth, ArcSegments);
+            _reticleLine = CreateLineRenderer("ReticleLine", ArcLineWidth * 1.5f, ReticleSegments + 1);
 
             _arcLine.transform.SetParent(_visualRoot.transform, false);
             _reticleLine.transform.SetParent(_visualRoot.transform, false);
@@ -212,31 +281,33 @@ namespace U3D.XR
             lr.startWidth = width;
             lr.endWidth = width;
             lr.positionCount = positionCount;
+
+            // Initialize all positions to zero and disable until first use so a stray
+            // enable doesn't render a degenerate line at world origin.
+            for (int i = 0; i < positionCount; i++)
+                lr.SetPosition(i, Vector3.zero);
+            lr.enabled = false;
+
             lr.numCapVertices = 4;
             lr.numCornerVertices = 4;
             lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lr.receiveShadows = false;
 
-            // Use Sprites/Default so the color tint works without a custom material.
-            // URP: replace with "Universal Render Pipeline/Unlit" if Sprites/Default
-            // produces magenta in a URP project.
-            var mat = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
-            lr.material = mat;
-            lr.startColor = validColor;
-            lr.endColor = validColor;
+            // Material drives all appearance. If unassigned, the LineRenderer renders
+            // nothing — better than magenta from a stripped Shader.Find result.
+            if (ArcMaterial != null)
+                lr.material = ArcMaterial;
 
             return lr;
         }
 
-        private void DrawArc(Vector3[] points, Color color)
+        private void DrawArc(Vector3[] points)
         {
             _arcLine.positionCount = points.Length;
             _arcLine.SetPositions(points);
-            _arcLine.startColor = color;
-            _arcLine.endColor = color;
         }
 
-        private void DrawReticle(Vector3 center, bool valid, Color color)
+        private void DrawReticle(Vector3 center, bool valid)
         {
             if (!valid)
             {
@@ -244,27 +315,28 @@ namespace U3D.XR
                 return;
             }
 
-            _reticleLine.enabled = true;
-            _reticleLine.startColor = color;
-            _reticleLine.endColor = color;
-
-            // Slightly above the surface to avoid z-fighting
             Vector3 up = Vector3.up * 0.01f;
-            for (int i = 0; i <= reticleSegments; i++)
+            for (int i = 0; i <= ReticleSegments; i++)
             {
-                float angle = i * Mathf.PI * 2f / reticleSegments;
+                float angle = i * Mathf.PI * 2f / ReticleSegments;
                 Vector3 point = center + up + new Vector3(
-                    Mathf.Cos(angle) * reticleRadius,
+                    Mathf.Cos(angle) * ReticleRadius,
                     0f,
-                    Mathf.Sin(angle) * reticleRadius);
+                    Mathf.Sin(angle) * ReticleRadius);
                 _reticleLine.SetPosition(i, point);
             }
         }
 
-        private void SetVisualsActive(bool active)
+        private void ShowVisuals()
         {
-            if (_arcLine != null) _arcLine.enabled = active;
-            if (_reticleLine != null) _reticleLine.enabled = active && _hasValidTarget;
+            if (_arcLine != null) _arcLine.enabled = true;
+            if (_reticleLine != null) _reticleLine.enabled = _hasValidTarget;
+        }
+
+        private void HideVisuals()
+        {
+            if (_arcLine != null) _arcLine.enabled = false;
+            if (_reticleLine != null) _reticleLine.enabled = false;
         }
     }
 }

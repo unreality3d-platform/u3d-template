@@ -662,6 +662,17 @@
                 },
                 {
                     "name": "",
+                    "id": "1357513d-ff56-4ce0-8093-697cb696461d",
+                    "path": "<XRController>{LeftHand}/{Primary2DAxisClick}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";XR",
+                    "action": "Teleport",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "04ce4b07-ad2b-4406-a241-ea44dda24a9b",
                     "path": "<Keyboard>/f",
                     "interactions": "",

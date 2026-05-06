@@ -466,20 +466,13 @@ namespace U3D
                         rb.linearVelocity = Vector3.zero;
                         rb.angularVelocity = Vector3.zero;
                     }
-
-                    if (!isNetworked)
-                    {
-                        rb.useGravity = false;
-                        rb.isKinematic = true;
-                    }
+                    rb.useGravity = false;
+                    rb.isKinematic = true;
                     break;
 
                 case PhysicsState.Active:
-                    if (!isNetworked)
-                    {
-                        rb.isKinematic = false;
-                        rb.useGravity = true;
-                    }
+                    rb.isKinematic = false;
+                    rb.useGravity = true;
                     break;
             }
         }
@@ -569,6 +562,7 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
+            if (isNetworked && Object == null) return;
             if (isNetworked && !Object.HasStateAuthority) return;
 
             // End push if active

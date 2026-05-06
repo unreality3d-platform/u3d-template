@@ -359,13 +359,12 @@ MonoBehaviour:
   crouchKey: 99
   enableTeleport: 1
   enableViewZoom: 1
-  enableFOVAdjustment: 1
   enableJumping: 1
   jumpKey: 32
   jumpHeight: 2
   additionalJumps:
   - 5
-  interactKey: 101
+  interactKey: 114
   networkSendRate: 20
   positionThreshold: 0.1
   rotationThreshold: 1
@@ -397,6 +396,7 @@ MonoBehaviour:
       Raw: 0
     Behaviour: 0
   vrEyeOffset: {x: 0, y: 0, z: 0.08}
+  vrTeleportMaterial: {fileID: 2100000, guid: a7e10d782061a0945ba436b138b3cb07, type: 2}
 --- !u!114 &3303798439634689199
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -627,22 +627,6 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 227767514918744194}
         m_TargetAssemblyTypeName: U3DPlayerController, Assembly-CSharp
-        m_MethodName: OnAutoRun
-        m_Mode: 0
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-    m_ActionId: b1f16450-a6df-49e8-aa84-333fa795951b
-    m_ActionName: 'Player/AutoRun[/Keyboard/numLock]'
-  - m_PersistentCalls:
-      m_Calls:
-      - m_Target: {fileID: 227767514918744194}
-        m_TargetAssemblyTypeName: U3DPlayerController, Assembly-CSharp
         m_MethodName: OnPerspectiveSwitch
         m_Mode: 0
         m_Arguments:
@@ -761,20 +745,32 @@ MonoBehaviour:
     m_ActionName: 'Player/AutoRunToggle[/Keyboard/numLock]'
   - m_PersistentCalls:
       m_Calls: []
-    m_ActionId: 9b8c2aa6-707d-4e21-a328-31d1af89428c
-    m_ActionName: XR/LeftHandPosition
+    m_ActionId: 6789ca9c-07b5-4c91-8cea-66e22f8548a1
+    m_ActionName: Player/LeftHandPosition
   - m_PersistentCalls:
       m_Calls: []
-    m_ActionId: 471ed779-a1f3-4baf-961a-cf63dc516d34
-    m_ActionName: XR/LeftHandRotation
+    m_ActionId: 0c5742a9-3202-496d-b508-b26d8dfeb673
+    m_ActionName: Player/LeftHandRotation
   - m_PersistentCalls:
       m_Calls: []
-    m_ActionId: b95cd03e-c304-41b4-996e-ebc1ccb00c58
-    m_ActionName: XR/RightHandPosition
+    m_ActionId: 783ea3b3-ec98-4039-88c1-6b663609034b
+    m_ActionName: Player/RightHandPosition
   - m_PersistentCalls:
       m_Calls: []
-    m_ActionId: c7139932-ab9c-4cad-9e37-a870c21fbf12
-    m_ActionName: XR/RightHandRotation
+    m_ActionId: 2045db83-28d1-468a-90b3-852fd1d17d93
+    m_ActionName: Player/RightHandRotation
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 2ad8761f-23cc-4c56-aa55-2c1db0201b4b
+    m_ActionName: Player/HeadPosition
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 8ef98013-9e64-4b46-8865-88fb40a64b7d
+    m_ActionName: Player/HeadRotation
+  - m_PersistentCalls:
+      m_Calls: []
+    m_ActionId: 93a38f30-435b-44d2-86ba-05afcd3d852e
+    m_ActionName: Player/HeadTrackingState
   m_NeverAutoSwitchControlSchemes: 0
   m_DefaultControlScheme: 
   m_DefaultActionMap: Player
