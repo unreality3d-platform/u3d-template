@@ -88,6 +88,7 @@ namespace U3D
         [Networked] public bool NetworkIsKicked { get; set; }
         [Networked] public bool NetworkIsPhysicsActive { get; set; }
         [Networked] public TickTimer NetworkSleepTimer { get; set; }
+        [Networked] public TickTimer NetworkSettleGraceTimer { get; set; }
 
         // Components
         private Rigidbody rb;
@@ -185,58 +186,6 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// Check if kick key was pressed using Input System (following existing pattern)
-        /// </summary>
-        private bool WasKickKeyPressed()
-        {
-            if (UnityEngine.InputSystem.Keyboard.current == null) return false;
-
-            switch (kickKey)
-            {
-                case KeyCode.E:
-                    return UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame;
-                case KeyCode.F:
-                    return UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame;
-                case KeyCode.R:
-                    return UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame;
-                case KeyCode.T:
-                    return UnityEngine.InputSystem.Keyboard.current.tKey.wasPressedThisFrame;
-                case KeyCode.G:
-                    return UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
-                case KeyCode.Q:
-                    return UnityEngine.InputSystem.Keyboard.current.qKey.wasPressedThisFrame;
-                case KeyCode.X:
-                    return UnityEngine.InputSystem.Keyboard.current.xKey.wasPressedThisFrame;
-                case KeyCode.Z:
-                    return UnityEngine.InputSystem.Keyboard.current.zKey.wasPressedThisFrame;
-                case KeyCode.V:
-                    return UnityEngine.InputSystem.Keyboard.current.vKey.wasPressedThisFrame;
-                case KeyCode.B:
-                    return UnityEngine.InputSystem.Keyboard.current.bKey.wasPressedThisFrame;
-                case KeyCode.C:
-                    return UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
-                case KeyCode.Space:
-                    return UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
-                case KeyCode.LeftShift:
-                    return UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame;
-                case KeyCode.Tab:
-                    return UnityEngine.InputSystem.Keyboard.current.tabKey.wasPressedThisFrame;
-                case KeyCode.Alpha1:
-                    return UnityEngine.InputSystem.Keyboard.current.digit1Key.wasPressedThisFrame;
-                case KeyCode.Alpha2:
-                    return UnityEngine.InputSystem.Keyboard.current.digit2Key.wasPressedThisFrame;
-                case KeyCode.Alpha3:
-                    return UnityEngine.InputSystem.Keyboard.current.digit3Key.wasPressedThisFrame;
-                case KeyCode.Alpha4:
-                    return UnityEngine.InputSystem.Keyboard.current.digit4Key.wasPressedThisFrame;
-                case KeyCode.Alpha5:
-                    return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
-                default:
-                    return false;
-            }
-        }
-
         private void InitializePhysicsState()
         {
             if (startActive)
@@ -263,9 +212,10 @@ namespace U3D
             rb.useGravity = true;
             currentPhysicsState = PhysicsState.Active;
 
-            if (isNetworked && Object.HasStateAuthority)
+            if (isNetworked && Object != null && Object.HasStateAuthority)
             {
                 NetworkIsPhysicsActive = true;
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 1.0f);
             }
         }
 
@@ -291,6 +241,13 @@ namespace U3D
             // to the normal kickable sleep state, ready for player interaction.
             if (!NetworkIsKicked && NetworkIsPhysicsActive)
             {
+                // Grace period after activation prevents instant-sleep before velocity builds.
+                // Flat-bottomed objects (cubes, crates) hit the velocity threshold within
+                // a tick or two of becoming non-kinematic — give physics time to settle first.
+                bool inGracePeriod = NetworkSettleGraceTimer.IsRunning &&
+                                     !NetworkSettleGraceTimer.Expired(Runner);
+                if (inGracePeriod) return;
+
                 if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
                     rb.angularVelocity.magnitude < sleepVelocityThreshold)
                 {
@@ -301,9 +258,14 @@ namespace U3D
 
             if (NetworkIsKicked && NetworkIsPhysicsActive)
             {
+                // Grace period also protects post-kick — cube kicked into a wall stops fast
+                bool inGracePeriod = NetworkSettleGraceTimer.IsRunning &&
+                                     !NetworkSettleGraceTimer.Expired(Runner);
+
                 bool shouldSleep = false;
 
-                if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
+                if (!inGracePeriod &&
+                    rb.linearVelocity.magnitude < sleepVelocityThreshold &&
                     rb.angularVelocity.magnitude < sleepVelocityThreshold)
                 {
                     shouldSleep = true;
@@ -603,6 +565,12 @@ namespace U3D
         private void ExecuteCameraKick()
         {
             SetPhysicsState(PhysicsState.Active);
+
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
+            }
+
             StartCoroutine(ApplyKickVelocityAfterPhysicsActivation());
         }
 
@@ -626,6 +594,7 @@ namespace U3D
             {
                 NetworkIsKicked = true;
                 NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
             }
 
             OnKicked?.Invoke();
@@ -774,7 +743,7 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (isNetworked && (Object == null || !Object.HasStateAuthority)) return;
 
             SetPhysicsState(PhysicsState.Resetting);
 

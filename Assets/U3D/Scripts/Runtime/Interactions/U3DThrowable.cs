@@ -598,7 +598,7 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (isNetworked && (Object == null || !Object.HasStateAuthority)) return;
 
             if (rb != null)
             {

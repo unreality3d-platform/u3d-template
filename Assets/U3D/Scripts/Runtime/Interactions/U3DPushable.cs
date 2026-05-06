@@ -72,6 +72,7 @@ namespace U3D
         [Networked] public bool NetworkIsPushing { get; set; }
         [Networked] public bool NetworkIsPhysicsActive { get; set; }
         [Networked] public TickTimer NetworkSleepTimer { get; set; }
+        [Networked] public TickTimer NetworkSettleGraceTimer { get; set; }
 
         // Components
         private Rigidbody rb;
@@ -187,6 +188,13 @@ namespace U3D
             // Check for sleep conditions when physics is active but not being pushed
             if (!NetworkIsPushing && NetworkIsPhysicsActive)
             {
+                // Grace period after activation prevents instant-sleep before velocity builds.
+                // Flat-bottomed objects (cubes, crates) hit the velocity threshold within
+                // a tick or two of becoming non-kinematic — give physics time to settle first.
+                bool inGracePeriod = NetworkSettleGraceTimer.IsRunning &&
+                                     !NetworkSettleGraceTimer.Expired(Runner);
+                if (inGracePeriod) return;
+
                 bool shouldSleep = false;
 
                 if (rb.linearVelocity.magnitude < sleepVelocityThreshold &&
@@ -282,9 +290,10 @@ namespace U3D
 
             if (pushDirection.sqrMagnitude < 0.01f) return;
 
-            // In networked mode, NetworkRigidbody3D manages kinematic state but may not
-            // have flipped it yet after our physics state change. Force it non-kinematic
-            // so velocity assignment works. Safe because we only reach here with authority.
+            // Defensive: ensure non-kinematic before velocity assignment.
+            // Normal flow handles this via SetPhysicsState(Active), but this
+            // catches any edge case where push velocity is applied without
+            // a prior state transition.
             if (rb.isKinematic)
             {
                 rb.isKinematic = false;
@@ -329,6 +338,7 @@ namespace U3D
             {
                 NetworkIsPushing = true;
                 NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 1.0f);
             }
 
             if (labelUI != null) labelUI.gameObject.SetActive(false);
@@ -345,6 +355,7 @@ namespace U3D
             {
                 NetworkIsPushing = false;
                 NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 0.3f);
             }
 
             if (labelUI != null) labelUI.gameObject.SetActive(true);
@@ -417,18 +428,34 @@ namespace U3D
         {
             if (startActive)
             {
-                SetPhysicsState(PhysicsState.Active);
-                if (isNetworked && Object.HasStateAuthority)
-                {
-                    NetworkIsPhysicsActive = true;
-                    NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
-                }
+                StartCoroutine(ApplyStartActiveAfterPhysicsSettle());
             }
             else
             {
                 SetPhysicsState(PhysicsState.Sleeping);
             }
             StoreOriginalPhysicsState();
+        }
+
+        private IEnumerator ApplyStartActiveAfterPhysicsSettle()
+        {
+            if (hasNetworkRb3D && networkRigidbody != null)
+            {
+                networkRigidbody.Teleport(transform.position, transform.rotation);
+            }
+
+            yield return null;
+
+            rb.isKinematic = false;
+            rb.useGravity = true;
+            currentPhysicsState = PhysicsState.Active;
+
+            if (isNetworked && Object != null && Object.HasStateAuthority)
+            {
+                NetworkIsPhysicsActive = true;
+                NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
+                NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 1.0f);
+            }
         }
 
         private void CheckForInputConflicts()
@@ -562,8 +589,7 @@ namespace U3D
 
         private void ResetToSpawnPosition()
         {
-            if (isNetworked && Object == null) return;
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (isNetworked && (Object == null || !Object.HasStateAuthority)) return;
 
             // End push if active
             if (isPushActive)
@@ -617,58 +643,6 @@ namespace U3D
             if (rb != null)
             {
                 rb.mass = pushResistance;
-            }
-        }
-
-        /// <summary>
-        /// Check if push key was pressed using Input System (following existing pattern)
-        /// </summary>
-        private bool WasPushKeyPressed()
-        {
-            if (UnityEngine.InputSystem.Keyboard.current == null) return false;
-
-            switch (pushKey)
-            {
-                case KeyCode.E:
-                    return UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame;
-                case KeyCode.F:
-                    return UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame;
-                case KeyCode.R:
-                    return UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame;
-                case KeyCode.T:
-                    return UnityEngine.InputSystem.Keyboard.current.tKey.wasPressedThisFrame;
-                case KeyCode.G:
-                    return UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
-                case KeyCode.Q:
-                    return UnityEngine.InputSystem.Keyboard.current.qKey.wasPressedThisFrame;
-                case KeyCode.X:
-                    return UnityEngine.InputSystem.Keyboard.current.xKey.wasPressedThisFrame;
-                case KeyCode.Z:
-                    return UnityEngine.InputSystem.Keyboard.current.zKey.wasPressedThisFrame;
-                case KeyCode.V:
-                    return UnityEngine.InputSystem.Keyboard.current.vKey.wasPressedThisFrame;
-                case KeyCode.B:
-                    return UnityEngine.InputSystem.Keyboard.current.bKey.wasPressedThisFrame;
-                case KeyCode.C:
-                    return UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
-                case KeyCode.Space:
-                    return UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
-                case KeyCode.LeftShift:
-                    return UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame;
-                case KeyCode.Tab:
-                    return UnityEngine.InputSystem.Keyboard.current.tabKey.wasPressedThisFrame;
-                case KeyCode.Alpha1:
-                    return UnityEngine.InputSystem.Keyboard.current.digit1Key.wasPressedThisFrame;
-                case KeyCode.Alpha2:
-                    return UnityEngine.InputSystem.Keyboard.current.digit2Key.wasPressedThisFrame;
-                case KeyCode.Alpha3:
-                    return UnityEngine.InputSystem.Keyboard.current.digit3Key.wasPressedThisFrame;
-                case KeyCode.Alpha4:
-                    return UnityEngine.InputSystem.Keyboard.current.digit4Key.wasPressedThisFrame;
-                case KeyCode.Alpha5:
-                    return UnityEngine.InputSystem.Keyboard.current.digit5Key.wasPressedThisFrame;
-                default:
-                    return false;
             }
         }
 

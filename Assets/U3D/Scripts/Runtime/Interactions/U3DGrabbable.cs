@@ -147,20 +147,36 @@ namespace U3D
         /// so the object falls to the ground, then settle back to original physics state.
         /// When a Throwable is present, Throwable's own Start Active handles this.
         /// </summary>
+        /// <summary>
+        /// When Start Active is enabled and no Throwable is present, activate gravity
+        /// so the object falls to the ground, then settle back to original physics state.
+        /// When a Throwable is present, Throwable's own Start Active handles this.
+        /// </summary>
         private void ApplyStartActiveState()
         {
             if (!startActive) return;
             if (throwable != null) return;
             if (!hasRigidbody) return;
 
+            _startActiveSettleCoroutine = StartCoroutine(StartActiveAndSettle());
+        }
+
+        private System.Collections.IEnumerator StartActiveAndSettle()
+        {
+            // Sync NetworkRigidbody3D's interpolation target before flipping kinematic state,
+            // so it doesn't reassert from a stale snapshot and undo our writes.
+            if (hasNetworkRb3D && networkRb3D != null)
+            {
+                networkRb3D.Teleport(transform.position, transform.rotation);
+            }
+
+            // Wait one frame so Fusion has finished its initial spawn-tick processing
+            // before we touch the Rigidbody.
+            yield return null;
+
             rb.isKinematic = false;
             rb.useGravity = true;
 
-            _startActiveSettleCoroutine = StartCoroutine(WaitForStartActiveSettle());
-        }
-
-        private System.Collections.IEnumerator WaitForStartActiveSettle()
-        {
             yield return new WaitForSeconds(1.5f);
 
             while (rb != null && !rb.IsSleeping() &&
