@@ -38,6 +38,13 @@ namespace U3D
 
         private void OnTriggerExit(Collider other)
         {
+            // Authority/null guard MUST come first, before any [Networked] property
+            // access. OnTriggerExit can fire on the first physics frame at scene
+            // load, before Spawned() has run, while Object is still null.
+            // Reading a [Networked] property in that window throws.
+            if (isNetworked && (Object == null || !Object.HasStateAuthority))
+                return;
+
             float currentTime = Time.time;
             float timeSinceLastTrigger = isNetworked
                 ? currentTime - NetworkLastTriggerTime
@@ -48,9 +55,6 @@ namespace U3D
 
             bool alreadyTriggered = isNetworked ? NetworkHasTriggered : hasTriggered;
             if (triggerOnce && alreadyTriggered)
-                return;
-
-            if (isNetworked && (Object == null || !Object.HasStateAuthority))
                 return;
 
             if (requireTag && !other.CompareTag(requiredTag))
