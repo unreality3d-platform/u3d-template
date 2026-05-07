@@ -25,6 +25,7 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 new CreatorTool("🟢 Add Audio Playlist", "Play audio clips through your AudioSource. Add clips, then start playback from a trigger (like U3D Enter Trigger).", ApplyAudioList),
+                new CreatorTool("🟢 Make Audio Playlist", "Adds an Audio Playlist component to the selected object. If the object doesn't have an AudioSource, one is added and routed to the Effects mixer (3D spatial).", MakeAudioPlaylist, true),
                 new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource),
                 new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource),
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
@@ -124,6 +125,57 @@ namespace U3D.Editor
             Selection.activeGameObject = obj;
             EditorGUIUtility.PingObject(obj);
             EditorUtility.SetDirty(obj);
+        }
+
+        private static void MakeAudioPlaylist()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Undo.RegisterCompleteObjectUndo(selected, "Make Audio Playlist");
+
+            // Add an AudioSource if neither this object nor a child has one.
+            // Mirrors U3DAudioPlaylist.Awake()'s lookup logic so the playlist
+            // finds a source automatically.
+            AudioSource existingSource = selected.GetComponent<AudioSource>();
+            if (existingSource == null)
+                existingSource = selected.GetComponentInChildren<AudioSource>();
+
+            if (existingSource == null)
+            {
+                AudioMixerGroup effectsGroup = FindMixerGroup("Effects");
+                if (effectsGroup == null)
+                    return;
+
+                AudioSource source = Undo.AddComponent<AudioSource>(selected);
+                source.outputAudioMixerGroup = effectsGroup;
+                source.playOnAwake = false;
+                source.spatialBlend = 1f;
+                source.minDistance = 1f;
+                source.maxDistance = 500f;
+                source.rolloffMode = AudioRolloffMode.Logarithmic;
+                source.loop = false;
+            }
+
+            // Idempotent: don't double-add if creator runs the tool twice.
+            U3DAudioPlaylist existingPlaylist = selected.GetComponent<U3DAudioPlaylist>();
+            if (existingPlaylist == null)
+            {
+                Undo.AddComponent<U3DAudioPlaylist>(selected);
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Audio Playlist",
+                    "This object already has an Audio Playlist component.",
+                    "OK");
+            }
+
+            EditorGUIUtility.PingObject(selected);
+            EditorUtility.SetDirty(selected);
         }
 
         // ───────────────────────────────────────────
