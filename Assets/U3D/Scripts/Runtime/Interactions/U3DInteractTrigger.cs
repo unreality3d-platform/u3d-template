@@ -215,7 +215,7 @@ namespace U3D
         // Public API
         public void ResetTrigger()
         {
-            if (isNetworked && Object.HasStateAuthority)
+            if (isNetworked && Object != null && Object.HasStateAuthority)
             {
                 NetworkHasTriggered = false;
                 NetworkLastTriggerTime = 0f;

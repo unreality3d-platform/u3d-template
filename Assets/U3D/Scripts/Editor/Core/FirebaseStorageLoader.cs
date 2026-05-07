@@ -126,11 +126,31 @@ public class FirebaseStorageUploader
                 var actualProjectName = result.ContainsKey("actualProjectName") ? result["actualProjectName"].ToString() : baseProjectName;
                 var liveUrl = result.ContainsKey("url") ? result["url"].ToString() : "";
 
+                // Pull the pre-resolved GitHub Actions run info out of the response
+                // if deployFromStorage was able to find it. Both fields are nullable
+                // server-side; PublishTab falls back to Stage A search when they're
+                // missing or null.
+                long? actionsRunId = null;
+                string actionsRunHtmlUrl = null;
+                if (result.ContainsKey("githubActionsRunId") && result["githubActionsRunId"] != null)
+                {
+                    if (long.TryParse(result["githubActionsRunId"].ToString(), out long parsedRunId))
+                    {
+                        actionsRunId = parsedRunId;
+                    }
+                }
+                if (result.ContainsKey("githubActionsRunHtmlUrl") && result["githubActionsRunHtmlUrl"] != null)
+                {
+                    actionsRunHtmlUrl = result["githubActionsRunHtmlUrl"].ToString();
+                }
+
                 return new DeploymentResult
                 {
                     Success = true,
                     ActualProjectName = actualProjectName,
-                    Url = liveUrl
+                    Url = liveUrl,
+                    GitHubActionsRunId = actionsRunId,
+                    GitHubActionsRunHtmlUrl = actionsRunHtmlUrl
                 };
             }
             else
@@ -220,6 +240,12 @@ public class FirebaseStorageUploader
         public string ActualProjectName { get; set; }
         public string Url { get; set; }
         public string ErrorMessage { get; set; }
+        // Pre-resolved GitHub Actions run info from deployFromStorage.
+        // Null when the function couldn't resolve the run within its lookup
+        // window — PublishTab falls back to Stage A search when these are
+        // null. See WaitForGitHubActionsCompletion in PublishTab.cs.
+        public long? GitHubActionsRunId { get; set; }
+        public string GitHubActionsRunHtmlUrl { get; set; }
     }
 
     private async Task<bool> UploadFileWithThrottling(BuildFileInfo file, string creatorUsername, string projectName, SemaphoreSlim semaphore)

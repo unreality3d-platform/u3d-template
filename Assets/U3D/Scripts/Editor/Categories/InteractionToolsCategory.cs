@@ -452,27 +452,53 @@ namespace U3D.Editor
             if (selected.GetComponent<U3DRideableController>() == null)
                 selected.AddComponent<U3DRideableController>();
 
-            if (!selected.GetComponent<NetworkObject>())
+            NetworkObject networkObject = selected.GetComponent<NetworkObject>();
+            if (networkObject == null)
             {
-                var networkObject = selected.AddComponent<NetworkObject>();
-                ConfigureNetworkObjectForSharedMode(networkObject);
+                networkObject = selected.AddComponent<NetworkObject>();
+            }
+            // Always reconfigure flags so re-running on an existing rideable upgrades
+            // it from the old shared-mode flag to the rideable-specific flag.
+            ConfigureNetworkObjectForRideable(networkObject);
+
+            // NetworkTransform replicates the platform's transform from the master client
+            // to all other clients, so every player sees the platform at the same world
+            // position each tick. Without this, each client runs the platform's movement
+            // on its own clock and players see the platform out of sync.
+            NetworkTransform networkTransform = selected.GetComponent<NetworkTransform>();
+            if (networkTransform == null)
+            {
+                networkTransform = selected.AddComponent<NetworkTransform>();
+            }
+            ConfigureNetworkTransformForRideable(networkTransform);
+
+            // Idempotent trigger child — find by name if it already exists, otherwise create.
+            Transform existingTrigger = selected.transform.Find("RideableTrigger");
+            if (existingTrigger == null)
+            {
+                GameObject triggerZoneGO = new GameObject("RideableTrigger");
+                Undo.RegisterCreatedObjectUndo(triggerZoneGO, "Make Rideable");
+                triggerZoneGO.transform.SetParent(selected.transform, false);
+                triggerZoneGO.transform.localPosition = Vector3.zero;
+
+                var triggerCollider = triggerZoneGO.AddComponent<BoxCollider>();
+                triggerCollider.isTrigger = true;
+                triggerCollider.center = new Vector3(0f, 1f, 0f);
+                triggerCollider.size = new Vector3(1f, 3f, 1f);
+
+                triggerZoneGO.AddComponent<U3DRideableTrigger>();
             }
 
-            GameObject triggerZoneGO = new GameObject("RideableTrigger");
-            Undo.RegisterCreatedObjectUndo(triggerZoneGO, "Make Rideable");
-            triggerZoneGO.transform.SetParent(selected.transform, false);
-            triggerZoneGO.transform.localPosition = Vector3.zero;
-
-            var triggerCollider = triggerZoneGO.AddComponent<BoxCollider>();
-            triggerCollider.isTrigger = true;
-            triggerCollider.center = new Vector3(0f, 1f, 0f);
-            triggerCollider.size = new Vector3(1f, 3f, 1f);
-
-            triggerZoneGO.AddComponent<U3DRideableTrigger>();
-
-            GameObject waypointGO = new GameObject("Waypoint_0");
-            Undo.RegisterCreatedObjectUndo(waypointGO, "Make Rideable");
-            waypointGO.transform.position = selected.transform.position;
+            // Idempotent first waypoint — only create if no Waypoint_0 already exists in
+            // the scene. Avoids duplicating the creator's existing waypoints when they
+            // re-run the tool to upgrade an existing rideable.
+            GameObject existingWaypoint = GameObject.Find("Waypoint_0");
+            if (existingWaypoint == null)
+            {
+                GameObject waypointGO = new GameObject("Waypoint_0");
+                Undo.RegisterCreatedObjectUndo(waypointGO, "Make Rideable");
+                waypointGO.transform.position = selected.transform.position;
+            }
 
             EditorUtility.SetDirty(selected);
             Selection.activeGameObject = selected;
@@ -495,6 +521,65 @@ namespace U3D.Editor
             {
                 Debug.LogWarning("Could not find Flags property on NetworkObject — Shared Mode flags not configured");
             }
+        }
+
+        /// <summary>
+        /// Configures a NetworkObject for the Rideable use case in Shared Mode:
+        /// MasterClientObject so the master client owns the platform's authority
+        /// deterministically, plus AllowStateAuthorityOverride so authority can
+        /// transfer cleanly when the master client changes.
+        /// </summary>
+        /// <summary>
+        /// Configures a NetworkObject for the Rideable use case in Shared Mode:
+        /// MasterClientObject so the master client owns the platform's authority
+        /// for the entire session, with no per-interaction authority churn.
+        /// Authority auto-transfers to the new master client if the current one leaves.
+        /// Different from physics objects (balls, kickables) which use
+        /// AllowStateAuthorityOverride so authority can transfer to whoever interacts
+        /// with them. The rideable is environment, not a player-claimed object.
+        /// </summary>
+        private static void ConfigureNetworkObjectForRideable(NetworkObject networkObject)
+        {
+            var so = new SerializedObject(networkObject);
+            var flagsProp = so.FindProperty("Flags");
+            if (flagsProp != null)
+            {
+                flagsProp.intValue = (int)NetworkObjectFlags.MasterClientObject;
+                so.ApplyModifiedProperties();
+            }
+            else
+            {
+                Debug.LogWarning("Could not find Flags property on NetworkObject — Rideable flags not configured");
+            }
+        }
+
+        /// <summary>
+        /// Configures a NetworkTransform for the Rideable use case:
+        /// SyncParent disabled (the platform has no networked parent — riders parent
+        /// to it locally, which is a one-way relationship handled by the player
+        /// controller, not by the platform's NetworkTransform).
+        /// SyncScale disabled (we don't change rideable scale at runtime).
+        /// Position and rotation are always synced — that's NetworkTransform's
+        /// fundamental purpose and isn't toggled.
+        /// Follows the same SerializedObject + FindProperty pattern as
+        /// ConfigureNetworkRigidbody3DForSharedMode for consistency.
+        /// If field names don't match, FindProperty silently returns null and the
+        /// configurator is a no-op — which is safe because Fusion 2's defaults for
+        /// these properties are already what we want (off/off).
+        /// </summary>
+        private static void ConfigureNetworkTransformForRideable(NetworkTransform networkTransform)
+        {
+            var so = new SerializedObject(networkTransform);
+
+            var syncParentProp = so.FindProperty("_syncParent");
+            if (syncParentProp != null)
+                syncParentProp.boolValue = false;
+
+            var syncScaleProp = so.FindProperty("_syncScale");
+            if (syncScaleProp != null)
+                syncScaleProp.boolValue = false;
+
+            so.ApplyModifiedProperties();
         }
 
 #if FUSION_ADDONS_PHYSICS

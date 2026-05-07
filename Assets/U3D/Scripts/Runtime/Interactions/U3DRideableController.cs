@@ -29,17 +29,28 @@ namespace U3D
         [SerializeField] private Vector3 rotationAxis = Vector3.up;
         [SerializeField] private float rotationSpeed = 45f;
 
-        // World-space waypoint positions cached at Start — waypoints live outside
+        // World-space waypoint positions cached at Spawned — waypoints live outside
         // the platform hierarchy so their positions never drift during movement.
+        // Cached on every client so authority transfers don't lose target positions.
         private Vector3[] _waypointPositions;
 
-        private int _currentWaypointIndex;
-        private float _pauseTimer;
-        private bool _pingPongForward = true;
+        // Indexing state is networked so authority transfers (or late joiners) see
+        // the correct waypoint progression. NetworkTransform on this object handles
+        // position/rotation replication; we only need to network the bookkeeping.
+        [Networked] private int NetworkCurrentWaypointIndex { get; set; }
+        [Networked] private float NetworkPauseTimer { get; set; }
+        [Networked] private NetworkBool NetworkPingPongForward { get; set; }
 
-        private void Start()
+        public override void Spawned()
         {
             CacheWaypointPositions();
+
+            if (Object.HasStateAuthority)
+            {
+                NetworkPingPongForward = true;
+                NetworkCurrentWaypointIndex = 0;
+                NetworkPauseTimer = 0f;
+            }
         }
 
         private void CacheWaypointPositions()
@@ -63,8 +74,10 @@ namespace U3D
             }
         }
 
-        private void FixedUpdate()
+        public override void FixedUpdateNetwork()
         {
+            if (!Object.HasStateAuthority) return;
+
             switch (movementMode)
             {
                 case RideableMovementMode.Waypoints:
@@ -82,20 +95,20 @@ namespace U3D
         {
             if (_waypointPositions == null || _waypointPositions.Length == 0) return;
 
-            if (_pauseTimer > 0f)
+            if (NetworkPauseTimer > 0f)
             {
-                _pauseTimer -= Time.fixedDeltaTime;
+                NetworkPauseTimer -= Runner.DeltaTime;
                 return;
             }
 
-            Vector3 target = _waypointPositions[_currentWaypointIndex];
+            Vector3 target = _waypointPositions[NetworkCurrentWaypointIndex];
             Vector3 toTarget = target - transform.position;
-            float distanceThisFrame = speed * Time.fixedDeltaTime;
+            float distanceThisFrame = speed * Runner.DeltaTime;
 
             if (toTarget.magnitude <= distanceThisFrame)
             {
                 transform.position = target;
-                _pauseTimer = pauseAtWaypoint;
+                NetworkPauseTimer = pauseAtWaypoint;
                 AdvanceWaypoint();
             }
             else
@@ -110,26 +123,34 @@ namespace U3D
 
             if (loopMode == RideableLoopMode.Loop)
             {
-                _currentWaypointIndex = (_currentWaypointIndex + 1) % _waypointPositions.Length;
+                NetworkCurrentWaypointIndex = (NetworkCurrentWaypointIndex + 1) % _waypointPositions.Length;
             }
             else // PingPong
             {
-                if (_pingPongForward)
+                if (NetworkPingPongForward)
                 {
-                    _currentWaypointIndex++;
-                    if (_currentWaypointIndex >= _waypointPositions.Length)
+                    int next = NetworkCurrentWaypointIndex + 1;
+                    if (next >= _waypointPositions.Length)
                     {
-                        _currentWaypointIndex = _waypointPositions.Length - 2;
-                        _pingPongForward = false;
+                        NetworkCurrentWaypointIndex = _waypointPositions.Length - 2;
+                        NetworkPingPongForward = false;
+                    }
+                    else
+                    {
+                        NetworkCurrentWaypointIndex = next;
                     }
                 }
                 else
                 {
-                    _currentWaypointIndex--;
-                    if (_currentWaypointIndex < 0)
+                    int next = NetworkCurrentWaypointIndex - 1;
+                    if (next < 0)
                     {
-                        _currentWaypointIndex = 1;
-                        _pingPongForward = true;
+                        NetworkCurrentWaypointIndex = 1;
+                        NetworkPingPongForward = true;
+                    }
+                    else
+                    {
+                        NetworkCurrentWaypointIndex = next;
                     }
                 }
             }
@@ -137,7 +158,7 @@ namespace U3D
 
         private void TickRotation()
         {
-            float angle = rotationSpeed * Time.fixedDeltaTime;
+            float angle = rotationSpeed * Runner.DeltaTime;
             transform.Rotate(rotationAxis.normalized, angle, Space.Self);
         }
     }

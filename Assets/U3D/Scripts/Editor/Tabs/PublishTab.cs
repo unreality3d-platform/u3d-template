@@ -55,6 +55,10 @@ namespace U3D.Editor
         private const int GITHUB_ACTIONS_POLL_INTERVAL_MS = 8000;
         private const int GITHUB_ACTIONS_FIND_RUN_TIMEOUT_MS = 60000;
         private const int GITHUB_ACTIONS_TOTAL_TIMEOUT_MS = 480000;
+        // Stage A safety net: a run is only claimed if it's still actively
+        // running when we first observe it. A completed run we discover
+        // instantly is definitionally a stale run from a previous publish.
+        private const int GITHUB_ACTIONS_MIN_RUN_AGE_SEC = 5;
 
         private enum PublishStep
         {
@@ -1267,6 +1271,7 @@ namespace U3D.Editor
                 // Capture the moment we kicked off the deploy. We use this as a
                 // floor when searching GitHub Actions for the workflow run we
                 // just triggered, so we don't accidentally match an older run.
+                // Only used if the function didn't return a pre-resolved run ID.
                 var publishStartUtc = DateTime.UtcNow.AddSeconds(-30); // small buffer for clock skew
 
                 var deployResult = await DeployViaFirebaseStorage(buildResult.BuildPath);
@@ -1283,13 +1288,17 @@ namespace U3D.Editor
 
                 // Step 3: Wait for GitHub Actions to finish so we only show
                 // "Live!" when the URL is actually serving the new build.
+                // If the function pre-resolved the run ID for us, pass it through
+                // so we can poll that exact run and skip Stage A search.
                 currentStep = PublishStep.WaitingForGitHub;
                 currentStatus = "Project uploaded — waiting for GitHub to finalize your deployment...";
 
                 var actionsResult = await WaitForGitHubActionsCompletion(
                     GitHubTokenManager.GitHubUsername,
                     repositoryName,
-                    publishStartUtc);
+                    publishStartUtc,
+                    deployResult.GitHubActionsRunId,
+                    deployResult.GitHubActionsRunHtmlUrl);
 
                 if (!actionsResult.Success)
                 {
@@ -1471,7 +1480,9 @@ namespace U3D.Editor
                         RepositoryName = actualRepositoryName,
                         ProjectName = actualRepositoryName,
                         ProfessionalUrl = $"https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/{actualRepositoryName}/",
-                        Message = "Deployment successful via Firebase Storage"
+                        Message = "Deployment successful via Firebase Storage",
+                        GitHubActionsRunId = result.GitHubActionsRunId,
+                        GitHubActionsRunHtmlUrl = result.GitHubActionsRunHtmlUrl
                     };
                 }
                 else
@@ -1518,9 +1529,16 @@ namespace U3D.Editor
             public string ProfessionalUrl { get; set; }
             public string Message { get; set; }
             public string ErrorMessage { get; set; }
+            // Pre-resolved GitHub Actions run info from deployFromStorage.
+            // When present, Unity polls this run directly and skips Stage A
+            // search entirely — no time-floor heuristics, no risk of latching
+            // onto a stale prior run. Null when the function couldn't resolve
+            // the run, in which case Unity falls back to Stage A.
+            public long? GitHubActionsRunId { get; set; }
+            public string GitHubActionsRunHtmlUrl { get; set; }
         }
 
-        // === CHANGED: Added credit line using U3DAuthenticator.DisplayName so the
+        // === Added credit line using U3DAuthenticator.DisplayName so the
         // === user's name feature is visible in the success dialog. Falls back
         // === to CreatorUsername if DisplayName is empty.
         private void ShowDeploymentSummary(string repositoryName)
@@ -1618,12 +1636,28 @@ namespace U3D.Editor
         /// build to GitHub Pages, so we can only honestly report "live" once
         /// this finishes successfully.
         ///
-        /// Stage A: find the run created at or after publishStartUtc (up to ~60s)
-        /// Stage B: wait for status == completed (up to total timeout)
+        /// If knownRunId is provided (resolved server-side by deployFromStorage),
+        /// Stage A is skipped entirely and we go straight to Stage B polling.
+        /// This is the preferred path — no time-floor heuristics, no risk of
+        /// latching onto a stale prior run.
+        ///
+        /// If knownRunId is null, Stage A falls back to listing recent runs and
+        /// matching one that's currently active (queued or in_progress). A
+        /// completed run we discover instantly is by definition a previous
+        /// publish, so we never claim it.
+        ///
+        /// Stage A: find the run created at or after publishStartUtc that's
+        ///          still actively running (up to ~60s).
+        /// Stage B: wait for status == completed (up to total timeout).
         ///
         /// Total budget: GITHUB_ACTIONS_TOTAL_TIMEOUT_MS (8 minutes).
         /// </summary>
-        private async Task<GitHubActionsWaitResult> WaitForGitHubActionsCompletion(string owner, string repo, DateTime publishStartUtc)
+        private async Task<GitHubActionsWaitResult> WaitForGitHubActionsCompletion(
+            string owner,
+            string repo,
+            DateTime publishStartUtc,
+            long? knownRunId,
+            string knownRunHtmlUrl)
         {
             if (!GitHubTokenManager.HasValidToken)
             {
@@ -1636,81 +1670,100 @@ namespace U3D.Editor
 
             var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            // ---- Stage A: find the workflow run we just triggered ----
-            currentStatus = "Project uploaded — looking for GitHub deployment...";
+            long? runId = knownRunId;
+            string runHtmlUrl = knownRunHtmlUrl ?? "";
 
-            long? runId = null;
-            string runHtmlUrl = "";
-            var findRunStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            while (findRunStopwatch.ElapsedMilliseconds < GITHUB_ACTIONS_FIND_RUN_TIMEOUT_MS)
-            {
-                try
-                {
-                    using (var client = GitHubAPI.CreateAuthenticatedClient())
-                    {
-                        var url = $"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{CHUNK_WORKFLOW_FILENAME}/runs?per_page=5&event=workflow_dispatch";
-                        var response = await client.GetAsync(url);
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var responseText = await response.Content.ReadAsStringAsync();
-                            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
-
-                            if (data.ContainsKey("workflow_runs") && data["workflow_runs"] != null)
-                            {
-                                var runs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(data["workflow_runs"].ToString());
-
-                                foreach (var run in runs)
-                                {
-                                    if (!run.ContainsKey("created_at") || run["created_at"] == null)
-                                        continue;
-
-                                    var createdAtString = run["created_at"].ToString();
-                                    if (!DateTime.TryParse(createdAtString, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime createdAt))
-                                        continue;
-
-                                    var createdAtUtc = createdAt.ToUniversalTime();
-                                    if (createdAtUtc < publishStartUtc)
-                                        continue;
-
-                                    // Match — this is the run our deploy triggered.
-                                    if (run.ContainsKey("id") && run["id"] != null)
-                                    {
-                                        runId = long.Parse(run["id"].ToString());
-                                    }
-                                    if (run.ContainsKey("html_url") && run["html_url"] != null)
-                                    {
-                                        runHtmlUrl = run["html_url"].ToString();
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"GitHub Actions API returned {response.StatusCode} while looking for workflow run.");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"Error querying GitHub Actions for workflow run: {ex.Message}");
-                }
-
-                if (runId.HasValue)
-                    break;
-
-                await Task.Delay(GITHUB_ACTIONS_POLL_INTERVAL_MS);
-            }
-
+            // ---- Stage A: only runs if the server didn't pre-resolve the run ----
             if (!runId.HasValue)
             {
-                return new GitHubActionsWaitResult
+                currentStatus = "Project uploaded — looking for GitHub deployment...";
+
+                var findRunStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                while (findRunStopwatch.ElapsedMilliseconds < GITHUB_ACTIONS_FIND_RUN_TIMEOUT_MS)
                 {
-                    Success = false,
-                    ErrorMessage = "Could not find the GitHub deployment workflow run. Your build was uploaded successfully, but we couldn't confirm GitHub started the deployment."
-                };
+                    try
+                    {
+                        using (var client = GitHubAPI.CreateAuthenticatedClient())
+                        {
+                            var url = $"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{CHUNK_WORKFLOW_FILENAME}/runs?per_page=5&event=workflow_dispatch";
+                            var response = await client.GetAsync(url);
+
+                            if (response.IsSuccessStatusCode)
+                            {
+                                var responseText = await response.Content.ReadAsStringAsync();
+                                var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(responseText);
+
+                                if (data.ContainsKey("workflow_runs") && data["workflow_runs"] != null)
+                                {
+                                    var runs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(data["workflow_runs"].ToString());
+
+                                    foreach (var run in runs)
+                                    {
+                                        if (!run.ContainsKey("created_at") || run["created_at"] == null)
+                                            continue;
+
+                                        var createdAtString = run["created_at"].ToString();
+                                        if (!DateTime.TryParse(createdAtString, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime createdAt))
+                                            continue;
+
+                                        var createdAtUtc = createdAt.ToUniversalTime();
+                                        if (createdAtUtc < publishStartUtc)
+                                            continue;
+
+                                        // Tightened filter: only claim a run that is still actively
+                                        // running. A completed run we discover instantly is from a
+                                        // previous publish, even if its created_at passes the time
+                                        // floor (the time floor is fuzzy by ~30s).
+                                        var status = run.ContainsKey("status") && run["status"] != null
+                                            ? run["status"].ToString()
+                                            : "";
+                                        if (status != "queued" && status != "in_progress")
+                                            continue;
+
+                                        // Match — this is the run our deploy triggered.
+                                        if (run.ContainsKey("id") && run["id"] != null)
+                                        {
+                                            runId = long.Parse(run["id"].ToString());
+                                        }
+                                        if (run.ContainsKey("html_url") && run["html_url"] != null)
+                                        {
+                                            runHtmlUrl = run["html_url"].ToString();
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"GitHub Actions API returned {response.StatusCode} while looking for workflow run.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"Error querying GitHub Actions for workflow run: {ex.Message}");
+                    }
+
+                    if (runId.HasValue)
+                        break;
+
+                    await Task.Delay(GITHUB_ACTIONS_POLL_INTERVAL_MS);
+                }
+
+                if (!runId.HasValue)
+                {
+                    return new GitHubActionsWaitResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Could not find the GitHub deployment workflow run. Your build was uploaded successfully, but we couldn't confirm GitHub started the deployment."
+                    };
+                }
+            }
+            else
+            {
+                // Server pre-resolved the run for us — go straight to polling it.
+                currentStatus = "GitHub is finalizing your deployment — this usually takes 1–2 minutes...";
             }
 
             // ---- Stage B: wait for the run to complete ----
@@ -1736,6 +1789,13 @@ namespace U3D.Editor
                             var conclusion = run.ContainsKey("conclusion") && run["conclusion"] != null
                                 ? run["conclusion"].ToString()
                                 : "";
+
+                            // Capture the html_url here too in case Stage A didn't populate it
+                            // (or in case the server-provided URL was null).
+                            if (string.IsNullOrEmpty(runHtmlUrl) && run.ContainsKey("html_url") && run["html_url"] != null)
+                            {
+                                runHtmlUrl = run["html_url"].ToString();
+                            }
 
                             // Update friendly status as the workflow progresses
                             if (status == "queued")

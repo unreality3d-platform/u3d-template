@@ -39,6 +39,9 @@ namespace U3D
         private bool hasTriggered = false;
         private bool isNetworked = false;
 
+        private bool IsNetworkedAndLacksAuthority =>
+            isNetworked && (Object == null || !Object.HasStateAuthority);
+
         private void Awake()
         {
             GetComponent<Collider>().isTrigger = true;
@@ -48,7 +51,7 @@ namespace U3D
         private void OnTriggerEnter(Collider other)
         {
             if (requireTag && !other.CompareTag(requiredTag)) return;
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (IsNetworkedAndLacksAuthority) return;
 
             if (!_occupants.Contains(other))
                 _occupants.Add(other);
@@ -60,7 +63,7 @@ namespace U3D
         private void OnTriggerExit(Collider other)
         {
             if (requireTag && !other.CompareTag(requiredTag)) return;
-            if (isNetworked && !Object.HasStateAuthority) return;
+            if (IsNetworkedAndLacksAuthority) return;
 
             _occupants.Remove(other);
 
@@ -93,9 +96,9 @@ namespace U3D
         public void ResetZone()
         {
             _occupants.Clear();
-            if (isNetworked && Object.HasStateAuthority)
+            if (isNetworked && Object != null && Object.HasStateAuthority)
                 NetworkHasTriggered = false;
-            else
+            else if (!isNetworked)
                 hasTriggered = false;
         }
 
