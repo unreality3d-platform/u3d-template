@@ -1293,12 +1293,16 @@ namespace U3D.Editor
                 currentStep = PublishStep.WaitingForGitHub;
                 currentStatus = "Project uploaded — waiting for GitHub to finalize your deployment...";
 
+                Debug.Log($"[U3D Publish] About to wait for GitHub Actions. knownRunId={deployResult.GitHubActionsRunId}, knownRunHtmlUrl={deployResult.GitHubActionsRunHtmlUrl}");
+
                 var actionsResult = await WaitForGitHubActionsCompletion(
                     GitHubTokenManager.GitHubUsername,
                     repositoryName,
                     publishStartUtc,
                     deployResult.GitHubActionsRunId,
                     deployResult.GitHubActionsRunHtmlUrl);
+
+                Debug.Log($"[U3D Publish] WaitForGitHubActionsCompletion returned. Success={actionsResult.Success}, error={actionsResult.ErrorMessage}");
 
                 if (!actionsResult.Success)
                 {

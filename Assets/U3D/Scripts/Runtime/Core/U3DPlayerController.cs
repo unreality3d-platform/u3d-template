@@ -672,6 +672,8 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (vrTeleportMaterial == null)
             Debug.LogWarning("U3DPlayerController: vrTeleportMaterial is not assigned. VR teleport arc will not render. Assign a URP/Unlit material in the Inspector on the player prefab.");
+
+        if (_avatarManager != null) _avatarManager.SetVRMode(true);
     }
 
     private void EnsureRawHmdReference()
@@ -733,6 +735,8 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (_cursorManager != null)
             _cursorManager.SetVRMode(false);
+
+        if (_avatarManager != null) _avatarManager.SetVRMode(false);
     }
 
     private void TryResolveHeadBone()

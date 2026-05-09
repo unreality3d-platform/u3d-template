@@ -15,6 +15,7 @@ public class U3DAvatarManager : NetworkBehaviour
     [SerializeField] private Vector3 avatarOffset = Vector3.zero;
     [SerializeField] private bool followPlayerRotation = true;
     [SerializeField] private bool hideInFirstPerson = true;
+
     [Header("VR IK")]
     [Tooltip("XR input actions asset. Used by the auto-attached U3DAvatarIK to read VR controller poses. Should reference the same U3DInputActions asset used by the player controller.")]
     [SerializeField] private UnityEngine.InputSystem.InputActionAsset xrInputActions;
@@ -30,6 +31,15 @@ public class U3DAvatarManager : NetworkBehaviour
     // Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
     private bool isInitialized = false;
+
+    // VR idle suppression: when the local player is in VR and the player controller's
+    // movement state indicates idle, the avatar Animator's speed is set to 0 to freeze
+    // all animation playback. This suppresses the breathing, weight-shift, and finger
+    // motion baked into the idle clip, which would otherwise transfer to the camera
+    // and hands in VR. When the player starts moving (walk, run, jump, crouch, fly,
+    // swim, climb), Animator speed is restored to 1 so those animations play normally.
+    private bool vrIdleSuppressionActive = false;
+    private float freezeScheduledTime = -1f;
 
     public override void Spawned()
     {
@@ -133,6 +143,76 @@ public class U3DAvatarManager : NetworkBehaviour
         else
         {
             Debug.LogWarning("⚠️ No Humanoid Avatar found in FBX. Please configure Avatar in Import Settings.");
+        }
+    }
+
+    /// <summary>
+    /// Engages or disengages VR idle suppression. Called by U3DPlayerController when
+    /// the local player enters or exits VR. While engaged, LateUpdate freezes the
+    /// Animator (speed = 0) whenever the player is idle, and resumes it (speed = 1)
+    /// whenever the player is moving in any way. This suppresses idle-clip motion
+    /// across the entire avatar — head, neck, spine, arms, hands, fingers, hips,
+    /// everything — without needing to know which bones the clip animates.
+    /// On disengage, Animator speed is unconditionally restored to 1.
+    /// Safe to call before initialization and from non-local players (no-ops).
+    /// </summary>
+    public void SetVRMode(bool enabled)
+    {
+        if (!isInitialized || avatarAnimator == null) return;
+
+        vrIdleSuppressionActive = enabled;
+
+        if (!enabled)
+        {
+            avatarAnimator.speed = 1f;
+            freezeScheduledTime = -1f;
+        }
+    }
+
+    /// <summary>
+    /// While VR idle suppression is active, drives the avatar Animator's speed based
+    /// on the player controller's movement state. Unfreezing is instant; freezing is
+    /// delayed slightly to let any in-progress animation transition complete cleanly,
+    /// preventing the avatar from getting stuck mid-blend when exiting states like
+    /// Flying. If the player starts moving again during the delay, the pending freeze
+    /// is cancelled.
+    /// </summary>
+    void LateUpdate()
+    {
+        if (!vrIdleSuppressionActive) return;
+        if (avatarAnimator == null || playerController == null) return;
+
+        bool movementFlagsClear = !playerController.NetworkIsMoving
+                               && !playerController.NetworkIsCrouching
+                               && !playerController.NetworkIsFlying
+                               && !playerController.NetworkIsSwimming
+                               && !playerController.NetworkIsClimbing
+                               && !playerController.NetworkIsJumping;
+
+        if (!movementFlagsClear)
+        {
+            // Player is moving in some way: unfreeze immediately, cancel any pending freeze.
+            if (avatarAnimator.speed != 1f) avatarAnimator.speed = 1f;
+            freezeScheduledTime = -1f;
+            return;
+        }
+
+        // Player is idle. If the freeze isn't already scheduled and we're not already
+        // frozen, schedule one to fire after enough time for any current animation
+        // transition to complete (transitions in U3DAnimatorController are 0.25s).
+        if (avatarAnimator.speed == 0f) return; // already frozen, nothing to do
+
+        if (freezeScheduledTime < 0f)
+        {
+            freezeScheduledTime = Time.time + 0.3f;
+            return;
+        }
+
+        // Freeze when the scheduled time arrives.
+        if (Time.time >= freezeScheduledTime)
+        {
+            avatarAnimator.speed = 0f;
+            freezeScheduledTime = -1f;
         }
     }
 
