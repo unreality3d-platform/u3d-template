@@ -68,7 +68,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.03
+  near clip plane: 0.01
   far clip plane: 1000
   field of view: 60
   orthographic: 0
@@ -438,7 +438,6 @@ MonoBehaviour:
   followPlayerRotation: 1
   hideInFirstPerson: 1
   xrInputActions: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
-  emptyIdleClip: {fileID: 7400000, guid: 8671bb93345180b4d8aa43a9cb625a43, type: 2}
 --- !u!114 &8590291952775574450
 MonoBehaviour:
   m_ObjectHideFlags: 0
