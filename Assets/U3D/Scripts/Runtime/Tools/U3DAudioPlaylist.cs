@@ -7,6 +7,7 @@ namespace U3D
 {
     public enum PlaybackMode { Shuffled, Sequence, RandomOneShot }
 
+    [RequireComponent(typeof(AudioSource))]
     public class U3DAudioPlaylist : MonoBehaviour
     {
         [Header("Audio Configuration")]
@@ -446,9 +447,41 @@ namespace U3D
 
         private void Reset()
         {
+            // RequireComponent on this class guarantees an AudioSource exists by the time
+            // Reset() runs. Configure it with U3D's standard 3D spatial defaults so the
+            // playlist works immediately after the component is added — no manual setup
+            // required on the AudioSource.
+            //
+            // Guard against clobbering: if the creator already configured an AudioSource on
+            // this object before adding the playlist, leave their settings alone. Unity's
+            // default playOnAwake is true; both U3D editor tools set it to false. So
+            // playOnAwake == true is a reliable "this AudioSource is fresh" signal.
             audioSource = GetComponent<AudioSource>();
-            if (audioSource == null)
-                audioSource = GetComponentInChildren<AudioSource>();
+            if (audioSource == null) return;
+            if (!audioSource.playOnAwake) return;
+
+            audioSource.playOnAwake = false;
+            audioSource.spatialBlend = 1f;
+            audioSource.minDistance = 1f;
+            audioSource.maxDistance = 500f;
+            audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+            audioSource.loop = false;
+
+#if UNITY_EDITOR
+            // Route to the Effects mixer group. Inline lookup rather than reaching into
+            // MediaToolsCategory.FindMixerGroup to avoid an editor-only dependency leaking
+            // into the runtime script's runtime path. The whole Reset() method is
+            // editor-only anyway (Unity only invokes Reset in the editor), so wrapping
+            // the AssetDatabase call in UNITY_EDITOR is belt-and-suspenders.
+            var mixer = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Audio.AudioMixer>(
+                "Assets/U3D/Prefabs/U3D_AudioMixer.mixer");
+            if (mixer != null)
+            {
+                var groups = mixer.FindMatchingGroups("Effects");
+                if (groups != null && groups.Length > 0)
+                    audioSource.outputAudioMixerGroup = groups[0];
+            }
+#endif
         }
     }
 }

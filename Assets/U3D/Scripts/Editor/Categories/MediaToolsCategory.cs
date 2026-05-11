@@ -119,6 +119,12 @@ namespace U3D.Editor
         private static void ApplyAudioList()
         {
             GameObject obj = new GameObject("Audio Playlist");
+
+            // RequireComponent on U3DAudioPlaylist pulls in an AudioSource automatically.
+            // The playlist's Reset() configures that AudioSource with U3D's standard 3D
+            // spatial defaults (Effects mixer, log rolloff, 1-500m range). So this single
+            // AddComponent call produces a fully wired, ready-to-play playlist — same end
+            // state as Make Audio Playlist on a pre-existing object.
             obj.AddComponent<U3DAudioPlaylist>();
 
             PositionInScene(obj);
@@ -138,41 +144,23 @@ namespace U3D.Editor
 
             Undo.RegisterCompleteObjectUndo(selected, "Make Audio Playlist");
 
-            // Add an AudioSource if neither this object nor a child has one.
-            // Mirrors U3DAudioPlaylist.Awake()'s lookup logic so the playlist
-            // finds a source automatically.
-            AudioSource existingSource = selected.GetComponent<AudioSource>();
-            if (existingSource == null)
-                existingSource = selected.GetComponentInChildren<AudioSource>();
-
-            if (existingSource == null)
-            {
-                AudioMixerGroup effectsGroup = FindMixerGroup("Effects");
-                if (effectsGroup == null)
-                    return;
-
-                AudioSource source = Undo.AddComponent<AudioSource>(selected);
-                source.outputAudioMixerGroup = effectsGroup;
-                source.playOnAwake = false;
-                source.spatialBlend = 1f;
-                source.minDistance = 1f;
-                source.maxDistance = 500f;
-                source.rolloffMode = AudioRolloffMode.Logarithmic;
-                source.loop = false;
-            }
-
-            // Idempotent: don't double-add if creator runs the tool twice.
+            // Idempotent: don't double-add if the creator runs the tool twice on the same object.
             U3DAudioPlaylist existingPlaylist = selected.GetComponent<U3DAudioPlaylist>();
-            if (existingPlaylist == null)
-            {
-                Undo.AddComponent<U3DAudioPlaylist>(selected);
-            }
-            else
+            if (existingPlaylist != null)
             {
                 EditorUtility.DisplayDialog("Audio Playlist",
                     "This object already has an Audio Playlist component.",
                     "OK");
+                EditorGUIUtility.PingObject(selected);
+                return;
             }
+
+            // RequireComponent on U3DAudioPlaylist pulls in an AudioSource if the selected
+            // object doesn't already have one. The playlist's Reset() configures that
+            // AudioSource with U3D's standard 3D spatial defaults. If the selected object
+            // already had an AudioSource that the creator configured manually, Reset()
+            // detects that (playOnAwake check) and leaves their settings alone.
+            Undo.AddComponent<U3DAudioPlaylist>(selected);
 
             EditorGUIUtility.PingObject(selected);
             EditorUtility.SetDirty(selected);
