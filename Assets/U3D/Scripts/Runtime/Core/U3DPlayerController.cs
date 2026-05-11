@@ -825,6 +825,20 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
+        // Movement-intent dismount while riding. Mirrors the desktop branch in spirit:
+        // any signal that means "I want to move under my own power" dismounts the player.
+        // Stick is only considered when the teleporter isn't consuming it (handled above
+        // via the early return). Fly is a discrete press, unambiguous regardless of state.
+        // Jump dismount is handled in HandleJumpFusionFixed and stays where it is.
+        if (_currentRideable != null)
+        {
+            bool wantsDismount = vrMoveInput.magnitude > 0.1f
+                || pressedThisFrame.IsSet(U3DInputButtons.Fly);
+
+            if (wantsDismount)
+                DismountRideable(_currentRideable);
+        }
+
         if (NetworkIsClimbing)
         {
             moveInput = vrMoveInput;
