@@ -6,20 +6,9 @@ namespace U3D.Editor
 {
     public static class U3DScorableTools
     {
-        public static void CreateScorable()
+        public static void AddScorable()
         {
-            GameObject selected = Selection.activeGameObject;
-
-            if (selected != null)
-            {
-                if (selected.GetComponent<U3DScorable>() == null)
-                    selected.AddComponent<U3DScorable>();
-
-                EditorUtility.SetDirty(selected);
-                return;
-            }
-
-            // No selection - create a billboard-style scorable from scratch
+            // Create a billboard-style scorable from scratch, ignoring any current selection.
             GameObject scoreObj = new GameObject("Scorable");
 
             Canvas canvas = scoreObj.AddComponent<Canvas>();
@@ -61,6 +50,21 @@ namespace U3D.Editor
             Selection.activeGameObject = scoreObj;
             EditorGUIUtility.PingObject(scoreObj);
             EditorUtility.SetDirty(scoreObj);
+        }
+
+        public static void MakeScorable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first. To create a new worldspace scoreboard instead, use Add Scorable.");
+                return;
+            }
+
+            if (selected.GetComponent<U3DScorable>() == null)
+                selected.AddComponent<U3DScorable>();
+
+            EditorUtility.SetDirty(selected);
         }
     }
 }

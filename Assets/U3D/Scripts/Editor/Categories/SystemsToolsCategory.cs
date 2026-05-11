@@ -18,7 +18,8 @@ namespace U3D.Editor
             {
                 new CreatorTool("🟢 Add U3D Core Prefab", "Required in every scene. Contains networking, deployment, player spawning, and platform systems. Will not add a duplicate.", AddCorePrefab),
                 new CreatorTool("🟢 Add Quest System", "Create single-player missions and objectives for your experience", () => U3DQuestSystemTools.CreateQuestSystem()),
-                new CreatorTool("🟢 Add Scorable", "Track and display a score. Add to any object with a TextMeshPro component in its hierarchy.", () => U3DScorableTools.CreateScorable()),
+                new CreatorTool("🟢 Add Scorable", "Creates a worldspace scoreboard you can place anywhere in your scene.", () => U3DScorableTools.AddScorable()),
+                new CreatorTool("🟢 Make Scorable", "Adds a U3DScorable component to the selected object. The object should have a TextMeshPro component in its hierarchy.", () => U3DScorableTools.MakeScorable(), true),
                 new CreatorTool("🚧 Add Inventory System", "Essential for collecting, managing, and using items in exploration games", () => { }),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => { }),
                 new CreatorTool("🚧 Add Quiz System", "Interactive questions and knowledge tests", () => { }),

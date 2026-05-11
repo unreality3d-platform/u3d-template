@@ -29,7 +29,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Ambient Audio Source", "Adds an AudioSource routed to the Ambient channel. 2D playback, same volume everywhere. Good for background music and ambient sound.", CreateAmbientSource),
                 new CreatorTool("🟢 Add Local Audio Source", "Adds an AudioSource routed to the Effects channel. 3D spatial, sound fades with distance. Good for sound effects on objects.", CreateLocalSource),
                 new CreatorTool("🟢 Add Worldspace UI", "World space canvas with proximity fade and billboard behavior options", CreateWorldspaceUI),
-                new CreatorTool("🟢 Add URL Link", "Click to open a URL in a new browser tab. Adds an Interact Trigger wired to open the link.", ApplyURLLink, true),
+                new CreatorTool("🟢 Make URL Link", "Click to open a URL in a new browser tab. Adds an Interact Trigger wired to open the link.", ApplyURLLink, true),
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
                 new CreatorTool("🟢 Add Mirror", "Reflective surface for vanity mirrors, avatar viewing, or scene composition. Each mirror creates its own render texture asset in Assets/U3D/U3D_Assets/Mirrors/.", CreateMirror),
                 new CreatorTool("🟢 Add Instructions", "Worldspace UI showing default movement and control patterns with all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
@@ -67,7 +67,7 @@ namespace U3D.Editor
                 return;
             }
 
-            Undo.RecordObject(selected, "Add URL Link");
+            Undo.RecordObject(selected, "Make URL Link");
 
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
@@ -245,6 +245,22 @@ namespace U3D.Editor
             if (meshCollider != null)
                 Object.DestroyImmediate(meshCollider);
 
+            // Assign the shared U3D video screen material so the screen shows unlit at edit time.
+            // Without this, the URP default Lit material that GameObject.CreatePrimitive applied
+            // would produce lighting glare in the Scene view. At runtime, U3DVideoPlayer instantiates
+            // a per-instance copy of this material to hold its own RenderTexture (different Video
+            // Players therefore play different videos despite sharing the edit-time material).
+            MeshRenderer screenRenderer = screenObj.GetComponent<MeshRenderer>();
+            if (screenRenderer != null)
+            {
+                Material screenMat = GetOrCreateVideoScreenMaterial();
+                if (screenMat != null)
+                    screenRenderer.sharedMaterial = screenMat;
+                // If GetOrCreateVideoScreenMaterial returned null, it already logged a warning
+                // and the runtime path in U3DVideoPlayer.CreateRenderTexture will attempt the
+                // swap when the scene plays.
+            }
+
             AudioSource audioSource = screenObj.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;
             audioSource.spatialBlend = 1f;
@@ -321,6 +337,31 @@ namespace U3D.Editor
             TextMeshProUGUI buttonTMP = buttonObj.GetComponentInChildren<TextMeshProUGUI>();
             // Button label raycastTarget left at Unity's default (true) so the Button hit test
             // works through the label.
+
+            // ── Interact wiring on the Play/Pause Button only ──
+            // The button keeps its standard UI behavior (mouse click via GraphicRaycaster).
+            // U3DInteractTrigger adds R-key and VR controller trigger support, both of which
+            // call TogglePlayPause — the same method the button's onClick already runs.
+            // The Worldspace UI controls strip otherwise stays untouched for the planned
+            // full VR worldspace interaction pass.
+            BoxCollider buttonCollider = buttonObj.AddComponent<BoxCollider>();
+            // RectTransform size is the unscaled UI rect — scale it down to the canvas's
+            // localScale so the collider matches the button's world-space footprint.
+            Vector2 buttonSize = buttonRect.rect.size;
+            buttonCollider.size = new Vector3(buttonSize.x, buttonSize.y, 1f);
+            buttonCollider.center = Vector3.zero;
+
+            NetworkObject buttonNetworkObject = buttonObj.AddComponent<NetworkObject>();
+            InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(buttonNetworkObject);
+
+            U3DInteractTrigger buttonInteractTrigger = buttonObj.AddComponent<U3DInteractTrigger>();
+            if (buttonInteractTrigger.OnInteractTriggered == null)
+                buttonInteractTrigger.OnInteractTriggered = new UnityEngine.Events.UnityEvent();
+
+            UnityEditor.Events.UnityEventTools.AddVoidPersistentListener(
+                buttonInteractTrigger.OnInteractTriggered,
+                new UnityEngine.Events.UnityAction(u3dVideo.TogglePlayPause)
+            );
 
             GameObject sliderObj = DefaultControls.CreateSlider(uiResources);
             sliderObj.name = "Progress Slider";
@@ -1081,6 +1122,50 @@ namespace U3D.Editor
             Selection.activeGameObject = canvasObj;
             EditorGUIUtility.PingObject(canvasObj);
             EditorUtility.SetDirty(canvasObj);
+        }
+
+        // ───────────────────────────────────────────
+        // Video Screen Material Lookup
+        // ───────────────────────────────────────────
+
+        private const string VIDEO_PLAYER_FOLDER = "Assets/U3D/U3D_Assets/Video Player";
+        private const string VIDEO_SCREEN_MATERIAL_PATH = "Assets/U3D/U3D_Assets/Video Player/U3D_VideoScreenMaterial.mat";
+
+        /// <summary>
+        /// Returns the shared unlit material used by all Video Player screens at edit time.
+        /// Creates it on disk if it doesn't exist yet. Runtime instantiates per-Video-Player copies
+        /// of this material to hold individual RenderTextures.
+        /// </summary>
+        private static Material GetOrCreateVideoScreenMaterial()
+        {
+            Material existing = AssetDatabase.LoadAssetAtPath<Material>(VIDEO_SCREEN_MATERIAL_PATH);
+            if (existing != null)
+                return existing;
+
+            // Ensure the folder hierarchy exists. Same pattern as CreateMirror's MIRROR_RT_FOLDER setup.
+            if (!AssetDatabase.IsValidFolder(VIDEO_PLAYER_FOLDER))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/U3D/U3D_Assets"))
+                {
+                    if (!AssetDatabase.IsValidFolder("Assets/U3D"))
+                        AssetDatabase.CreateFolder("Assets", "U3D");
+                    AssetDatabase.CreateFolder("Assets/U3D", "U3D_Assets");
+                }
+                AssetDatabase.CreateFolder("Assets/U3D/U3D_Assets", "Video Player");
+            }
+
+            Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (unlitShader == null)
+            {
+                Debug.LogWarning("Add Video Player: Universal Render Pipeline/Unlit shader not found. Could not create the shared video screen material. The screen will keep its default Lit material and may show lighting glare at edit time. Runtime will attempt to swap to unlit when the scene plays.");
+                return null;
+            }
+
+            Material mat = new Material(unlitShader);
+            mat.name = System.IO.Path.GetFileNameWithoutExtension(VIDEO_SCREEN_MATERIAL_PATH);
+            AssetDatabase.CreateAsset(mat, VIDEO_SCREEN_MATERIAL_PATH);
+            AssetDatabase.SaveAssets();
+            return mat;
         }
 
         // ───────────────────────────────────────────

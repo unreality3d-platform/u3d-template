@@ -25,9 +25,9 @@ namespace U3D.Editor
                 new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
-                new CreatorTool("🟢 Add Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
-                new CreatorTool("🟢 Add Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
-                new CreatorTool("🟢 Add Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
+                new CreatorTool("🟢 Make Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
+                new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
+                new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
                 new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
@@ -424,7 +424,7 @@ namespace U3D.Editor
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
             {
-                Debug.LogWarning("Add Delayed Trigger Activation: selected object has no Collider. Add a trigger first (Make Enter Trigger, Make Exit Trigger, or Add Trigger Zone) before applying this.");
+                Debug.LogWarning("Make Delayed Trigger Activation: selected object has no Collider. Add a trigger first (Make Enter Trigger, Make Exit Trigger, or Make Trigger Zone) before applying this.");
                 return;
             }
 
