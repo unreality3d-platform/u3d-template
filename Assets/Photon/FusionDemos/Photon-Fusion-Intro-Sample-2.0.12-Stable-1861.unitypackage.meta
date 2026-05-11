@@ -1,6 +1,6 @@
 fileFormatVersion: 2
-guid: 302a42a4eb4d5e540b803b1f86597505
-PrefabImporter:
+guid: 95c6ff6d8069946e3b5c406c9dcc3550
+DefaultImporter:
   externalObjects: {}
   userData: 
   assetBundleName: 
@@ -10,5 +10,5 @@ AssetOrigin:
   productId: 267958
   packageName: Photon Fusion
   packageVersion: 2.0.12
-  assetPath: Assets/Photon/Fusion/Runtime/Statistics/Prefabs/NOStatGraph.prefab
+  assetPath: Assets/Photon/FusionDemos/Photon-Fusion-Intro-Sample-2.0.12-Stable-1861.unitypackage
   uploadId: 888248

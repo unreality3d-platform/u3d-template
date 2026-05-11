@@ -1,8 +1,8 @@
 {
   "dependencies": {
     "com.de-panther.webxr": {
-      "version": "0.23.0",
-      "depth": 1,
+      "version": "0.25.0",
+      "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.xr.management": "3.2.13"
@@ -10,7 +10,7 @@
       "url": "https://package.openupm.com"
     },
     "com.de-panther.webxr-input-profiles-loader": {
-      "version": "0.6.2",
+      "version": "0.7.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -20,11 +20,11 @@
       "url": "https://package.openupm.com"
     },
     "com.de-panther.webxr-interactions": {
-      "version": "0.23.0",
+      "version": "0.25.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.de-panther.webxr": "0.23.0"
+        "com.de-panther.webxr": "0.25.0"
       },
       "url": "https://package.openupm.com"
     },
