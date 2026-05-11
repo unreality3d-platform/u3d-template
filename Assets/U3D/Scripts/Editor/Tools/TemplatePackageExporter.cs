@@ -20,6 +20,7 @@ namespace U3D.Editor.Tools
             "Assets/U3D_SDK",                          // Publishing and monetization systems  
             "Assets/Plugins/U3D",                      // U3D-specific plugins
             "Assets/StreamingAssets/U3D",              // U3D streaming assets
+            "Assets/Settings",                         // URP/renderer/quality/post-process assets
             ".github/workflows/reassemble-chunks.yml"  // Critical: Chunking system workflow
         };
 
