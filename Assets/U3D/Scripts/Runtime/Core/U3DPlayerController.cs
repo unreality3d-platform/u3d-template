@@ -23,7 +23,6 @@ public class U3DPlayerController : NetworkBehaviour
     [Header("Perspective Control")]
     [SerializeField] private PerspectiveMode perspectiveMode = PerspectiveMode.SmoothScroll;
 
-    [HideInInspector][SerializeField] private float thirdPersonDistance = 5f;
     [HideInInspector][SerializeField] private float perspectiveTransitionSpeed = 8f;
     [HideInInspector][SerializeField] private bool enableCameraCollision = true;
     [HideInInspector][SerializeField] private bool enableSmoothTransitions = true;
@@ -51,17 +50,14 @@ public class U3DPlayerController : NetworkBehaviour
     [Header("Mouse Look Behavior")]
     [SerializeField] private bool enableAlwaysFreeLook = true;
 
-    [Header("Smooth Camera Transition")]
-    [SerializeField]
-    private AnimationCurve cameraDistanceCurve = new AnimationCurve(
-        new Keyframe(0f, 0f),
-        new Keyframe(1f, 5f)
-    );
-    [SerializeField]
-    private AnimationCurve cameraHeightCurve = new AnimationCurve(
-        new Keyframe(0f, 1.5f),
-        new Keyframe(1f, 1.5f)
-    );
+    [Header("Third-Person Camera")]
+    [Tooltip("How high the camera sits in third-person view, in player-root-local space. First-person height comes from the Camera child's Y position in the prefab. Set this to match the prefab Camera child's Y if you want consistent height across the perspective switch, or set it lower for an over-the-shoulder feel.")]
+    [SerializeField] private float thirdPersonCameraHeight = 1.65f;
+
+    [Tooltip("How far behind the player the third-person camera sits.")]
+    [SerializeField] private float thirdPersonCameraDistance = 5f;
+
+    [Tooltip("How long, in seconds, the camera takes to transition between first and third person when using SmoothScroll perspective mode.")]
     [SerializeField] private float transitionTime = 1.5f;
 
     private U3DInteractionManager _interactionManager;
@@ -191,8 +187,19 @@ public class U3DPlayerController : NetworkBehaviour
     private U3DAvatarManager _avatarManager;
 
     [Header("VR Eye Offset")]
-    [Tooltip("Camera position relative to the avatar's head bone, expressed in player-root-local space (Z forward, Y up). Default (0, 0.2, 0.08) places the camera above and forward of the head bone. Adjust to dial in eye height and forward placement.")]
+    [Tooltip("Camera position relative to the avatar's head bone in player-local space. Increase Y if the camera sits too low (pointing at the neck). Increase Z to move the camera forward inside the head. Adjust until the camera lands at eye level when you look at the avatar in a mirror.")]
     [SerializeField] private Vector3 vrEyeOffset = new Vector3(0f, 0.2f, 0.08f);
+
+    [Header("VR Body-Follow-Head")]
+    [Tooltip("How far (in degrees) the head can rotate off-body before the body starts lazily catching up. 60 means you have a 120-degree free-look range before the body rotates. Higher = more independent head movement. Lower = body follows head more closely.")]
+    [SerializeField] private float vrBodyFollowDeadzone = 60f;
+
+    [Tooltip("How fast (degrees per second) the body rotates to catch up to the head once outside the deadzone. Lower = lazier follow. Higher = snappier follow. 90 matches characterTurnSpeed.")]
+    [SerializeField] private float vrBodyFollowSpeed = 90f;
+
+    private bool _vrRecenterPending = false;
+    private float _vrRecenterTargetYaw = 0f;
+    private bool _vrSnapTurnedThisFrame = false;
 
     [Header("VR Teleport")]
     [Tooltip("Material used for the VR teleport arc and reticle line renderers. Assign any URP/Unlit material in the Inspector. Required — without it the arc will not render in WebGL builds.")]
@@ -326,18 +333,22 @@ public class U3DPlayerController : NetworkBehaviour
     {
         if (cameraPivot == null || playerCamera == null) return;
 
-        float distance = cameraDistanceCurve.Evaluate(currentTransitionValue);
-        float heightOffset = cameraHeightCurve.Evaluate(currentTransitionValue);
-
         Vector3 targetPosition;
 
         if (currentTransitionValue <= 0.01f)
         {
+            // Pure first-person: camera sits exactly at firstPersonPosition,
+            // which is the prefab Camera child's local position captured in Awake.
             targetPosition = Vector3.zero;
         }
         else
         {
-            float relativeHeight = heightOffset - firstPersonPosition.y;
+            // Linearly interpolate distance and height from first-person to third-person
+            // values across the transition. First-person height is firstPersonPosition.y
+            // (the prefab Camera Y), third-person height is the Inspector field.
+            float distance = Mathf.Lerp(0f, thirdPersonCameraDistance, currentTransitionValue);
+            float heightAtTransition = Mathf.Lerp(firstPersonPosition.y, thirdPersonCameraHeight, currentTransitionValue);
+            float relativeHeight = heightAtTransition - firstPersonPosition.y;
             targetPosition = new Vector3(0f, relativeHeight, -distance);
         }
 
@@ -364,7 +375,7 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         firstPersonPosition = playerCamera.transform.localPosition;
-        thirdPersonPosition = firstPersonPosition + Vector3.back * thirdPersonDistance;
+        thirdPersonPosition = firstPersonPosition + Vector3.back * thirdPersonCameraDistance;
         currentCameraDistance = 0f;
         targetFOV = defaultFOV;
         playerCamera.fieldOfView = defaultFOV;
@@ -640,6 +651,14 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
+        // Capture the player root's current yaw before TPD starts overriding the
+        // camera rotation. This is the spawn-rotation direction we want the user
+        // to face when VR initializes. The recenter logic in LateUpdate will rotate
+        // the player root once TPD has reported a valid HMD pose, so that
+        // playerRoot.rotation * hmdRotation lands the camera on this target yaw.
+        _vrRecenterTargetYaw = transform.eulerAngles.y;
+        _vrRecenterPending = true;
+
         if (_headTrackedPoseDriver != null)
         {
             _headTrackedPoseDriver.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.RotationOnly;
@@ -705,6 +724,8 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         _avatarHeadBone = null;
+        _vrRecenterPending = false;
+        _vrSnapTurnedThisFrame = false;
 
         if (_rawHmdReference != null)
         {
@@ -760,7 +781,58 @@ public class U3DPlayerController : NetworkBehaviour
             if (_avatarHeadBone == null) return;
         }
 
+        // Recenter pass: runs once per VR session entry, on the first frame TPD
+        // has written a non-identity rotation to the camera. The HMD's local-floor
+        // reference space orientation is arbitrary on each session start (Quest 3
+        // browser is especially unpredictable), so we rotate the body so that the
+        // camera's WORLD yaw ends up at the captured target. Because the camera is
+        // parented to the body and TPD writes localRotation, the body's required
+        // rotation is computed in world space, not added to localRotation.
+        if (_vrRecenterPending)
+        {
+            bool hmdHasValidPose = playerCamera.transform.localRotation != Quaternion.identity;
+
+            if (hmdHasValidPose)
+            {
+                float cameraWorldYaw = playerCamera.transform.eulerAngles.y;
+                float yawCorrection = Mathf.DeltaAngle(cameraWorldYaw, _vrRecenterTargetYaw);
+                transform.Rotate(Vector3.up, yawCorrection);
+                NetworkRotation = transform.rotation;
+                cameraYaw = transform.eulerAngles.y;
+                _vrRecenterPending = false;
+            }
+        }
+
+        // Position the camera at the avatar's eye position. Runs every frame because
+        // the avatar head bone is animated by the Animator and moves between frames.
         playerCamera.transform.position = _avatarHeadBone.position + transform.TransformVector(vrEyeOffset);
+
+        // Body-follow-head with deadzone. The HMD's yaw relative to the body is the
+        // camera's LOCAL yaw — because the camera is parented to the body and TPD
+        // writes localRotation. We must NOT use the camera's world yaw here; that
+        // would create an infinite spin loop, since rotating the body to "catch up"
+        // would carry the camera with it and the world-yaw delta would never close.
+        // Skipped on snap-turn frames so the catch-up doesn't fight intentional turns.
+        if (!_vrRecenterPending && !_vrSnapTurnedThisFrame)
+        {
+            // localEulerAngles.y returns 0-360; convert to -180..180 for signed delta.
+            float localYaw = playerCamera.transform.localEulerAngles.y;
+            if (localYaw > 180f) localYaw -= 360f;
+            float absDelta = Mathf.Abs(localYaw);
+
+            if (absDelta > vrBodyFollowDeadzone)
+            {
+                float overshoot = absDelta - vrBodyFollowDeadzone;
+                float catchUpThisFrame = Mathf.Min(overshoot, vrBodyFollowSpeed * Time.deltaTime);
+                float rotateBy = catchUpThisFrame * Mathf.Sign(localYaw);
+
+                transform.Rotate(Vector3.up, rotateBy);
+                NetworkRotation = transform.rotation;
+                cameraYaw = transform.eulerAngles.y;
+            }
+        }
+
+        _vrSnapTurnedThisFrame = false;
     }
 
     /// <summary>
@@ -796,6 +868,12 @@ public class U3DPlayerController : NetworkBehaviour
             transform.Rotate(Vector3.up, turnDelta);
             NetworkRotation = transform.rotation;
             cameraYaw += turnDelta;
+
+            // Tell LateUpdate's body-follow logic to skip this frame. Snap-turn
+            // intentionally moves the body without moving the head; the catch-up
+            // logic would otherwise see the resulting body-head mismatch as
+            // "head outside deadzone" and rotate the body backward.
+            _vrSnapTurnedThisFrame = true;
         }
 
         // Teleport gesture: stick click toggles arm/disarm. While armed, Tick consumes
@@ -1453,7 +1531,7 @@ public class U3DPlayerController : NetworkBehaviour
     void SetThirdPerson()
     {
         isFirstPerson = false;
-        currentCameraDistance = thirdPersonDistance;
+        currentCameraDistance = thirdPersonCameraDistance;
         if (perspectiveMode == PerspectiveMode.SmoothScroll)
             targetTransitionValue = 1f;
     }
