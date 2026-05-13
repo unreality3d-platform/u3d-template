@@ -97,10 +97,12 @@ namespace U3D
         private float detachTime;
 
         private Collider surfaceCollider;
+        private bool surfaceSupportsClosestPoint;
 
         void Start()
         {
             surfaceCollider = GetComponent<Collider>();
+            surfaceSupportsClosestPoint = ColliderSupportsClosestPoint(surfaceCollider);
             FindPlayer();
         }
 
@@ -146,13 +148,27 @@ namespace U3D
         {
             if (playerTransform == null) return;
 
-            float distance = Vector3.Distance(
-                surfaceCollider.ClosestPoint(playerTransform.position),
-                playerTransform.position
-            );
-
             bool wasInRange = playerInRange;
-            playerInRange = distance <= maxClimbDistance;
+
+            if (surfaceSupportsClosestPoint)
+            {
+                float distance = Vector3.Distance(
+                    surfaceCollider.ClosestPoint(playerTransform.position),
+                    playerTransform.position
+                );
+                playerInRange = distance <= maxClimbDistance;
+            }
+            else
+            {
+                // Concave MeshColliders don't support ClosestPoint. Use an
+                // OverlapSphere against this specific collider instead, which works
+                // against the actual mesh triangles rather than the bounding box.
+                playerInRange = IsColliderWithinRadius(
+                    surfaceCollider,
+                    playerTransform.position,
+                    maxClimbDistance
+                );
+            }
 
             if (playerInRange && !wasInRange)
                 OnPlayerEnterRange?.Invoke();
@@ -161,6 +177,31 @@ namespace U3D
 
             if (isClimbing && !playerInRange)
                 Detach();
+        }
+
+        static bool ColliderSupportsClosestPoint(Collider col)
+        {
+            if (col == null) return false;
+            if (col is BoxCollider) return true;
+            if (col is SphereCollider) return true;
+            if (col is CapsuleCollider) return true;
+            if (col is MeshCollider mc) return mc.convex;
+            return false;
+        }
+
+        static bool IsColliderWithinRadius(Collider target, Vector3 position, float radius)
+        {
+            Collider[] hits = Physics.OverlapSphere(
+                position,
+                radius,
+                ~0,
+                QueryTriggerInteraction.Collide
+            );
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (hits[i] == target) return true;
+            }
+            return false;
         }
 
         /// <summary>
