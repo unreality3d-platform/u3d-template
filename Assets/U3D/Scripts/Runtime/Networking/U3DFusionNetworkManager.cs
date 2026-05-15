@@ -354,24 +354,40 @@ namespace U3D.Networking
 
         private bool DetectPlatformSpecificUI()
         {
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+            if (eventSystem == null) return false;
+
+            // Explicit check against real input pointer IDs only. The parameterless
+            // IsPointerOverGameObject() returns true if ANY registered pointer is over
+            // UI — including the gaze pointer's synthetic pointer (id -10), which fires
+            // hover events whenever the player looks at worldspace UI in VR. That made
+            // movement input freeze any time the gaze ray crossed a UI element.
+            //
+            // Mouse pointer id is -1 in the new Input System's UI module. Touch pointers
+            // start at 0 and use the touch fingerId. Anything outside those is not a
+            // real user-driven pointer and shouldn't gate movement.
             switch (Application.platform)
             {
                 case RuntimePlatform.WebGLPlayer:
-                    return UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject() == true;
+                    if (eventSystem.IsPointerOverGameObject(-1)) return true;
+                    for (int i = 0; i < UnityEngine.Input.touchCount; i++)
+                    {
+                        if (eventSystem.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId))
+                            return true;
+                    }
+                    return false;
 
                 case RuntimePlatform.Android:
                 case RuntimePlatform.IPhonePlayer:
                     for (int i = 0; i < UnityEngine.Input.touchCount; i++)
                     {
-                        if (UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId) == true)
-                        {
+                        if (eventSystem.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId))
                             return true;
-                        }
                     }
                     return false;
 
                 default:
-                    return UnityEngine.EventSystems.EventSystem.current?.IsPointerOverGameObject() == true;
+                    return eventSystem.IsPointerOverGameObject(-1);
             }
         }
 

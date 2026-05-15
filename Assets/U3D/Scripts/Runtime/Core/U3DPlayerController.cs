@@ -864,6 +864,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (!enableMovement || !_isLocalPlayer) return;
 
         Vector2 vrMoveInput = input.MovementInput;
+        if (isAutoRunning) vrMoveInput.y = 1f;
         float snapTurnInput = input.LookInput.x;
 
         // Snap turn always works, regardless of teleport state.
@@ -942,7 +943,9 @@ public class U3DPlayerController : NetworkBehaviour
         Vector3 moveDirection = (forward * vrMoveInput.y + right * vrMoveInput.x).normalized;
         float currentSpeed = GetCurrentSpeed() * VR_MOVEMENT_SPEED_MULTIPLIER;
 
-        isSprinting = input.Buttons.IsSet(U3DInputButtons.Sprint);
+        // Read the toggle state set by HandleButtonInputsFusion, not the held button state.
+        // Reading IsSet directly would make VR sprint a hold (one-frame-only) while the
+        // desktop path is a toggle, and the two would fight over isSprinting / NetworkIsSprinting.
         if (isSprinting)
             currentSpeed = runSpeed * VR_MOVEMENT_SPEED_MULTIPLIER;
 

@@ -155,6 +155,14 @@ namespace U3D
             // frame — the next press starts clean.
             pointerData.pointerPress = null;
             pointerData.rawPointerPress = null;
+
+            // Deselect whatever the click sequence selected. Unity's Button selects itself on
+            // pointer-down by default, and the EventSystem's selection state is what the cursor
+            // manager treats as "UI has focus" — which then unlocks the cursor and gates off
+            // player input until the user clicks back into the game window. The gaze interaction
+            // is fire-and-forget; we don't want lingering selection state.
+            if (eventSystem.currentSelectedGameObject != null)
+                eventSystem.SetSelectedGameObject(null);
         }
 
         private void RefreshRaycasterCache()
