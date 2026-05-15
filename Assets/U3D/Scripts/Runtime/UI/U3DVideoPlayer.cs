@@ -63,7 +63,6 @@ namespace U3D
         private AudioSource audioSource;
         private RenderTexture renderTexture;
         private Renderer quadRenderer;
-        private bool isUserScrubbing = false;
         private bool hasStartedOnce = false;
 
         void Awake()
@@ -82,7 +81,7 @@ namespace U3D
 
         void Update()
         {
-            if (videoPlayer.isPrepared && !isUserScrubbing)
+            if (videoPlayer.isPrepared)
                 UpdateControlsUI();
         }
 
@@ -161,21 +160,7 @@ namespace U3D
                 playPauseButton.onClick.AddListener(TogglePlayPause);
 
             if (progressSlider != null)
-            {
                 progressSlider.onValueChanged.AddListener(OnSliderChanged);
-
-                var eventTrigger = progressSlider.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
-
-                var pointerDown = new UnityEngine.EventSystems.EventTrigger.Entry();
-                pointerDown.eventID = UnityEngine.EventSystems.EventTriggerType.PointerDown;
-                pointerDown.callback.AddListener((_) => { isUserScrubbing = true; });
-                eventTrigger.triggers.Add(pointerDown);
-
-                var pointerUp = new UnityEngine.EventSystems.EventTrigger.Entry();
-                pointerUp.eventID = UnityEngine.EventSystems.EventTriggerType.PointerUp;
-                pointerUp.callback.AddListener((_) => { isUserScrubbing = false; });
-                eventTrigger.triggers.Add(pointerUp);
-            }
         }
 
         // ───────────────────────────────────────────
@@ -188,6 +173,16 @@ namespace U3D
                 videoURL = videoPlayer.url;
 
             if (string.IsNullOrEmpty(videoURL)) return;
+
+            // If already prepared with this URL, just resume — don't reassign url,
+            // which would invalidate the prepared state and restart from frame 0.
+            if (videoPlayer.isPrepared && videoPlayer.url == videoURL)
+            {
+                videoPlayer.isLooping = loopVideo;
+                videoPlayer.Play();
+                UpdatePlayPauseText(true);
+                return;
+            }
 
             videoPlayer.url = videoURL;
             videoPlayer.isLooping = loopVideo;
@@ -206,7 +201,10 @@ namespace U3D
         public void Pause()
         {
             if (videoPlayer.isPlaying)
+            {
                 videoPlayer.Pause();
+                UpdatePlayPauseText(false);
+            }
         }
 
         public void Stop()
@@ -269,13 +267,10 @@ namespace U3D
 
             if (timeDisplay != null)
                 timeDisplay.text = $"{FormatTime(currentTime)} / {FormatTime(totalTime)}";
-
-            UpdatePlayPauseText(videoPlayer.isPlaying);
         }
 
         private void OnSliderChanged(float value)
         {
-            if (!isUserScrubbing) return;
             if (!videoPlayer.isPrepared) return;
 
             videoPlayer.time = value * videoPlayer.length;
