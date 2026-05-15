@@ -29,7 +29,9 @@ namespace U3D.XR
         public static event VRModeChanged OnVRModeChanged;
 
         public delegate void VRSupportDetected(bool isSupported);
+#pragma warning disable 0067 // Event is invoked only in WEBXR_ENABLED WebGL builds; editor compile sees no invocation.
         public static event VRSupportDetected OnVRSupportDetected;
+#pragma warning restore 0067
 
         public bool IsVRActive => _isVRActive;
         public bool IsVRSupported => _isVRSupported;

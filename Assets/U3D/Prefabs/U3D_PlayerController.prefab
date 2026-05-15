@@ -214,7 +214,7 @@ GameObject:
   - component: {fileID: 2855543673302401563}
   - component: {fileID: 8358519202707064179}
   - component: {fileID: 6182387054980140541}
-  m_Layer: 0
+  m_Layer: 2
   m_Name: Reticle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -746,14 +746,6 @@ MonoBehaviour:
       m_Calls: []
     m_ActionId: 15cef263-9014-4fd5-94d9-4e4a6234a6ef
     m_ActionName: 'UI/Cancel[/Keyboard/escape]'
-  - m_PersistentCalls:
-      m_Calls: []
-    m_ActionId: 24908448-c609-4bc3-a128-ea258674378a
-    m_ActionName: UI/TrackedDevicePosition
-  - m_PersistentCalls:
-      m_Calls: []
-    m_ActionId: 9caa3d8a-6b2f-4e8e-8bad-6ede561bd9be
-    m_ActionName: UI/TrackedDeviceOrientation
   - m_PersistentCalls:
       m_Calls: []
     m_ActionId: 6cba1bd0-2f1a-492f-8fad-3846c154198b

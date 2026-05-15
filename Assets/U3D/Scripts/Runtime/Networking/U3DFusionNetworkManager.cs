@@ -149,6 +149,23 @@ namespace U3D.Networking
         {
             _isVRModeActive = isVRActive;
             _webXRManager = U3D.XR.U3DWebXRManager.Instance;
+
+            // Disable the UI action map entirely during VR so the InputSystemUIInputModule
+            // stops reading actions that share physical bindings with player movement.
+            // In VR, all UI interaction is driven by the gaze pointer firing Player/Interact
+            // through ExecuteEvents directly — the UI module's action pipeline isn't needed
+            // and only causes input arbitration on the left stick / arrow keys. On desktop
+            // exit from VR, restore the UI map so keyboard-arrow accessibility navigation
+            // works again.
+            if (inputActionAsset != null)
+            {
+                var uiMap = inputActionAsset.FindActionMap("UI");
+                if (uiMap != null)
+                {
+                    if (isVRActive && uiMap.enabled) uiMap.Disable();
+                    else if (!isVRActive && !uiMap.enabled) uiMap.Enable();
+                }
+            }
         }
 
         void SetupTouchControls()
