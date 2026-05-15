@@ -326,31 +326,6 @@ namespace U3D.Editor
             // Button label raycastTarget left at Unity's default (true) so the Button hit test
             // works through the label.
 
-            // ── Interact wiring on the Play/Pause Button only ──
-            // The button keeps its standard UI behavior (mouse click via GraphicRaycaster).
-            // U3DInteractTrigger adds R-key and VR controller trigger support, both of which
-            // call TogglePlayPause — the same method the button's onClick already runs.
-            // The Worldspace UI controls strip otherwise stays untouched for the planned
-            // full VR worldspace interaction pass.
-            BoxCollider buttonCollider = buttonObj.AddComponent<BoxCollider>();
-            // RectTransform size is the unscaled UI rect — scale it down to the canvas's
-            // localScale so the collider matches the button's world-space footprint.
-            Vector2 buttonSize = buttonRect.rect.size;
-            buttonCollider.size = new Vector3(buttonSize.x, buttonSize.y, 1f);
-            buttonCollider.center = Vector3.zero;
-
-            NetworkObject buttonNetworkObject = buttonObj.AddComponent<NetworkObject>();
-            InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(buttonNetworkObject);
-
-            U3DInteractTrigger buttonInteractTrigger = buttonObj.AddComponent<U3DInteractTrigger>();
-            if (buttonInteractTrigger.OnInteractTriggered == null)
-                buttonInteractTrigger.OnInteractTriggered = new UnityEngine.Events.UnityEvent();
-
-            UnityEditor.Events.UnityEventTools.AddVoidPersistentListener(
-                buttonInteractTrigger.OnInteractTriggered,
-                new UnityEngine.Events.UnityAction(u3dVideo.TogglePlayPause)
-            );
-
             GameObject sliderObj = DefaultControls.CreateSlider(uiResources);
             sliderObj.name = "Progress Slider";
             sliderObj.transform.SetParent(panelObj.transform, false);

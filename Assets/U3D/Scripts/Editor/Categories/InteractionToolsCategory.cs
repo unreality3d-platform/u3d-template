@@ -330,7 +330,17 @@ namespace U3D.Editor
             }
 
             if (selected.GetComponent<U3DEnterTrigger>() == null)
+            {
                 selected.AddComponent<U3DEnterTrigger>();
+            }
+            else
+            {
+                Debug.Log(
+                    $"'{selected.name}' already has a U3D Enter Trigger. " +
+                    $"To add a second trigger that fires on a different tag, use the Inspector's Add Component button " +
+                    $"and search for 'U3D Enter Trigger'. Each trigger can have its own Required Tag and Events."
+                );
+            }
 
             EditorUtility.SetDirty(selected);
         }
@@ -356,7 +366,17 @@ namespace U3D.Editor
             }
 
             if (selected.GetComponent<U3DExitTrigger>() == null)
+            {
                 selected.AddComponent<U3DExitTrigger>();
+            }
+            else
+            {
+                Debug.Log(
+                    $"'{selected.name}' already has a U3D Exit Trigger. " +
+                    $"To add a second trigger that fires on a different tag, use the Inspector's Add Component button " +
+                    $"and search for 'U3D Exit Trigger'. Each trigger can have its own Required Tag and Events."
+                );
+            }
 
             EditorUtility.SetDirty(selected);
         }
@@ -381,7 +401,17 @@ namespace U3D.Editor
             }
 
             if (selected.GetComponent<U3DInteractTrigger>() == null)
+            {
                 selected.AddComponent<U3DInteractTrigger>();
+            }
+            else
+            {
+                Debug.Log(
+                    $"'{selected.name}' already has a U3D Interact Trigger. " +
+                    $"To add a second trigger that fires on a different tag, use the Inspector's Add Component button " +
+                    $"and search for 'U3D Interact Trigger'. Each trigger can have its own Required Tag and Events."
+                );
+            }
 
             EditorUtility.SetDirty(selected);
         }
@@ -407,7 +437,17 @@ namespace U3D.Editor
             }
 
             if (selected.GetComponent<U3DTriggerZone>() == null)
+            {
                 selected.AddComponent<U3DTriggerZone>();
+            }
+            else
+            {
+                Debug.Log(
+                    $"'{selected.name}' already has a U3D Trigger Zone. " +
+                    $"To add a second zone that fires on a different tag, use the Inspector's Add Component button " +
+                    $"and search for 'U3D Trigger Zone'. Each zone can have its own Required Tag and Events."
+                );
+            }
 
             EditorUtility.SetDirty(selected);
         }

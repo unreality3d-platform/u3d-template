@@ -483,7 +483,6 @@ namespace U3D.Networking
                 _currentSessionName = sessionName;
 
                 var runnerObject = new GameObject($"NetworkRunner_{sessionName}");
-                runnerObject.transform.SetParent(transform);
 
                 _runner = runnerObject.AddComponent<NetworkRunner>();
                 _runner.ProvideInput = true;

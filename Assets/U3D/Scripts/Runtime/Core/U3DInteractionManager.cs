@@ -68,9 +68,12 @@ namespace U3D
         }
 
         /// <summary>
-        /// Called by PlayerController when interact button is pressed.
+        /// Called by PlayerController when the interact button is pressed.
         /// If the player is holding a grabbable, route the press to that object for release.
         /// Otherwise find the closest interactable within range.
+        ///
+        /// Worldspace UI interaction is NOT handled here — U3DGazePointer reads the Interact
+        /// action directly and runs UI event dispatch in its own Update loop, off the network tick.
         /// </summary>
         public void OnPlayerInteract()
         {

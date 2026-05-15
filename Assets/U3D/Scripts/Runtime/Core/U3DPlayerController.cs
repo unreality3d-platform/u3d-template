@@ -101,11 +101,6 @@ public class U3DPlayerController : NetworkBehaviour
     [Header("Interaction")]
     [SerializeField] private KeyCode interactKey = KeyCode.R;
 
-    [Header("Network Synchronization")]
-    [SerializeField] private float networkSendRate = 20f;
-    [SerializeField] private float positionThreshold = 0.1f;
-    [SerializeField] private float rotationThreshold = 1f;
-
     [HideInInspector][SerializeField] private float zoomFOV = 30f;
     [HideInInspector][SerializeField] private float defaultFOV = 60f;
     [HideInInspector][SerializeField] private float zoomSpeed = 5f;
@@ -166,9 +161,6 @@ public class U3DPlayerController : NetworkBehaviour
     private bool _isLocalPlayer;
     private bool _jumpPressedThisFrame;
     private bool _jumpPressedPending;
-    private float _lastNetworkSendTime;
-    private Vector3 _lastSentPosition;
-    private Quaternion _lastSentRotation;
     private bool _justTeleported = false;
 
     private U3DWebGLCursorManager _cursorManager;
@@ -179,6 +171,7 @@ public class U3DPlayerController : NetworkBehaviour
     private U3D.XR.U3DWebXRManager _webXRManager;
     private U3D.XR.U3DVRTeleporter _vrTeleporter;
     private bool _vrLocomotionSuppressed;
+    private U3DGazePointer _gazePointer;
 
     private UnityEngine.SpatialTracking.TrackedPoseDriver _headTrackedPoseDriver;
     private UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType _headOriginalTrackingType;
@@ -399,6 +392,17 @@ public class U3DPlayerController : NetworkBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+
+        // Spawn the gaze pointer for the local player. Camera-forward raycast drives worldspace UI
+        // events globally — works on desktop and in VR with the same code path. Fully local and
+        // frame-based: it reads the Interact action itself and is not part of the networked input.
+        if (_gazePointer == null && playerCamera != null)
+        {
+            GameObject pointerGO = new GameObject("U3DGazePointer");
+            pointerGO.transform.SetParent(transform, false);
+            _gazePointer = pointerGO.AddComponent<U3DGazePointer>();
+            _gazePointer.Initialize(playerCamera, this);
+        }
     }
 
     void ConfigurePlayerForNetworking()
@@ -514,6 +518,7 @@ public class U3DPlayerController : NetworkBehaviour
             // Compute pressed/released once and update _buttonsPrevious immediately
             // so all handlers read consistent edge state regardless of call order.
             var pressedThisFrame = input.Buttons.GetPressed(_buttonsPrevious);
+            var releasedThisFrame = input.Buttons.GetReleased(_buttonsPrevious);
             _buttonsPrevious = input.Buttons;
 
             _jumpPressedThisFrame = pressedThisFrame.IsSet(U3DInputButtons.Jump);
@@ -547,7 +552,7 @@ public class U3DPlayerController : NetworkBehaviour
                     HandleLookFusionFixed(input);
             }
 
-            HandleButtonInputsFusion(input, pressedThisFrame);
+            HandleButtonInputsFusion(input, pressedThisFrame, releasedThisFrame);
             HandleTeleportFusion(input, pressedThisFrame);
             HandleCameraPositioning();
 
@@ -1261,7 +1266,7 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    void HandleButtonInputsFusion(U3DNetworkInputData input, NetworkButtons pressed)
+    void HandleButtonInputsFusion(U3DNetworkInputData input, NetworkButtons pressed, NetworkButtons released)
     {
         if (!_isLocalPlayer) return;
 

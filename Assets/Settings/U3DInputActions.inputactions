@@ -40,7 +40,7 @@
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
-                    "initialStateCheck": true
+                    "initialStateCheck": false
                 },
                 {
                     "name": "Crouch",
@@ -243,17 +243,6 @@
             ],
             "bindings": [
                 {
-                    "name": "",
-                    "id": "978bfe49-cc26-4a3d-ab7b-7d7a29327403",
-                    "path": "<Gamepad>/leftStick",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Gamepad",
-                    "action": "Move",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
                     "name": "WASD",
                     "id": "00ca640b-d935-4593-8157-c05846ea39b3",
                     "path": "Dpad",
@@ -354,11 +343,11 @@
                 },
                 {
                     "name": "",
-                    "id": "3ea4d645-4504-4529-b061-ab81934c3752",
-                    "path": "<Joystick>/stick",
+                    "id": "978bfe49-cc26-4a3d-ab7b-7d7a29327403",
+                    "path": "<Gamepad>/leftStick",
                     "interactions": "",
                     "processors": "",
-                    "groups": "Joystick",
+                    "groups": ";Gamepad",
                     "action": "Move",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -420,33 +409,22 @@
                 },
                 {
                     "name": "",
+                    "id": "8c8e490b-c610-4785-884f-f04217b23ca4",
+                    "path": "<Pointer>/delta",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "Look",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "c1f7a91b-d0fd-4a62-997e-7fb9b69bf235",
                     "path": "<Gamepad>/rightStick",
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "8c8e490b-c610-4785-884f-f04217b23ca4",
-                    "path": "<Pointer>/delta",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Keyboard&Mouse;Touch",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "3e5f5442-8668-4b27-a940-df99bad7e831",
-                    "path": "<Joystick>/{Hatswitch}",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "Joystick",
                     "action": "Look",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -486,11 +464,11 @@
                 },
                 {
                     "name": "",
-                    "id": "30cdaa43-ecbd-4b99-8139-c86106df04be",
-                    "path": "<XRController>{LeftHand}/{TriggerButton}",
-                    "interactions": "",
+                    "id": "e30d7a2b-c7ad-486e-9a1e-7d446d59eba7",
+                    "path": "<XRController>{LeftHand}/trigger",
+                    "interactions": "Press",
                     "processors": "",
-                    "groups": ";XR",
+                    "groups": "XR",
                     "action": "Sprint",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -563,6 +541,17 @@
                 },
                 {
                     "name": "",
+                    "id": "7796039b-8902-4d91-b43f-ef04e65b6a72",
+                    "path": "<XRController>{RightHand}/trigger",
+                    "interactions": "Press",
+                    "processors": "",
+                    "groups": "XR",
+                    "action": "Interact",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "4f4649ac-64a8-4a73-af11-b3faef356a4d",
                     "path": "<Gamepad>/rightStickPress",
                     "interactions": "",
@@ -587,17 +576,6 @@
                     "name": "",
                     "id": "c4d24907-cca0-4d1c-8e27-830a38b5022f",
                     "path": "<XRController>{LeftHand}/{SecondaryButton}",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";XR",
-                    "action": "Crouch",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "79ee5980-bb40-49fe-aba3-857179eb228d",
-                    "path": "<WebXRTrackedDisplay>/isTracked",
                     "interactions": "",
                     "processors": "",
                     "groups": ";XR",
@@ -750,11 +728,11 @@
                 },
                 {
                     "name": "",
-                    "id": "55d65238-a2df-4579-b865-fb812db11a1f",
-                    "path": "<Joystick>/trigger",
+                    "id": "8c5a437d-8621-4162-a180-a36763498f27",
+                    "path": "<XRController>{RightHand}/{Primary2DAxisClick}",
                     "interactions": "",
                     "processors": "",
-                    "groups": ";Joystick",
+                    "groups": ";XR",
                     "action": "PerspectiveSwitch",
                     "isComposite": false,
                     "isPartOfComposite": false
