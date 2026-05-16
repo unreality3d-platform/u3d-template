@@ -207,20 +207,35 @@ public class U3DPlayerController : NetworkBehaviour
     {
         _currentPlatform = Application.platform;
 
-        float platformMultiplier = 1.0f;
+        bool touchInputActive = U3D.Input.U3DSimpleTouchZones.Instance != null
+            && U3D.Input.U3DSimpleTouchZones.Instance.IsTouchEnabled;
 
-        switch (_currentPlatform)
+        float platformMultiplier;
+
+        if (touchInputActive)
         {
-            case RuntimePlatform.WebGLPlayer:
-                platformMultiplier = webglSensitivityMultiplier;
-                break;
-            case RuntimePlatform.IPhonePlayer:
-            case RuntimePlatform.Android:
-                platformMultiplier = mobileSensitivityMultiplier;
-                break;
-            default:
-                platformMultiplier = 1.0f;
-                break;
+            // Touch look must not be scaled by the desktop-browser multiplier.
+            // Application.platform reports WebGLPlayer on mobile, which would
+            // otherwise quarter finger-drag look via webglSensitivityMultiplier.
+            // Touch uses the shared mouse base scaled only by the user's Settings
+            // preference — no platform damper.
+            platformMultiplier = 1.0f;
+        }
+        else
+        {
+            switch (_currentPlatform)
+            {
+                case RuntimePlatform.WebGLPlayer:
+                    platformMultiplier = webglSensitivityMultiplier;
+                    break;
+                case RuntimePlatform.IPhonePlayer:
+                case RuntimePlatform.Android:
+                    platformMultiplier = mobileSensitivityMultiplier;
+                    break;
+                default:
+                    platformMultiplier = 1.0f;
+                    break;
+            }
         }
 
         _runtimeMouseSensitivity = baseMouseSensitivity * platformMultiplier * userSensitivityMultiplier;
@@ -1002,6 +1017,7 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleMovementFusion(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
+        if (!IsLocalLookMoveInputAuthoritative()) return;
 
         moveInput = input.MovementInput;
 
@@ -1107,7 +1123,7 @@ public class U3DPlayerController : NetworkBehaviour
     void HandleLookFusionFixed(U3DNetworkInputData input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
-        if (!IsCursorLocked()) return;
+        if (!IsLocalLookMoveInputAuthoritative()) return;
 
         Vector2 rawLookInput = input.LookInput;
 
@@ -1116,8 +1132,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         Vector2 sensitivityAdjustedInput = rawLookInput * _runtimeMouseSensitivity;
 
+        bool touchInputActive = U3D.Input.U3DSimpleTouchZones.Instance != null
+            && U3D.Input.U3DSimpleTouchZones.Instance.IsTouchEnabled;
+
         Vector2 finalLookInput;
-        if (enableMouseSmoothing)
+        if (enableMouseSmoothing && !touchInputActive)
         {
             float currentTime = (float)Runner.SimulationTime;
             _mouseInputBuffer.Enqueue(sensitivityAdjustedInput);
@@ -1201,6 +1220,31 @@ public class U3DPlayerController : NetworkBehaviour
                 NetworkCameraPitch = cameraPitch;
             }
         }
+    }
+
+    /// <summary>
+    /// Single authority for whether local non-VR game look/move input is live
+    /// this frame. Replaces the previous per-handler re-derivation (IsCursorLocked
+    /// gate in look, implicit assumption in movement). Consulted only on the non-VR
+    /// local path — VR routes through HandleVRMovement before these handlers are
+    /// reached, so this method intentionally contains no VR branch.
+    ///
+    /// Desktop: authoritative only when the pointer is captured (IsCursorLocked),
+    /// preserving free-cursor-over-UI suppression exactly as before.
+    /// Touch: authoritative when touch is the active input source. Touch has no
+    /// pointer-capture concept; the touch zone component already owns the "is the
+    /// user driving input" determination, and the network manager already uses the
+    /// same signal to decide it is reading touch into the networked input struct.
+    /// </summary>
+    private bool IsLocalLookMoveInputAuthoritative()
+    {
+        bool touchInputActive = U3D.Input.U3DSimpleTouchZones.Instance != null
+            && U3D.Input.U3DSimpleTouchZones.Instance.IsTouchEnabled;
+
+        if (touchInputActive)
+            return true;
+
+        return IsCursorLocked();
     }
 
     void HandleAdvancedMouseControls(U3DNetworkInputData input)

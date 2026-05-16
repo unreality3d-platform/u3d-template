@@ -1,14 +1,25 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using System.Collections.Generic;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.EnhancedTouch;
+using UnityEngine.InputSystem.Utilities;
+using ETouch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace U3D.Input
 {
     /// <summary>
-    /// Simplified zone-based touch controller that provides raw input values.
-    /// Designed to feed directly into U3DFusionNetworkManager's polling system.
-    /// No virtual controls, no Input System dependency — just pure touch data.
+    /// Zone-based touch controller that provides raw input values.
+    /// Feeds U3DFusionNetworkManager's polling system via public properties.
+    ///
+    /// Built on the Input System's EnhancedTouch API. The legacy
+    /// UnityEngine.Input touch API was abandoned here because its phase
+    /// reporting is unreliable on iOS Safari/WebKit WebGL (continuous drags
+    /// misreported as repeated Began events). EnhancedTouch flushes its event
+    /// queue later in the frame and reports phase/position correctly on that
+    /// platform. This is the project's touch input path; it runs polled,
+    /// parallel to the .inputactions-driven desktop/VR input, and shares no
+    /// state with it.
     /// </summary>
     public class U3DSimpleTouchZones : MonoBehaviour
     {
@@ -39,6 +50,7 @@ namespace U3D.Input
         private float pinchStartDistance;
 
         private bool _isTouchEnabled;
+        private bool _enhancedTouchEnabled;
 
         public Vector2 MovementInput { get; private set; }
         public Vector2 LookInput { get; private set; }
@@ -54,10 +66,10 @@ namespace U3D.Input
 
         private class TouchData
         {
-            public int fingerId;
+            public int touchId;
             public Vector2 startPosition;
             public Vector2 currentPosition;
-            public Vector2 lastPosition;
+            public Vector2 frameDelta;
             public float startTime;
             public bool isLeftSide;
         }
@@ -65,14 +77,31 @@ namespace U3D.Input
         void Awake()
         {
             Instance = this;
-            UnityEngine.Input.multiTouchEnabled = true;
             _isTouchEnabled = DetectTouchCapability();
+        }
+
+        void OnEnable()
+        {
+            if (!_enhancedTouchEnabled)
+            {
+                EnhancedTouchSupport.Enable();
+                _enhancedTouchEnabled = true;
+            }
+        }
+
+        void OnDisable()
+        {
+            if (_enhancedTouchEnabled)
+            {
+                EnhancedTouchSupport.Disable();
+                _enhancedTouchEnabled = false;
+            }
         }
 
         /// <summary>
         /// Detects whether this device supports touch input.
         /// Application.isMobilePlatform is false on WebGL even when running on a phone,
-        /// so we also check for WebGL + touch support + mobile user agent indicators.
+        /// so we also check for WebGL + a present Touchscreen device + mobile hints.
         /// </summary>
         private bool DetectTouchCapability()
         {
@@ -84,7 +113,7 @@ namespace U3D.Input
 
             if (Application.platform == RuntimePlatform.WebGLPlayer)
             {
-                if (UnityEngine.Input.touchSupported)
+                if (Touchscreen.current != null)
                     return true;
 
                 string deviceModel = SystemInfo.deviceModel.ToLower();
@@ -123,34 +152,33 @@ namespace U3D.Input
             LookInput = Vector2.zero;
             ZoomInput = 0f;
 
-            if (UnityEngine.Input.touchCount >= 2)
+            var touches = ETouch.activeTouches;
+
+            if (touches.Count >= 2)
             {
-                ProcessPinchGesture();
+                ProcessPinchGesture(touches);
             }
             else
             {
                 isPinching = false;
             }
 
-            for (int i = 0; i < UnityEngine.Input.touchCount; i++)
+            for (int i = 0; i < touches.Count; i++)
             {
-                Touch touch = UnityEngine.Input.GetTouch(i);
+                ETouch touch = touches[i];
+                int id = touch.touchId;
 
-                switch (touch.phase)
+                if (touch.began || !activeTouches.ContainsKey(id))
                 {
-                    case UnityEngine.TouchPhase.Began:
-                        HandleTouchBegan(touch);
-                        break;
-
-                    case UnityEngine.TouchPhase.Moved:
-                    case UnityEngine.TouchPhase.Stationary:
-                        HandleTouchMoved(touch);
-                        break;
-
-                    case UnityEngine.TouchPhase.Ended:
-                    case UnityEngine.TouchPhase.Canceled:
-                        HandleTouchEnded(touch);
-                        break;
+                    HandleTouchBegan(touch);
+                }
+                else if (touch.ended)
+                {
+                    HandleTouchEnded(id);
+                }
+                else
+                {
+                    HandleTouchMoved(touch);
                 }
             }
 
@@ -178,7 +206,7 @@ namespace U3D.Input
 
             if (lookTouch != null && !isPinching)
             {
-                Vector2 delta = lookTouch.currentPosition - lookTouch.lastPosition;
+                Vector2 delta = lookTouch.frameDelta;
 
                 if (delta.magnitude > lookDeadZone)
                 {
@@ -188,28 +216,40 @@ namespace U3D.Input
                     LookInput = new Vector2(delta.x, -delta.y) * lookSensitivity * 100f;
                 }
 
-                lookTouch.lastPosition = lookTouch.currentPosition;
+                lookTouch.frameDelta = Vector2.zero;
             }
         }
 
-        void HandleTouchBegan(Touch touch)
+        void HandleTouchBegan(ETouch touch)
         {
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+            int id = touch.touchId;
+
+            if (activeTouches.ContainsKey(id))
+            {
+                // Spurious re-Began for an already-tracked touch: treat as a move
+                // so we never lose continuity or reassign the touch's role.
+                HandleTouchMoved(touch);
+                return;
+            }
+
+            Vector2 position = touch.screenPosition;
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(id))
                 return;
 
-            bool isLeftSide = touch.position.x < Screen.width * screenDivider;
+            bool isLeftSide = position.x < Screen.width * screenDivider;
 
             TouchData data = new TouchData
             {
-                fingerId = touch.fingerId,
-                startPosition = touch.position,
-                currentPosition = touch.position,
-                lastPosition = touch.position,
+                touchId = id,
+                startPosition = position,
+                currentPosition = position,
+                frameDelta = Vector2.zero,
                 startTime = Time.time,
                 isLeftSide = isLeftSide
             };
 
-            activeTouches[touch.fingerId] = data;
+            activeTouches[id] = data;
 
             if (isLeftSide && movementTouch == null)
             {
@@ -222,7 +262,7 @@ namespace U3D.Input
                 lookTouch = data;
 
                 float timeSinceLastTap = Time.time - lastRightTapTime;
-                float distance = Vector2.Distance(touch.position, lastRightTapPosition);
+                float distance = Vector2.Distance(position, lastRightTapPosition);
 
                 if (timeSinceLastTap < doubleTapWindow && distance < 50f)
                 {
@@ -232,18 +272,20 @@ namespace U3D.Input
                 else
                 {
                     lastRightTapTime = Time.time;
-                    lastRightTapPosition = touch.position;
+                    lastRightTapPosition = position;
                 }
             }
 
             CheckSpecialGestures();
         }
 
-        void HandleTouchMoved(Touch touch)
+        void HandleTouchMoved(ETouch touch)
         {
-            if (activeTouches.TryGetValue(touch.fingerId, out TouchData data))
+            if (activeTouches.TryGetValue(touch.touchId, out TouchData data))
             {
-                data.currentPosition = touch.position;
+                Vector2 position = touch.screenPosition;
+                data.frameDelta += position - data.currentPosition;
+                data.currentPosition = position;
 
                 if (data == movementTouch && isLongPressing)
                 {
@@ -256,9 +298,9 @@ namespace U3D.Input
             }
         }
 
-        void HandleTouchEnded(Touch touch)
+        void HandleTouchEnded(int touchId)
         {
-            if (activeTouches.TryGetValue(touch.fingerId, out TouchData data))
+            if (activeTouches.TryGetValue(touchId, out TouchData data))
             {
                 if (Time.time - data.startTime < 0.2f)
                 {
@@ -283,13 +325,13 @@ namespace U3D.Input
                     lookTouch = null;
                 }
 
-                activeTouches.Remove(touch.fingerId);
+                activeTouches.Remove(touchId);
             }
         }
 
         void CheckSpecialGestures()
         {
-            if (UnityEngine.Input.touchCount >= 2)
+            if (activeTouches.Count >= 2)
             {
                 int leftTouches = 0;
                 foreach (var touch in activeTouches.Values)
@@ -303,31 +345,18 @@ namespace U3D.Input
                 }
             }
 
-            if (UnityEngine.Input.touchCount >= 3)
+            if (activeTouches.Count >= 3)
             {
-                bool allNew = true;
-                for (int i = 0; i < 3; i++)
-                {
-                    if (UnityEngine.Input.GetTouch(i).phase != UnityEngine.TouchPhase.Began)
-                    {
-                        allNew = false;
-                        break;
-                    }
-                }
-
-                if (allNew)
-                {
-                    FlyRequested = true;
-                }
+                FlyRequested = true;
             }
         }
 
-        void ProcessPinchGesture()
+        void ProcessPinchGesture(ReadOnlyArray<ETouch> touches)
         {
-            Touch touch1 = UnityEngine.Input.GetTouch(0);
-            Touch touch2 = UnityEngine.Input.GetTouch(1);
+            ETouch touch1 = touches[0];
+            ETouch touch2 = touches[1];
 
-            float currentPinchDistance = Vector2.Distance(touch1.position, touch2.position);
+            float currentPinchDistance = Vector2.Distance(touch1.screenPosition, touch2.screenPosition);
 
             if (!isPinching)
             {
