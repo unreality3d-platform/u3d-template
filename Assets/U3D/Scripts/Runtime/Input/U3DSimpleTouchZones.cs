@@ -26,7 +26,7 @@ namespace U3D.Input
         [Header("Zone Configuration")]
         [SerializeField] private float screenDivider = 0.5f;
         [SerializeField] private float movementSensitivity = 1.0f;
-        [SerializeField] private float lookSensitivity = 0.5f;
+        [SerializeField] private float lookSensitivity = 1.0f;
 
         [Header("Gesture Timing")]
         [SerializeField] private float doubleTapWindow = 0.3f;
