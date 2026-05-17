@@ -129,8 +129,8 @@ namespace U3D
 
         void FindPlayer()
         {
-            U3DPlayerController controller = FindAnyObjectByType<U3DPlayerController>();
-            if (controller != null && controller.IsLocalPlayer)
+            U3DPlayerController controller = U3DPlayerController.FindLocalPlayer();
+            if (controller != null)
             {
                 playerController = controller;
                 playerTransform = controller.transform;
