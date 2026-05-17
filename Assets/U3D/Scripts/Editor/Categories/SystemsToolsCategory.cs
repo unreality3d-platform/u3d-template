@@ -11,6 +11,10 @@ namespace U3D.Editor
         private List<CreatorTool> tools;
 
         private const string CORE_PREFAB_PATH = "Assets/U3D/Prefabs/U3D CORE - DO NOT DELETE.prefab";
+        private const string PLAYER_PREFAB_PATH = "Assets/U3D/Prefabs/U3D_PlayerController.prefab";
+        private const string RETICLE_MATERIAL_PATH = "Assets/U3D/U3D_Assets/UI/U3DReticle.mat";
+        private const string RETICLE_CHILD_NAME = "Reticle";
+        private const string PLAYER_CAMERA_NAME = "PlayerCamera";
 
         public SystemsToolsCategory()
         {
@@ -20,6 +24,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Quest System", "Create single-player missions and objectives for your experience", () => U3DQuestSystemTools.CreateQuestSystem()),
                 new CreatorTool("🟢 Add Scorable", "Creates a worldspace scoreboard you can place anywhere in your scene.", () => U3DScorableTools.AddScorable()),
                 new CreatorTool("🟢 Make Scorable", "Adds a U3DScorable component to the selected object. The object should have a TextMeshPro component in its hierarchy.", () => U3DScorableTools.MakeScorable(), true),
+                new CreatorTool("🟢 Add Gaze Reticle", "Adds a small aiming dot at screen center to the player. Helps players see where they're pointing for UI and interaction, especially in VR. Hides automatically in third-person. Adds to the player prefab; will not add a duplicate.", AddGazeReticle),
                 new CreatorTool("🚧 Add Inventory System", "Essential for collecting, managing, and using items in exploration games", () => { }),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => { }),
                 new CreatorTool("🚧 Add Quiz System", "Interactive questions and knowledge tests", () => { }),
@@ -76,6 +81,131 @@ namespace U3D.Editor
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
+        }
+
+        private static void AddGazeReticle()
+        {
+            // Verify the material exists before touching the prefab, so we never half-modify it.
+            Material reticleMat = AssetDatabase.LoadAssetAtPath<Material>(RETICLE_MATERIAL_PATH);
+            if (reticleMat == null)
+            {
+                EditorUtility.DisplayDialog("Reticle Material Not Found",
+                    "Could not find the reticle material at:\n" + RETICLE_MATERIAL_PATH +
+                    "\n\nMake sure the U3D template asset has not been moved or renamed.",
+                    "OK");
+                return;
+            }
+
+            // Confirm the player prefab exists.
+            GameObject playerPrefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(PLAYER_PREFAB_PATH);
+            if (playerPrefabAsset == null)
+            {
+                EditorUtility.DisplayDialog("Player Prefab Not Found",
+                    "Could not find the player prefab at:\n" + PLAYER_PREFAB_PATH +
+                    "\n\nMake sure the U3D template prefab has not been moved or renamed.",
+                    "OK");
+                return;
+            }
+
+            // LoadPrefabContents gives an isolated, in-memory copy of the prefab. We modify
+            // that copy, then SaveAsPrefabAsset writes it back. UnloadPrefabContents must
+            // always run afterward (even on early return) or the isolated scene leaks —
+            // hence the try/finally.
+            GameObject contentsRoot = PrefabUtility.LoadPrefabContents(PLAYER_PREFAB_PATH);
+            bool modified = false;
+
+            try
+            {
+                // The prefab isn't instantiated in a scene, so GameObject.Find won't work.
+                // Walk the transform hierarchy from the loaded root instead.
+                Transform cameraTransform = FindDeepChild(contentsRoot.transform, PLAYER_CAMERA_NAME);
+                if (cameraTransform == null)
+                {
+                    EditorUtility.DisplayDialog("Camera Not Found",
+                        "Could not find a child named '" + PLAYER_CAMERA_NAME + "' inside the player prefab.\n\n" +
+                        "The player prefab structure may have changed.",
+                        "OK");
+                    return;
+                }
+
+                // Idempotency: don't add a second Reticle if the creator runs the tool twice.
+                Transform existing = cameraTransform.Find(RETICLE_CHILD_NAME);
+                if (existing != null)
+                {
+                    EditorUtility.DisplayDialog("Gaze Reticle",
+                        "The player prefab already has a Gaze Reticle.\n\n" +
+                        "To remove it, delete the '" + RETICLE_CHILD_NAME + "' child under " +
+                        PLAYER_CAMERA_NAME + " in " + PLAYER_PREFAB_PATH + ".",
+                        "OK");
+                    return;
+                }
+
+                // Build the reticle GameObject with the exact settings confirmed working:
+                // Quad mesh, U3DReticle material, position (0,0,2), scale 0.01, Ignore Raycast
+                // layer, no collider, U3DGazeReticle hide-logic component.
+                GameObject reticle = new GameObject(RETICLE_CHILD_NAME);
+                reticle.transform.SetParent(cameraTransform, false);
+                reticle.transform.localPosition = new Vector3(0f, 0f, 2f);
+                reticle.transform.localRotation = Quaternion.identity;
+                reticle.transform.localScale = Vector3.one * 0.01f;
+                reticle.layer = LayerMask.NameToLayer("Ignore Raycast");
+
+                MeshFilter meshFilter = reticle.AddComponent<MeshFilter>();
+                meshFilter.sharedMesh = GetBuiltinQuadMesh();
+
+                MeshRenderer meshRenderer = reticle.AddComponent<MeshRenderer>();
+                meshRenderer.sharedMaterial = reticleMat;
+                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                meshRenderer.receiveShadows = false;
+
+                reticle.AddComponent<U3D.U3DGazeReticle>();
+
+                PrefabUtility.SaveAsPrefabAsset(contentsRoot, PLAYER_PREFAB_PATH);
+                modified = true;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(contentsRoot);
+            }
+
+            if (modified)
+            {
+                AssetDatabase.SaveAssets();
+                EditorUtility.DisplayDialog("Gaze Reticle Added",
+                    "A gaze reticle was added to the player prefab.\n\n" +
+                    "It shows a small dot at screen center and hides automatically in third-person.\n\n" +
+                    "To remove it later, delete the '" + RETICLE_CHILD_NAME + "' child under " +
+                    PLAYER_CAMERA_NAME + " in the player prefab.",
+                    "OK");
+
+                GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PLAYER_PREFAB_PATH);
+                if (playerPrefab != null)
+                    EditorGUIUtility.PingObject(playerPrefab);
+            }
+        }
+
+        // Recursive transform search — needed because the prefab is loaded as isolated
+        // contents, not instantiated, so GameObject.Find / FindObjectOfType don't apply.
+        private static Transform FindDeepChild(Transform parent, string name)
+        {
+            if (parent.name == name) return parent;
+            foreach (Transform child in parent)
+            {
+                Transform result = FindDeepChild(child, name);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        // Unity's built-in Quad mesh. There's no direct API to load it by name, so borrow
+        // it from a temporary primitive, then destroy the primitive immediately. The mesh
+        // is a shared built-in asset and outlives the temporary GameObject.
+        private static Mesh GetBuiltinQuadMesh()
+        {
+            GameObject temp = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Mesh quad = temp.GetComponent<MeshFilter>().sharedMesh;
+            Object.DestroyImmediate(temp);
+            return quad;
         }
     }
 }

@@ -8833,7 +8833,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4552a7b7966ebc049b5434a21b7c8199, type: 3}
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DWorldspaceUI
-  faceCamera: 1
+  faceCamera: 0
   lockYAxis: 1
   hideDistance: 10
   showDistance: 2
