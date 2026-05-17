@@ -348,8 +348,7 @@ namespace U3D
         /// <summary>
         /// Apply the full U3D scroll view style: vertical-only configuration, transparent background
         /// (so the parent panel shows through), and U3D's flat square sprite on the vertical
-        /// scrollbar's track and thumb. The vertical scrollbar is also narrowed to 10px for a more
-        /// minimal appearance compared to Unity's 20px default.
+        /// scrollbar's track and thumb. The vertical scrollbar preserves Unity's 20px default.
         ///
         /// The scrollbar GameObject and Scrollbar component are preserved — only sprites and width
         /// change. ScrollRect functionality (drag, mouse wheel, touch) is unaffected.
@@ -376,10 +375,10 @@ namespace U3D
             Transform verticalScrollbar = scrollView.transform.Find("Scrollbar Vertical");
             if (verticalScrollbar != null)
             {
-                // Narrow the scrollbar from Unity's 20px default to a 10px minimal width
+                // Keep the scrollbar Unity's 20px default
                 var scrollbarRect = verticalScrollbar.GetComponent<RectTransform>();
                 if (scrollbarRect != null)
-                    scrollbarRect.sizeDelta = new Vector2(10f, scrollbarRect.sizeDelta.y);
+                    scrollbarRect.sizeDelta = new Vector2(20f, scrollbarRect.sizeDelta.y);
 
                 // Track background — inset surface tier
                 var scrollbarImage = verticalScrollbar.GetComponent<Image>();

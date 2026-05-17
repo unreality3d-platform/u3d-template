@@ -351,8 +351,8 @@ namespace U3D.Editor
             RectTransform handleSlideArea = sliderObj.transform.Find("Handle Slide Area")?.GetComponent<RectTransform>();
             if (handleSlideArea != null)
             {
-                handleSlideArea.offsetMin = new Vector2(10f, 6f);
-                handleSlideArea.offsetMax = new Vector2(-10f, -6f);
+                handleSlideArea.offsetMin = new Vector2(20f, 6f);
+                handleSlideArea.offsetMax = new Vector2(-20f, -6f);
             }
 
             GameObject timeObj = TMP_DefaultControls.CreateText(tmpResources);
@@ -699,6 +699,19 @@ namespace U3D.Editor
                 }
             };
 
+            // Actions whose XR bindings exist in the asset but do nothing in a VR
+            // session by VR camera architecture, not by bug:
+            //   Zoom — FOV change has no effect; the WebXR XR Display Subsystem
+            //           supplies per-eye projection from the device every frame.
+            //   PerspectiveSwitch — third-person is blocked by the head-bone camera
+            //           position lock in U3DPlayerController.LateUpdate and the
+            //           _isInVRMode early-return in HandleCameraPositioning.
+            // Both still work on desktop, so they are only excluded from the VR
+            // CONTROLS section below — not from keyboard/mouse. The input bindings
+            // are intentionally retained (inert) for if/when VR camera work makes
+            // these functional; remove names from this set when that happens.
+            var vrNonFunctionalActions = new HashSet<string> { "Zoom", "PerspectiveSwitch" };
+
             // Keyboard/mouse bindings
             var keyboardLines = new List<string>();
             foreach (var action in playerMap.actions)
@@ -724,6 +737,7 @@ namespace U3D.Editor
             foreach (var action in playerMap.actions)
             {
                 if (!isActionEnabled(action.name)) continue;
+                if (vrNonFunctionalActions.Contains(action.name)) continue;
                 string xr = GetBindingDisplayString(action, BindingDeviceFilter.XR);
                 if (!string.IsNullOrEmpty(xr))
                     xrLines.Add($"{GetActionDisplayName(action.name)}: {xr}");

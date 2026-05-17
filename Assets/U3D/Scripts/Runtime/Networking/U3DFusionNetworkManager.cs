@@ -93,6 +93,7 @@ namespace U3D.Networking
         private U3D.XR.U3DWebXRManager _webXRManager;
         private bool _isVRModeActive = false;
         private bool _vrSprintTriggerWasDown = false;
+        private bool _vrPerspectiveToggleState = true;
 
         public static event Action<bool> OnNetworkStatusChanged;
         public static event Action<PlayerRef> OnPlayerJoinedEvent;
@@ -466,6 +467,30 @@ namespace U3D.Networking
 
             if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
                 _autoRunTogglePressed = true;
+
+            // Zoom is a hold in VR, mirroring the non-VR middle-mouse Hold behavior.
+            // Unconditional level read each poll: held B button = bit set every tick
+            // = isZooming true downstream; release = bit absent = un-zoomed. The
+            // unconditional assignment self-clears, exactly like the non-VR else
+            // branch, so it needs no entry in OnInput's edge-clear block.
+            if (_zoomAction != null)
+                _zoomPressed = _zoomAction.IsPressed();
+
+            // Perspective switch translator. The VR binding is the right-stick CLICK
+            // (Primary2DAxisClick), which can only ever read +1 — it can never produce
+            // the negative the directional consumer needs to return to third person.
+            // So we treat each discrete click as a stateless toggle, exactly like the
+            // left-stick teleport click: WasPressedThisFrame gives one press edge per
+            // physical click (correct even on a Value action), and we alternate the
+            // signed one-shot we feed into the existing PerspectiveScroll consumer.
+            // false = send negative = go to third person; true = send positive = back
+            // to first. OnInput clears _perspectiveScrollValue to 0 every tick, so
+            // this is a one-shot delta with the same lifetime as the non-VR scroll.
+            if (_perspectiveSwitchAction != null && _perspectiveSwitchAction.WasPressedThisFrame())
+            {
+                _vrPerspectiveToggleState = !_vrPerspectiveToggleState;
+                _perspectiveScrollValue = _vrPerspectiveToggleState ? 10f : -10f;
+            }
 
             _leftMouseHeld = false;
             _rightMouseHeld = false;
