@@ -1,6 +1,6 @@
 # .github/workflows/u3d-template-update-automation.yml
 # Automated Update Package Generation with Version Tracking
-# 
+#
 # Features:
 # - Auto-updates version.txt with timestamp on every commit
 # - Creates selective update .unitypackage (no full ZIP)
@@ -10,6 +10,10 @@
 # Triggers:
 # - Push to main with template changes: auto-generates update package
 # - Manual dispatch: always generates update package (bypasses change detection)
+#
+# Third-party actions are pinned to commit SHAs. Trailing comment shows the version.
+# The job-level repository_owner condition is required. Do not remove either, and
+# see Technical Lessons Reference before changing them.
 
 name: U3D Template Update Automation
 
@@ -37,12 +41,12 @@ on:
 permissions:
   contents: write
   pages: write
-  id-token: write
 
 jobs:
   update-version-and-build:
     name: Generate Update Package
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'unreality3d-platform'
     
     outputs:
       version_tag: ${{ steps.version.outputs.tag }}
@@ -50,7 +54,7 @@ jobs:
       
     steps:
       - name: Checkout u3d-template repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           fetch-depth: 0
           lfs: true
@@ -92,7 +96,7 @@ jobs:
           fi
 
       - name: Cache Unity Library
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c  # v3.5.0
         with:
           path: Library
           key: Library-u3d-template-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
@@ -103,7 +107,7 @@ jobs:
       # -quit flag conflicts with the script's own exit handling.
       # Removed customParameters -- version is read from version.txt now.
       - name: Build update package with Unity
-        uses: game-ci/unity-builder@v4
+        uses: game-ci/unity-builder@1d4ee0697f193f54668e98961d79907911f4b4f2  # v4.8.1
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -132,7 +136,7 @@ jobs:
           fi
 
       - name: Upload template update package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: ${{ steps.version.outputs.tag }}
           path: Build/Updates/*.unitypackage
@@ -142,15 +146,16 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: update-version-and-build
+    if: github.repository_owner == 'unreality3d-platform'
     
     steps:
       - name: Checkout (for commit history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           fetch-depth: 0
 
       - name: Download update package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: ${{ needs.update-version-and-build.outputs.version_tag }}
           path: release-assets
@@ -259,7 +264,7 @@ jobs:
           echo "DELIMITER" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844  # v1 (v0.1.15)
         with:
           tag_name: ${{ needs.update-version-and-build.outputs.version_tag }}
           name: "${{ needs.update-version-and-build.outputs.version_tag }}"
