@@ -529,8 +529,6 @@ namespace U3D.Networking
 
         public async Task<bool> StartNetworking(string sessionName, string photonAppId = "")
         {
-            U3D.Networking.U3DPlayerNametag.ResetPlayerNumbering();
-
             if (_runner != null)
             {
                 await StopNetworking();
@@ -778,8 +776,6 @@ namespace U3D.Networking
 
         public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
         {
-            U3D.Networking.U3DPlayerNametag.RemovePlayer(player);
-
             if (_spawnedPlayers.TryGetValue(player, out NetworkObject playerObject))
             {
                 if (playerObject != null)
@@ -812,7 +808,6 @@ namespace U3D.Networking
         public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
         {
             _spawnedPlayers.Clear();
-            U3D.Networking.U3DPlayerNametag.ResetPlayerNumbering();
             OnNetworkStatusChanged?.Invoke(false);
             OnPlayerCountChanged?.Invoke(0);
         }

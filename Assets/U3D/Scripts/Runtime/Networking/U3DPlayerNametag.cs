@@ -30,9 +30,15 @@ namespace U3D.Networking
         [SerializeField] private TextMeshProUGUI playerNameText;
         [SerializeField] private CanvasGroup canvasGroup;
 
-        // Static player numbering system
-        private static Dictionary<PlayerRef, int> playerNumbers = new Dictionary<PlayerRef, int>();
-        private static int nextPlayerNumber = 1;
+        // Player numbering is derived locally from the PlayerRef already
+        // present on each player object. PlayerRef.RawEncoded is Fusion's
+        // stable slot identifier — identical on every client for a given
+        // player — so each client independently computes the same number
+        // with no networked state, no scene scan, and no spawn-time writes.
+        // Numbers are intentionally gappy (not 1,2,3 join order); only
+        // cross-client agreement matters. These obsolete static members
+        // are kept as no-op stubs so any external or older template code
+        // that referenced them still compiles.
 
         // Runtime references  
         private U3DPlayerController _playerController;
@@ -46,29 +52,6 @@ namespace U3D.Networking
         private float _currentAlpha = 1f;
         private bool _isInitialized = false;
         private bool _hasLineOfSight = true;
-
-        public static void ResetPlayerNumbering()
-        {
-            playerNumbers.Clear();
-            nextPlayerNumber = 1;
-        }
-
-        public static int GetPlayerNumber(PlayerRef playerRef)
-        {
-            if (!playerNumbers.ContainsKey(playerRef))
-            {
-                playerNumbers[playerRef] = nextPlayerNumber++;
-            }
-            return playerNumbers[playerRef];
-        }
-
-        public static void RemovePlayer(PlayerRef playerRef)
-        {
-            if (playerNumbers.ContainsKey(playerRef))
-            {
-                playerNumbers.Remove(playerRef);
-            }
-        }
 
         public void Initialize(U3DPlayerController playerController)
         {
@@ -215,19 +198,28 @@ namespace U3D.Networking
 
         void UpdatePlayerName()
         {
-            if (_networkObject == null || playerNameText == null) return;
+            if (playerNameText == null) return;
 
-            int playerNumber = GetPlayerNumber(_playerRef);
-            string displayName = $"Player {playerNumber}";
+            playerNameText.text = ResolveDisplayName();
+        }
 
-            playerNameText.text = displayName;
+        // Single source of truth for what this nametag shows. Derives a
+        // stable per-player number purely locally from the PlayerRef this
+        // nametag was initialized with — no networked state, no scene scan.
+        // Every client computes the same value for the same player because
+        // PlayerRef.RawEncoded is identical across clients. Step 2 will
+        // extend this to prefer a reserved/generated name when present;
+        // for now it is the consistent number every client agrees on.
+        string ResolveDisplayName()
+        {
+            if (_playerRef.IsRealPlayer)
+                return $"Player {_playerRef.RawEncoded}";
+            return "Player";
         }
 
         string GetDisplayName()
         {
-            if (_networkObject == null) return "Unknown Player";
-            int playerNumber = GetPlayerNumber(_playerRef);
-            return $"Player {playerNumber}";
+            return ResolveDisplayName();
         }
 
         void Update()
@@ -273,6 +265,7 @@ namespace U3D.Networking
 
             _lastUpdateTime = Time.time;
 
+            UpdatePlayerName();
             UpdatePosition();
             UpdateVisibilityAndLineOfSight();
             UpdateBillboarding();
@@ -371,14 +364,6 @@ namespace U3D.Networking
             if (canvasGroup != null)
             {
                 canvasGroup.alpha = alpha;
-            }
-        }
-
-        void OnDestroy()
-        {
-            if (_networkObject != null)
-            {
-                RemovePlayer(_playerRef);
             }
         }
 
