@@ -31,6 +31,20 @@ public class FirebaseIntegration : MonoBehaviour
     private U3DFusionNetworkManager networkManager;
     private U3DPlayerSpawner playerSpawner;
 
+    // Static identity snapshot. Set on every successful profile delivery and
+    // available to late subscribers (e.g. a player controller that spawns
+    // after the bridge has already resolved). Subscribers should check
+    // IsLocalProfileReady on subscription and apply the snapshot immediately
+    // if true, then rely on OnLocalProfileReady for future updates.
+    public static UserInfo LocalProfile { get; private set; }
+    public static bool IsLocalProfileReady => LocalProfile != null;
+
+    // Fires whenever a profile is delivered from the JS bridge. Fires once
+    // on initial resolution and again on any subsequent re-delivery (e.g.
+    // mid-session re-login). Subscribers wanting one-shot behavior can
+    // unsubscribe themselves after the first call.
+    public static event System.Action<UserInfo> OnLocalProfileReady;
+
     [DllImport("__Internal")]
     private static extern void UnityCheckContentAccess(string contentId);
 
@@ -48,6 +62,9 @@ public class FirebaseIntegration : MonoBehaviour
 
     [DllImport("__Internal")]
     private static extern void UnityGetPhotonToken(string roomName, string contentId);
+
+    [DllImport("__Internal")]
+    private static extern void UnityGetUserProfile();
 
     private bool _isConnecting = false;
     private string _pendingRoomName = "";
@@ -85,6 +102,7 @@ public class FirebaseIntegration : MonoBehaviour
         DetectDeploymentEnvironment();
         InitializeComponents();
         CheckContentAccess();
+        RequestUserProfile();
 
         if (enableMultiplayer)
             AutoInitializeMultiplayer();
@@ -164,6 +182,20 @@ public class FirebaseIntegration : MonoBehaviour
             {
                 Debug.LogWarning($"Failed to report metrics: {e.Message}");
             }
+        }
+#endif
+    }
+
+    void RequestUserProfile()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            UnityGetUserProfile();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"User profile request failed: {e.Message}");
         }
 #endif
     }
@@ -256,7 +288,15 @@ public class FirebaseIntegration : MonoBehaviour
     {
         try
         {
-            _currentUserInfo = JsonUtility.FromJson<UserInfo>(userDataJson);
+            var parsed = JsonUtility.FromJson<UserInfo>(userDataJson);
+            _currentUserInfo = parsed;
+
+            // Update static snapshot before firing the event so late-running
+            // subscribers checking IsLocalProfileReady from inside the handler
+            // see the new value, not the previous one.
+            LocalProfile = parsed;
+
+            OnLocalProfileReady?.Invoke(parsed);
         }
         catch (System.Exception e)
         {
@@ -294,6 +334,11 @@ public class FirebaseIntegration : MonoBehaviour
     public string GetCreatorUsername()
     {
         return _deploymentInfo?.creatorUsername ?? "";
+    }
+
+    public string GetLocalDisplayName()
+    {
+        return _currentUserInfo != null ? _currentUserInfo.displayName : "";
     }
 
     public string GetProjectName()

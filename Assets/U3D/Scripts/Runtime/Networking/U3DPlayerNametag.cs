@@ -212,8 +212,15 @@ namespace U3D.Networking
         // for now it is the consistent number every client agrees on.
         string ResolveDisplayName()
         {
+            if (_playerController != null
+                && !string.IsNullOrEmpty(_playerController.NetworkedDisplayName))
+            {
+                return _playerController.NetworkedDisplayName;
+            }
+
             if (_playerRef.IsRealPlayer)
-                return $"Player {_playerRef.RawEncoded}";
+                return U3D.U3DSafeNameGenerator.Generate(_playerRef.RawEncoded);
+
             return "Player";
         }
 

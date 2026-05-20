@@ -125,6 +125,7 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
     [HideInInspector][Networked] public NetworkBool NetworkIsFirstPerson { get; set; }
     [HideInInspector][Networked] public NetworkBehaviourId NetworkRideableRef { get; set; }
+    [HideInInspector][Networked, Capacity(40)] public string NetworkedDisplayName { get; set; }
 
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
     private Queue<float> _mouseTimeBuffer = new Queue<float>();
@@ -301,6 +302,14 @@ public class U3DPlayerController : NetworkBehaviour
                 case PerspectiveMode.ThirdPersonOnly: SetThirdPerson(); break;
                 case PerspectiveMode.SmoothScroll: SetFirstPerson(); break;
             }
+
+            // Identity wiring: subscribe to the local-profile-ready event and
+            // apply immediately if the profile already landed before we spawned.
+            // Push-driven — no polling, no timing assumptions. Despawned handles
+            // unsubscription to prevent leaks when scenes unload.
+            FirebaseIntegration.OnLocalProfileReady += HandleLocalProfileReady;
+            if (FirebaseIntegration.IsLocalProfileReady)
+                ApplyDisplayNameFromProfile(FirebaseIntegration.LocalProfile);
         }
         else
         {
@@ -312,8 +321,13 @@ public class U3DPlayerController : NetworkBehaviour
     {
         base.Despawned(runner, hasState);
 
-        if (_isLocalPlayer && _webXRManager != null)
-            _webXRManager.UnregisterLocalPlayer(this);
+        if (_isLocalPlayer)
+        {
+            FirebaseIntegration.OnLocalProfileReady -= HandleLocalProfileReady;
+
+            if (_webXRManager != null)
+                _webXRManager.UnregisterLocalPlayer(this);
+        }
     }
 
     void InitializeCameraPivot()
@@ -1640,6 +1654,31 @@ public class U3DPlayerController : NetworkBehaviour
             case RuntimePlatform.LinuxEditor: return "Linux";
             default: return "Desktop";
         }
+    }
+
+    // Push-driven identity callback. Invoked by FirebaseIntegration when the
+    // local user's profile resolves (either initially or on re-delivery).
+    // Only the local player ever subscribes, so the guard is defensive.
+    private void HandleLocalProfileReady(FirebaseIntegration.UserInfo profile)
+    {
+        if (!_isLocalPlayer) return;
+        ApplyDisplayNameFromProfile(profile);
+    }
+
+    // Writes the chosen displayName to the networked field, truncated to the
+    // 40-character Capacity defined on NetworkedDisplayName. Empty/null names
+    // leave NetworkedDisplayName unset so U3DPlayerNametag.ResolveDisplayName
+    // falls through to the deterministic generated-name path.
+    private void ApplyDisplayNameFromProfile(FirebaseIntegration.UserInfo profile)
+    {
+        if (profile == null) return;
+        if (string.IsNullOrEmpty(profile.displayName)) return;
+
+        string chosenName = profile.displayName;
+        if (chosenName.Length > 40)
+            chosenName = chosenName.Substring(0, 40);
+
+        NetworkedDisplayName = chosenName;
     }
 
     public void OnMove(InputAction.CallbackContext context) { }

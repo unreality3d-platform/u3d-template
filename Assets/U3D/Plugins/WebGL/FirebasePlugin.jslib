@@ -229,7 +229,7 @@ mergeInto(LibraryManager.library, {
         } else {
             console.warn('UnityGetPhotonToken not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnPhotonTokenReceived',
+                window.unityInstance.SendMessage('U3D_FirebaseIntegration', 'OnPhotonTokenReceived',
                     JSON.stringify({ error: 'Multiplayer functions not available' }));
             }
         }
@@ -247,7 +247,7 @@ mergeInto(LibraryManager.library, {
         } else {
             console.warn('UnityCreateMultiplayerSession not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionCreated',
+                window.unityInstance.SendMessage('U3D_FirebaseIntegration', 'OnSessionCreated',
                     JSON.stringify({ error: 'Session creation not available' }));
             }
         }
@@ -263,7 +263,7 @@ mergeInto(LibraryManager.library, {
         } else {
             console.warn('UnityJoinMultiplayerSession not available in browser context');
             if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnSessionJoinResponse',
+                window.unityInstance.SendMessage('U3D_FirebaseIntegration', 'OnSessionJoinResponse',
                     JSON.stringify({ error: 'Session join not available' }));
             }
         }
@@ -286,7 +286,7 @@ mergeInto(LibraryManager.library, {
                     paypalConnected: false,
                     creatorUsername: ''
                 };
-                window.unityInstance.SendMessage('FirebaseIntegration', 'OnUserProfileReceived',
+                window.unityInstance.SendMessage('U3D_FirebaseIntegration', 'OnUserProfileReceived',
                     JSON.stringify(defaultProfile));
             }
         }
@@ -414,7 +414,7 @@ mergeInto(LibraryManager.library, {
         console.log('Unity browser info:', browserInfo);
 
         if (typeof window.unityInstance !== 'undefined' && window.unityInstance) {
-            window.unityInstance.SendMessage('FirebaseIntegration', 'OnBrowserInfoReceived',
+            window.unityInstance.SendMessage('U3D_FirebaseIntegration', 'OnBrowserInfoReceived',
                 JSON.stringify(browserInfo));
         }
     },
