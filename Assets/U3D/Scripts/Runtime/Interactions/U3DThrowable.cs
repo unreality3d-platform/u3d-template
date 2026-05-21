@@ -108,6 +108,21 @@ namespace U3D
             Resetting      // Temporarily kinematic while resetting position
         }
 
+        /// <summary>
+        /// Returns true when the NetworkRigidbody3D has an assigned interpolation
+        /// target Transform. Teleport() dereferences the interpolation target
+        /// internally, so calling it with a null target throws an
+        /// UnassignedReferenceException. This guard lets us skip Teleport on
+        /// throwables that were set up before the interpolation target was
+        /// auto-assigned, without restructuring the GameObject.
+        /// </summary>
+        private bool HasValidInterpolationTarget()
+        {
+            return hasNetworkRb3D
+                && networkRigidbody != null
+                && networkRigidbody.InterpolationTarget != null;
+        }
+
         private void Awake()
         {
             rb = GetComponent<Rigidbody>();
@@ -169,7 +184,7 @@ namespace U3D
 
         private IEnumerator ApplyStartActiveAfterPhysicsSettle()
         {
-            if (hasNetworkRb3D && networkRigidbody != null)
+            if (HasValidInterpolationTarget())
             {
                 networkRigidbody.Teleport(transform.position, transform.rotation);
             }
@@ -240,7 +255,6 @@ namespace U3D
             {
                 case PhysicsState.Sleeping:
                 case PhysicsState.Grabbed:
-                case PhysicsState.Resetting:
                     if (!rb.isKinematic)
                     {
                         rb.linearVelocity = Vector3.zero;
@@ -248,6 +262,26 @@ namespace U3D
                     }
                     rb.useGravity = false;
                     rb.isKinematic = true;
+                    break;
+
+                case PhysicsState.Resetting:
+                    // Transient state during world-bounds reset. Only zero velocities
+                    // when networked — direct writes to isKinematic during Resetting
+                    // race with NetworkRigidbody3D's tick-time state reassertion and
+                    // lose, preventing the subsequent Teleport from actually warping
+                    // the object back to spawn. This mirrors U3DKickable's pattern.
+                    // The Sleeping state that follows Teleport in ResetToSpawnPosition
+                    // is what actually sets the body kinematic.
+                    if (!rb.isKinematic)
+                    {
+                        rb.linearVelocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                    }
+                    if (!isNetworked)
+                    {
+                        rb.useGravity = false;
+                        rb.isKinematic = true;
+                    }
                     break;
 
                 case PhysicsState.Active:
@@ -351,7 +385,10 @@ namespace U3D
                 if (hasNetworkRb3D && networkRigidbody != null)
                 {
                     networkRigidbody.enabled = true;
-                    networkRigidbody.Teleport(transform.position, transform.rotation);
+                    if (HasValidInterpolationTarget())
+                    {
+                        networkRigidbody.Teleport(transform.position, transform.rotation);
+                    }
                 }
 
                 rb.isKinematic = false;
@@ -377,7 +414,10 @@ namespace U3D
             if (hasNetworkRb3D && networkRigidbody != null)
             {
                 networkRigidbody.enabled = true;
-                networkRigidbody.Teleport(transform.position, transform.rotation);
+                if (HasValidInterpolationTarget())
+                {
+                    networkRigidbody.Teleport(transform.position, transform.rotation);
+                }
             }
 
             if (playerCamera == null)
@@ -542,7 +582,10 @@ namespace U3D
             {
                 if (!networkRigidbody.enabled)
                 {
-                    networkRigidbody.Teleport(transform.position, transform.rotation);
+                    if (HasValidInterpolationTarget())
+                    {
+                        networkRigidbody.Teleport(transform.position, transform.rotation);
+                    }
                     networkRigidbody.enabled = true;
                 }
                 networkRigidbody.SyncParent = true;
@@ -600,13 +643,16 @@ namespace U3D
         {
             if (isNetworked && (Object == null || !Object.HasStateAuthority)) return;
 
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-            }
+            // Mirror U3DKickable's bounds-reset flow exactly. Resetting state
+            // zeros velocities (when networked, skips the kinematic write so
+            // NRB3D handles state). Teleport warps the body to spawn. Sleeping
+            // state then locks the body kinematic at rest, ready to be grabbed.
+            // No null-guard on Teleport here — Pushable and Kickable call Teleport
+            // unguarded in their bounds-reset paths and don't crash, even with a
+            // null InterpolationTarget. The original UnassignedReferenceException
+            // crash was specifically on the grab/release Teleport calls, which
+            // remain null-guarded.
+            SetPhysicsState(PhysicsState.Resetting);
 
             if (hasNetworkRb3D && networkRigidbody != null)
             {
@@ -624,6 +670,7 @@ namespace U3D
             {
                 NetworkIsThrown = false;
                 NetworkIsPhysicsActive = false;
+                NetworkAwaitingMotion = false;
             }
 
             OnWorldBoundsReset?.Invoke();

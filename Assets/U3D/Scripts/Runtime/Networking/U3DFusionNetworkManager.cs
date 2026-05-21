@@ -259,7 +259,12 @@ namespace U3D.Networking
                 return;
             }
 
-            if (IsTouchInputActive() && UnityEngine.Input.touchCount > 0)
+            // Touch and keyboard/mouse run in parallel on touch-capable devices. Touch
+            // takes over only once the touch zones have observed an actual touch this
+            // session (IsTouchEnabled flips true on first touch and stays true). Until
+            // then, keyboard/mouse handles everything — including in the editor and on
+            // desktop WebGL.
+            if (IsTouchInputActive())
             {
                 _cachedMovementInput = touchZones.MovementInput;
                 _cachedLookInput = touchZones.LookInput;
@@ -274,6 +279,13 @@ namespace U3D.Networking
                     _flyPressed = true;
                 if (touchZones.InteractRequested)
                     _interactPressed = true;
+
+                // Tell the touch zones we've consumed its one-frame flags this frame.
+                // The previous ClearOneFrameInputs-inside-touch-Update pattern cleared
+                // them on the same frame they were set, racing the network manager's
+                // read. Lifecycle is now owned in one place: set in touch zone, read
+                // and clear here.
+                touchZones.ConsumeOneFrameInputs();
             }
             else
             {
@@ -296,17 +308,6 @@ namespace U3D.Networking
 
                 if (_interactAction != null && _interactAction.WasPressedThisFrame())
                     _interactPressed = true;
-
-                if (touchZones != null && Mathf.Abs(touchZones.ZoomInput) > 0.01f)
-                {
-                    _zoomPressed = touchZones.ZoomInput > 0;
-                    _perspectiveScrollValue = touchZones.ZoomInput * 5f;
-                }
-
-                if (touchZones != null && touchZones.PerspectiveSwitchRequested)
-                {
-                    _perspectiveScrollValue = 10f;
-                }
 
                 if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
                 {
@@ -343,7 +344,7 @@ namespace U3D.Networking
                 if (_turnRightAction != null)
                     _turnRightPressed = _turnRightAction.IsPressed();
 
-                if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
+                if (_autoRunToggleAction != null && _autoRunTogglePressed == false && _autoRunToggleAction.WasPressedThisFrame())
                     _autoRunTogglePressed = true;
             }
         }
