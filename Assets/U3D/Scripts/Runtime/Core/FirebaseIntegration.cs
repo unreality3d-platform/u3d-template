@@ -304,6 +304,36 @@ public class FirebaseIntegration : MonoBehaviour
         }
     }
 
+    // Inbound callback from content.js when the PayPal SDK script finishes
+    // loading on the creator page. Currently a no-op stub — the existing
+    // PayPal flow doesn't gate on this signal — but the method exists so
+    // SendMessage routing doesn't log "method not found" warnings. Wire
+    // real logic here later if PayPal initialization ever needs to react
+    // to SDK readiness from the C# side.
+    public void OnPayPalSDKReady(string ready)
+    {
+    }
+
+    // Inbound callbacks from FirebasePlugin.jslib session paths. The .jslib
+    // SendMessages for OnSessionCreated and OnSessionJoinResponse target
+    // this GameObject by name; these stubs prevent "method not found"
+    // warnings now that the GameObject-name fix routes them here correctly.
+    // Wire real logic here when/if session lifecycle handling moves into
+    // the C# layer.
+    public void OnSessionCreated(string sessionData)
+    {
+    }
+
+    public void OnSessionJoinResponse(string responseData)
+    {
+    }
+
+    // Inbound callback from FirebasePlugin.jslib UnityReportBrowserInfo
+    // path. Stubbed for the same reason as the session callbacks above.
+    public void OnBrowserInfoReceived(string browserInfoJson)
+    {
+    }
+
     async void StartNetworkingWithToken(PhotonTokenInfo tokenInfo)
     {
         if (networkManager == null) return;

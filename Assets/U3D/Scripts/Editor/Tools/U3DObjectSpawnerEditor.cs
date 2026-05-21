@@ -3,9 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using Fusion;
 using Fusion.Editor;
-#if FUSION_ADDONS_PHYSICS
 using Fusion.Addons.Physics;
-#endif
 
 namespace U3D.Editor
 {
@@ -148,30 +146,13 @@ namespace U3D.Editor
                 // Physics objects without NetworkRigidbody3D desync between clients,
                 // so this is almost always what creators want.
                 var rigidbody = prefabRoot.GetComponent<Rigidbody>();
-                if (rigidbody != null)
+                if (rigidbody != null && prefabRoot.GetComponent<NetworkRigidbody3D>() == null)
                 {
-#if FUSION_ADDONS_PHYSICS
-                    if (prefabRoot.GetComponent<NetworkRigidbody3D>() == null)
-                    {
-                        var nrb = prefabRoot.AddComponent<NetworkRigidbody3D>();
-                        ConfigureNetworkRigidbody3DFlags(nrb);
-                        prefabChanges.Add("added NetworkRigidbody3D (Rigidbody detected)");
-                        changed = true;
-                    }
-#else
-                    var nrbType = System.Type.GetType(
-                        "Fusion.Addons.Physics.NetworkRigidbody3D, Fusion.Addons.Physics"
-                    );
-                    if (nrbType != null && prefabRoot.GetComponent(nrbType) == null)
-                    {
-                        var nrb = prefabRoot.AddComponent(nrbType) as Component;
-                        ConfigureNetworkRigidbody3DFlagsReflection(nrb);
-                        prefabChanges.Add("added NetworkRigidbody3D (Rigidbody detected)");
-                        changed = true;
-                    }
-#endif
+                    var nrb = prefabRoot.AddComponent<NetworkRigidbody3D>();
+                    ConfigureNetworkRigidbody3DFlags(nrb);
+                    prefabChanges.Add("added NetworkRigidbody3D (Rigidbody detected)");
+                    changed = true;
                 }
-
                 if (changed)
                 {
                     PrefabUtility.SaveAsPrefabAsset(prefabRoot, path);
@@ -209,7 +190,6 @@ namespace U3D.Editor
             return true;
         }
 
-#if FUSION_ADDONS_PHYSICS
         private static void ConfigureNetworkRigidbody3DFlags(NetworkRigidbody3D nrb)
         {
             var so = new SerializedObject(nrb);
@@ -224,7 +204,6 @@ namespace U3D.Editor
 
             so.ApplyModifiedProperties();
         }
-#endif
 
         private static void ConfigureNetworkRigidbody3DFlagsReflection(Component nrb)
         {
