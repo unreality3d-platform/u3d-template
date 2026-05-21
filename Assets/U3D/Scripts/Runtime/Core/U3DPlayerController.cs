@@ -471,7 +471,7 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (_interactionManager == null)
         {
-            GameObject interactionManagerObj = new GameObject("InteractionManager");
+            GameObject interactionManagerObj = new GameObject("U3DInteractionManager");
             _interactionManager = interactionManagerObj.AddComponent<U3DInteractionManager>();
         }
     }

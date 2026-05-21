@@ -219,7 +219,6 @@ GameObject:
   - component: {fileID: 6674612337431982079}
   - component: {fileID: 3563563381108832062}
   - component: {fileID: 8322012935390943905}
-  - component: {fileID: 713224546979306075}
   m_Layer: 3
   m_Name: U3D_PlayerController
   m_TagString: Player
@@ -345,6 +344,7 @@ MonoBehaviour:
     Object:
       Raw: 0
     Behaviour: 0
+  _NetworkedDisplayName: 
   vrEyeOffset: {x: 0, y: 0.08, z: 0.08}
   vrBodyFollowDeadzone: 60
   vrBodyFollowSpeed: 90
@@ -745,20 +745,3 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 1, z: 0}
---- !u!114 &713224546979306075
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8488662624428376917}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 851f85fcf0007f24fb9ce1ee06b74df4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  interactionRange: 10
-  interactionLayerMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  debugMode: 0

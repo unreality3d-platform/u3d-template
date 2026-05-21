@@ -16,7 +16,7 @@ namespace U3D
     {
         [Header("Interaction Detection")]
         [Tooltip("Radius of the OverlapSphere used to find interactables near the player.")]
-        [SerializeField] private float interactionRange = 3f;
+        [SerializeField] private float interactionRange = 10f;
 
         [Tooltip("Layers checked by the interaction OverlapSphere.")]
         [SerializeField] private LayerMask interactionLayerMask = -1;
