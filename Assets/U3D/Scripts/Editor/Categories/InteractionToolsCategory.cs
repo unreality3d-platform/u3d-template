@@ -16,7 +16,7 @@ namespace U3D.Editor
         {
             tools = new List<CreatorTool>
             {
-                new CreatorTool("🟢 Add Object Spawner", "Spawns a prefab at this location. Add NetworkObject to your prefab for all players to see it.", ApplyObjectSpawner, true),
+                new CreatorTool("🟢 Make Object Spawner", "Spawns a prefab at this location. Enable 'Networked Spawn' on the component to have all players see the spawned object — your prefab must have a NetworkObject for that to work.", ApplyObjectSpawner, true),
                 new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance. Released objects float in place — use Make Throwable with 'Drop On Release' for gravity drop.", ApplyGrabbable, true),
                 new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown", ApplyThrowable, true),
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
@@ -88,9 +88,8 @@ namespace U3D.Editor
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
             {
-                selected = new GameObject("Object Spawner");
-                Undo.RegisterCreatedObjectUndo(selected, "Add Object Spawner");
-                Selection.activeGameObject = selected;
+                Debug.LogWarning("Please select an object first");
+                return;
             }
 
             if (!selected.GetComponent<NetworkObject>())

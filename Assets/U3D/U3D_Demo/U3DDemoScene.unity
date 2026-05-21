@@ -5702,6 +5702,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 819224738}
+  - component: {fileID: 819224740}
   - component: {fileID: 819224739}
   m_Layer: 0
   m_Name: Spawner
@@ -5743,6 +5744,7 @@ MonoBehaviour:
     weight: 1
   - prefab: {fileID: 4064305928472602456, guid: 5b543f98039e4364aa37da1546df9682, type: 3}
     weight: 0.2
+  networkedSpawn: 1
   spawnOnStart: 0
   respawnWhenDestroyed: 0
   maxInstances: 100
@@ -5753,6 +5755,25 @@ MonoBehaviour:
   onSpawnFailed:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &819224740
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 819224737}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
+  SortKey: 978936829
+  ObjectInterest: 1
+  Flags: 524289
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 819224739}
+  ForceRemoteRenderTimeframe: 0
 --- !u!1 &829039932
 GameObject:
   m_ObjectHideFlags: 0
@@ -15924,10 +15945,10 @@ MonoBehaviour:
   SortKey: 1720560403
   ObjectInterest: 1
   Flags: 524289
-  NestedObjects: []
+  NestedObjects:
+  - {fileID: 819224740}
   NetworkedBehaviours:
   - {fileID: 2047400989}
-  - {fileID: 819224739}
   ForceRemoteRenderTimeframe: 0
 --- !u!1 &2054159634
 GameObject:

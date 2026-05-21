@@ -29,11 +29,14 @@ namespace U3D
     public class U3DObjectSpawner : NetworkBehaviour
     {
         [Header("What to Spawn")]
-        [Tooltip("The prefab to spawn at this location. If a Prefab List is populated below, that list is used instead. Add a NetworkObject component to your prefab so all players see it. Without NetworkObject, only the local player will see the spawned object.")]
+        [Tooltip("The prefab to spawn at this location. If a Prefab List is populated below, that list is used instead.")]
         public GameObject prefabToSpawn;
 
-        [Tooltip("Optional weighted list of prefabs. When populated, a prefab is chosen based on relative weights each time Spawn is called. Each prefab should have a NetworkObject component for networked spawning.")]
+        [Tooltip("Optional weighted list of prefabs. When populated, a prefab is chosen based on relative weights each time Spawn is called.")]
         [SerializeField] private SpawnEntry[] prefabList;
+
+        [Tooltip("When enabled, all players see the spawned object. Your prefab needs a NetworkObject component — use the 'Configure Prefab(s) for Networking' button at the bottom of this Inspector to set that up automatically. When disabled, the object spawns locally — only the player who triggered the spawn sees it (good for local effects like particle bursts).")]
+        public bool networkedSpawn = true;
 
         [Header("Spawn Behavior")]
         [Tooltip("Spawn automatically when the scene starts.")]
@@ -71,7 +74,9 @@ namespace U3D
 
         /// <summary>
         /// Call this from any UnityEvent, trigger, or script to request a spawn.
-        /// Non-host clients automatically forward the request to the host via RPC.
+        /// When networkedSpawn is enabled, non-host clients automatically forward the
+        /// request to the host via RPC. When disabled, spawns happen locally on the
+        /// calling client only.
         /// </summary>
         public void Spawn()
         {
@@ -83,7 +88,7 @@ namespace U3D
                 return;
             }
 
-            if (Runner == null)
+            if (!networkedSpawn || Runner == null)
             {
                 SpawnLocal(resolved);
                 return;
@@ -123,8 +128,8 @@ namespace U3D
             var networkObject = prefab.GetComponent<NetworkObject>();
             if (networkObject == null)
             {
-                Debug.LogWarning($"U3DObjectSpawner on '{name}': Prefab has no NetworkObject component. Only the local player will see this object. Add NetworkObject to your prefab for all players to see it.");
-                SpawnLocal(prefab);
+                Debug.LogWarning($"U3DObjectSpawner on '{name}': Networked Spawn is enabled, but the assigned prefab has no NetworkObject component. Either add a NetworkObject to the prefab or disable Networked Spawn on this spawner.");
+                onSpawnFailed?.Invoke();
                 return;
             }
 
