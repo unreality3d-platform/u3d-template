@@ -456,8 +456,53 @@ namespace U3D
             Collider myCollider = GetComponent<Collider>();
             if (cc == null || myCollider == null) yield break;
 
+            // Make the throwable's collider ignore the player's CharacterController
+            // only. The object stays solid against the floor and everything else,
+            // so it falls and lands normally — only the CC can't see it. This
+            // prevents the dropped object from materializing in the column under
+            // the player's feet and triggering the CC's grounded resolution to
+            // pop the player up.
             Physics.IgnoreCollision(myCollider, cc, true);
-            yield return new WaitForSeconds(0.5f);
+
+            // Restore the CC↔throwable pair only when the player has moved
+            // horizontally outside the column above the object. The threshold
+            // is the CC's radius plus this object's horizontal extent plus a
+            // small margin — beyond that distance the CC capsule can't be
+            // standing on top of the object.
+            //
+            // Vertical-only separation isn't sufficient: an earlier approach
+            // exited when ComputePenetration showed no geometric overlap, but
+            // that fires the instant the object passes below the capsule's
+            // lower edge — exactly when it's about to land in the column
+            // under the player's feet. The horizontal-column check directly
+            // tests the actual unsafe state.
+            //
+            // No timeout. If the player stands still indefinitely, the object
+            // stays intangible to them indefinitely. The object is solid
+            // against the floor and the world; only this player's CC ignores
+            // it. The moment they step off, normal collision resumes.
+            Vector3 objectExtents = myCollider.bounds.extents;
+            float objectRadius = Mathf.Max(objectExtents.x, objectExtents.z);
+            float threshold = cc.radius + objectRadius + 0.05f;
+
+            const float POLL_INTERVAL = 0.1f;
+
+            while (true)
+            {
+                yield return new WaitForSeconds(POLL_INTERVAL);
+
+                if (myCollider == null || cc == null) yield break;
+
+                Vector3 playerPos = cc.transform.position;
+                Vector3 objectPos = transform.position;
+
+                float dx = playerPos.x - objectPos.x;
+                float dz = playerPos.z - objectPos.z;
+                float horizontalDistance = Mathf.Sqrt(dx * dx + dz * dz);
+
+                if (horizontalDistance > threshold) break;
+            }
+
             if (myCollider != null && cc != null)
                 Physics.IgnoreCollision(myCollider, cc, false);
         }

@@ -452,6 +452,15 @@ namespace U3D
 
             col.isTrigger = false;
 
+            // When a Throwable is present, Throwable owns the collision-ignore
+            // lifecycle via its own penetration-polling coroutine. Two coroutines
+            // both calling Physics.IgnoreCollision on the same collider pair don't
+            // reference-count — whichever finishes first calls IgnoreCollision(...false)
+            // and restores collision while the other is still waiting. That race
+            // is what previously let collision restore while the dropped object
+            // was still under the player capsule, shoving the player upward.
+            if (throwable != null) return;
+
             if (playerController != null)
             {
                 CharacterController cc = playerController.GetComponent<CharacterController>();
