@@ -22,7 +22,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
                 new CreatorTool("🟢 Make Pushable", "Objects can be pushed along surfaces by walking into them", ApplyPushable, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
-                new CreatorTool("🚧 Make Swimmable", "Create water volumes players can swim through", () => { }, true),
+                new CreatorTool("🟢 Make Swimmable", "Players swim through this trigger volume — full 3D movement, no gravity. Add a Box, Sphere, or Mesh collider sized to your water.", ApplySwimmable, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
@@ -491,6 +491,42 @@ namespace U3D.Editor
 
             if (selected.GetComponent<U3DClimbable>() == null)
                 selected.AddComponent<U3DClimbable>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplySwimmable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Collider collider = selected.GetComponent<Collider>();
+            if (collider == null)
+                collider = selected.AddComponent<BoxCollider>();
+            collider.isTrigger = true;
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (selected.GetComponent<U3DSwimmable>() == null)
+            {
+                selected.AddComponent<U3DSwimmable>();
+            }
+            else
+            {
+                Debug.Log(
+                    $"'{selected.name}' already has a U3D Swimmable. " +
+                    $"To add a second swimmable that fires on a different tag, use the Inspector's Add Component button " +
+                    $"and search for 'U3D Swimmable'. Each swimmable can have its own Required Tag and Events."
+                );
+            }
 
             EditorUtility.SetDirty(selected);
         }

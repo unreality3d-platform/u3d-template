@@ -144,6 +144,7 @@ public class U3DPlayerController : NetworkBehaviour
     private bool isSprinting;
     private bool isCrouching;
     private bool isFlying;
+    private bool isSwimming;
     private bool isAutoRunning;
     private bool isZooming;
 
@@ -961,7 +962,9 @@ public class U3DPlayerController : NetworkBehaviour
         Vector3 forward = playerCamera != null ? playerCamera.transform.forward : transform.forward;
         Vector3 right = playerCamera != null ? playerCamera.transform.right : transform.right;
 
-        if (!isFlying)
+        bool freeMovement = isFlying || isSwimming;
+
+        if (!freeMovement)
         {
             forward.y = 0f;
             right.y = 0f;
@@ -980,7 +983,7 @@ public class U3DPlayerController : NetworkBehaviour
 
         Vector3 moveVelocity = moveDirection * currentSpeed;
 
-        if (isFlying)
+        if (freeMovement)
         {
             Vector3 flyDirection = moveDirection;
             if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
@@ -1067,7 +1070,9 @@ public class U3DPlayerController : NetworkBehaviour
             right = playerCamera.transform.right;
         }
 
-        if (!isFlying)
+        bool freeMovement = isFlying || isSwimming;
+
+        if (!freeMovement)
         {
             forward.y = 0f;
             right.y = 0f;
@@ -1079,7 +1084,7 @@ public class U3DPlayerController : NetworkBehaviour
         float currentSpeed = GetCurrentSpeed();
         Vector3 moveVelocity = moveDirection * currentSpeed;
 
-        if (isFlying)
+        if (freeMovement)
         {
             Vector3 flyDirection = moveDirection;
             if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
@@ -1357,7 +1362,7 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
-        if (isCrouching && NetworkIsMoving && !isFlying)
+        if (isCrouching && NetworkIsMoving && !isFlying && !isSwimming)
         {
             isCrouching = false;
             NetworkIsCrouching = false;
@@ -1573,7 +1578,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     void ApplyGravityFixed()
     {
-        if (isFlying || isGrounded || NetworkIsClimbing || !_isLocalPlayer) return;
+        if (isFlying || isSwimming || isGrounded || NetworkIsClimbing || !_isLocalPlayer) return;
 
         velocity.y += gravity * Runner.DeltaTime;
         characterController.Move(new Vector3(0, velocity.y, 0) * Runner.DeltaTime);
@@ -1782,7 +1787,9 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetSwimmingState(bool isSwimming)
     {
         if (!_isLocalPlayer) return;
+        this.isSwimming = isSwimming;
         NetworkIsSwimming = isSwimming;
+        if (isSwimming) velocity = Vector3.zero;
     }
 
     public void SetClimbingState(bool isClimbing)
