@@ -20,13 +20,11 @@ namespace U3D.Editor
     /// </summary>
     public static class AssetCleanupTools
     {
-        /// <summary>
-        /// Replace missing script references with placeholder components
-        /// </summary>
         public static void ReplaceMissingScriptsWithPlaceholders()
         {
             int replacedCount = 0;
             int suggestionsFound = 0;
+            string timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             GameObject[] allGameObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
 
             foreach (GameObject go in allGameObjects)
@@ -36,15 +34,20 @@ namespace U3D.Editor
                 {
                     Undo.RegisterCompleteObjectUndo(go, "Replace missing scripts with placeholders");
 
-                    string suggestion = ComponentSuggestions.GetSuggestionForGameObject(go.name);
-                    if (!string.IsNullOrEmpty(suggestion))
+                    string searchTerm = ComponentSuggestions.GetSearchTermForGameObject(go.name);
+                    if (!string.IsNullOrEmpty(searchTerm))
                     {
                         suggestionsFound++;
                     }
 
                     for (int i = 0; i < numComponents; i++)
                     {
-                        go.AddComponent<MissingScriptPlaceholder>();
+                        var placeholder = go.AddComponent<U3D.MissingScriptPlaceholder>();
+                        placeholder.SetReplacementDateTime(timestamp);
+                        if (!string.IsNullOrEmpty(searchTerm))
+                        {
+                            placeholder.SetSuggestedSearchTerm(searchTerm);
+                        }
                     }
 
                     GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
@@ -80,7 +83,7 @@ namespace U3D.Editor
 
             foreach (GameObject go in allObjects)
             {
-                var placeholders = go.GetComponents<MissingScriptPlaceholder>();
+                var placeholders = go.GetComponents<U3D.MissingScriptPlaceholder>();
                 foreach (var placeholder in placeholders)
                 {
                     Undo.DestroyObjectImmediate(placeholder);
@@ -113,14 +116,14 @@ namespace U3D.Editor
             foreach (GameObject go in allGameObjects)
             {
                 gameObjectsProcessed++;
-                var missingRefsOnThisObject = new List<MissingReferenceInfo>();
+                var missingRefsOnThisObject = new List<U3D.MissingReferenceInfo>();
 
                 Component[] components = go.GetComponents<Component>();
 
                 foreach (Component component in components)
                 {
                     if (component == null) continue;
-                    if (component is MissingReferencePlaceholder) continue;
+                    if (component is U3D.MissingReferencePlaceholder) continue;
 
                     SerializedObject serializedObject = new SerializedObject(component);
                     SerializedProperty property = serializedObject.GetIterator();
@@ -135,7 +138,7 @@ namespace U3D.Editor
                             property.objectReferenceInstanceIDValue != 0)
                         {
                             missingReferencesFound++;
-                            missingRefsOnThisObject.Add(new MissingReferenceInfo(
+                            missingRefsOnThisObject.Add(new U3D.MissingReferenceInfo(
                                 component.GetType().Name,
                                 property.displayName,
                                 property.type,
@@ -150,11 +153,11 @@ namespace U3D.Editor
                 {
                     Undo.RegisterCompleteObjectUndo(go, "Add missing reference placeholder");
 
-                    MissingReferencePlaceholder existingPlaceholder = go.GetComponent<MissingReferencePlaceholder>();
+                    U3D.MissingReferencePlaceholder existingPlaceholder = go.GetComponent<U3D.MissingReferencePlaceholder>();
 
                     if (existingPlaceholder == null)
                     {
-                        existingPlaceholder = go.AddComponent<MissingReferencePlaceholder>();
+                        existingPlaceholder = go.AddComponent<U3D.MissingReferencePlaceholder>();
                         placeholdersAdded++;
                     }
 
@@ -197,7 +200,7 @@ namespace U3D.Editor
 
             foreach (GameObject go in allGameObjects)
             {
-                MissingReferencePlaceholder placeholder = go.GetComponent<MissingReferencePlaceholder>();
+                U3D.MissingReferencePlaceholder placeholder = go.GetComponent<U3D.MissingReferencePlaceholder>();
                 if (placeholder != null && placeholder.HasMissingReferences())
                 {
                     placeholderObjects.Add(go);
@@ -211,7 +214,7 @@ namespace U3D.Editor
 
                 foreach (GameObject go in placeholderObjects)
                 {
-                    MissingReferencePlaceholder placeholder = go.GetComponent<MissingReferencePlaceholder>();
+                    U3D.MissingReferencePlaceholder placeholder = go.GetComponent<U3D.MissingReferencePlaceholder>();
                     var missingRefs = placeholder.GetMissingReferences();
                     string gameObjectPath = GetGameObjectPath(go);
                     Debug.Log($"📍 {gameObjectPath} - {missingRefs.Count} missing references", go);
@@ -241,7 +244,7 @@ namespace U3D.Editor
 
             foreach (GameObject go in allObjects)
             {
-                var placeholders = go.GetComponents<MissingReferencePlaceholder>();
+                var placeholders = go.GetComponents<U3D.MissingReferencePlaceholder>();
                 foreach (var placeholder in placeholders)
                 {
                     Undo.DestroyObjectImmediate(placeholder);

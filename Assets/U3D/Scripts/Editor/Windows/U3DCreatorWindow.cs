@@ -16,6 +16,9 @@ namespace U3D.Editor
         private bool stylesInitialized = false;
         private Texture2D logoTexture;
 
+        // Index of the Project Tools tab in the tabs list. Update if tab order changes.
+        private const int PROJECT_TOOLS_TAB_INDEX = 1;
+
         /// <summary>
         /// CRITICAL: Check if we should skip operations during actual builds (not editor startup)
         /// </summary>
@@ -40,6 +43,29 @@ namespace U3D.Editor
             var window = GetWindow<U3DCreatorWindow>("U3D Creator Dashboard");
             window.minSize = new Vector2(320, 560);
             window.Show();
+        }
+
+        /// <summary>
+        /// Opens the Creator Dashboard, switches to the Project Tools tab, and pre-fills
+        /// the search field with the provided term. Used by MissingScriptPlaceholder to
+        /// route creators from cleanup placeholders to relevant tools.
+        /// </summary>
+        public static void OpenWithProjectToolsSearch(string searchTerm)
+        {
+            var window = GetWindow<U3DCreatorWindow>("U3D Creator Dashboard");
+            window.minSize = new Vector2(320, 560);
+            window.Show();
+            window.Focus();
+
+            window.selectedTab = PROJECT_TOOLS_TAB_INDEX;
+
+            if (window.tabs != null && PROJECT_TOOLS_TAB_INDEX < window.tabs.Count)
+            {
+                var projectToolsTab = window.tabs[PROJECT_TOOLS_TAB_INDEX] as ProjectToolsTab;
+                projectToolsTab?.SetSearchText(searchTerm);
+            }
+
+            window.Repaint();
         }
 
         [InitializeOnLoadMethod]

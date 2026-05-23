@@ -1,96 +1,106 @@
 ﻿using System.Collections.Generic;
-using UnityEngine;
 
 namespace U3D.Editor
 {
     /// <summary>
-    /// Simple helper for suggesting U3D SDK tool replacements during asset cleanup
+    /// Maps GameObject naming hints to search terms for the Creator Dashboard's
+    /// Project Tools search. Returns search terms (durable) rather than specific
+    /// tool names (which go stale on rename). The placeholder Inspector uses these
+    /// terms to route creators to the live tool catalog.
     /// </summary>
     public static class ComponentSuggestions
     {
-        private static Dictionary<string, string> commonReplacements = new Dictionary<string, string>
+        // Maps a substring found in a GameObject name to a search term that will
+        // surface relevant tools in Project Tools. Search terms should be short and
+        // match across multiple tool titles/descriptions. The Project Tools search
+        // does substring matching against both title and description, so generic
+        // terms like "grab" or "trigger" cast a wider net than specific tool names.
+        private static readonly Dictionary<string, string> nameToSearchTerm = new Dictionary<string, string>
         {
-            // Interaction Systems
-            {"grabbable", "Make Grabbable (Interactions)"},
-            {"interactable", "Make Enter Trigger (Interactions)"},
-            {"pickup", "Make Grabbable (Interactions)"},
-            {"trigger", "Make Enter Trigger (Interactions)"},
-            {"switch", "Make Enter Trigger (Interactions)"},
-            {"door", "Make Enter Trigger (Interactions)"},
-            {"collect", "Make Object Destroy Trigger (Interactions)"},
-            {"click", "Add Click Trigger (Interactions)"},
-            {"spawn", "Add Object Spawner (Interactions)"},
-            {"climb", "Make Climbable (Interactions)"},
-            {"grab", "Make Grabbable (Interactions)"},
-            {"throw", "Make Throwable (Interactions)"},
-            {"kick", "Make Kickable (Interactions)"},
-            {"push", "Make Pushable (Interactions)"},
+            // Interactions
+            {"grabbable", "grab"},
+            {"grab", "grab"},
+            {"pickup", "grab"},
+            {"throw", "throw"},
+            {"kick", "kick"},
+            {"push", "push"},
+            {"climb", "climb"},
+            {"swim", "swim"},
+            {"interactable", "trigger"},
+            {"interact", "trigger"},
+            {"trigger", "trigger"},
+            {"switch", "trigger"},
+            {"door", "trigger"},
+            {"button", "trigger"},
+            {"click", "trigger"},
+            {"spawn", "spawn"},
+            {"rideable", "rideable"},
+            {"ride", "rideable"},
+            {"platform", "rideable"},
+            {"vehicle", "steerable"},
 
             // Navigation
-            {"portal", "Add Scene Portal (Interactions)"},
-            {"teleport", "Add 1-Way Portal (Interactions)"},
-            {"warp", "Add 1-Way Portal (Interactions)"},
+            {"portal", "portal"},
+            {"teleport", "portal"},
+            {"warp", "portal"},
 
-            // Core Game Systems
-            {"quest", "Add Quest System (Game Systems)"},
-            {"mission", "Add Quest System (Game Systems)"},
-            {"objective", "Add Quest System (Game Systems)"},
-            {"inventory", "Add Inventory System (Game Systems)"},
-            {"bag", "Add Inventory System (Game Systems)"},
-            {"item", "Add Inventory System (Game Systems)"},
-            {"dialogue", "Add Dialogue System (Game Systems)"},
-            {"conversation", "Add Dialogue System (Game Systems)"},
-            {"npc", "Add Dialogue System (Game Systems)"},
-            {"timer", "Add Timer System (Game Systems)"},
-            {"countdown", "Add Timer System (Game Systems)"},
-            {"clock", "Add Timer System (Game Systems)"},
-            {"progress", "Add Progress Bar (Game Systems)"},
-            {"achievement", "Add Achievement / Award System (Game Systems)"},
-            {"unlock", "Add Achievement / Award System (Game Systems)"},
-            {"reward", "Add Achievement / Award System (Game Systems)"},
-            {"score", "Add Scorable (Game Systems)"},
-            {"scoreboard", "Add Scorable (Game Systems)"},
-            {"checkpoint", "Add Checkpoint System (Game Systems)"},
-            {"save", "Add Checkpoint System (Game Systems)"},
-            {"respawn", "Add Checkpoint System (Game Systems)"},
+            // Game systems
+            {"quest", "quest"},
+            {"mission", "quest"},
+            {"objective", "quest"},
+            {"inventory", "inventory"},
+            {"item", "inventory"},
+            {"dialogue", "dialogue"},
+            {"conversation", "dialogue"},
+            {"npc", "dialogue"},
+            {"timer", "timer"},
+            {"countdown", "timer"},
+            {"achievement", "achievement"},
+            {"unlock", "achievement"},
+            {"reward", "achievement"},
+            {"score", "score"},
+            {"checkpoint", "checkpoint"},
+            {"respawn", "checkpoint"},
+            {"quiz", "quiz"},
+            {"question", "quiz"},
 
-            // Quiz
-            {"quiz", "Add Quiz System (Game Systems)"},
-            {"question", "Add Quiz System (Game Systems)"},
-
-            // Media & Content
-            {"audio", "Add Audio List (Media & Content)"},
-            {"sound", "Add Audio List (Media & Content)"},
-            {"music", "Add Audio List (Media & Content)"},
-            {"video", "Add Video Player (Media & Content)"},
-            {"presentation", "Add Slide Presentation (Media & Content)"},
-            {"guestbook", "Add Guestbook (Media & Content)"},
-            {"message", "Add Guestbook (Media & Content)"},
-            {"feedback", "Add Guestbook (Media & Content)"},
-            {"ui", "Add Worldspace UI (Media & Content)"},
-            {"canvas", "Add Worldspace UI (Media & Content)"},
-            {"sign", "Add Worldspace UI (Media & Content)"},
-            {"url", "Add URL Link (Media & Content)"},
-            {"link", "Add URL Link (Media & Content)"},
-            {"website", "Add URL Link (Media & Content)"},
+            // Media & content
+            {"audio", "audio"},
+            {"sound", "audio"},
+            {"music", "audio"},
+            {"video", "video"},
+            {"slide", "presentation"},
+            {"presentation", "presentation"},
+            {"guestbook", "guestbook"},
+            {"message", "guestbook"},
+            {"sign", "worldspace"},
+            {"label", "worldspace"},
+            {"url", "url"},
+            {"link", "url"},
+            {"website", "url"},
 
             // Monetization
-            {"shop", "Add Shop Object (Monetization)"},
-            {"purchase", "Add Purchase Button (Monetization)"},
-            {"tip", "Add Tip Jar (Monetization)"},
-            {"donate", "Add Tip Jar (Monetization)"},
-            {"gate", "Add Scene Gate (Monetization)"},
-            {"ticket", "Add Event Gate (Monetization)"},
-            {"event", "Add Event Gate (Monetization)"},
+            {"shop", "shop"},
+            {"purchase", "purchase"},
+            {"buy", "purchase"},
+            {"tip", "tip"},
+            {"donate", "tip"},
+            {"gate", "gate"},
+            {"ticket", "event"},
+            {"event", "event"},
         };
 
-        public static string GetSuggestionForGameObject(string gameObjectName)
+        /// <summary>
+        /// Returns a search term suitable for the Project Tools search field, or
+        /// empty string if no keyword in the GameObject's name maps to a known term.
+        /// </summary>
+        public static string GetSearchTermForGameObject(string gameObjectName)
         {
             if (string.IsNullOrEmpty(gameObjectName)) return "";
 
             string lowerName = gameObjectName.ToLower();
 
-            foreach (var kvp in commonReplacements)
+            foreach (var kvp in nameToSearchTerm)
             {
                 if (lowerName.Contains(kvp.Key))
                 {

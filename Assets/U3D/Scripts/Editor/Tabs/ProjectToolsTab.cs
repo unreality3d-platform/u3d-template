@@ -25,6 +25,15 @@ namespace U3D.Editor
             InitializeToolCategories();
         }
 
+        /// <summary>
+        /// Sets the search field text. Used by external code (e.g. MissingScriptPlaceholder)
+        /// to route creators to relevant tools.
+        /// </summary>
+        public void SetSearchText(string text)
+        {
+            searchText = text ?? "";
+        }
+
         private void InitializeStyles()
         {
             if (stylesInitialized) return;

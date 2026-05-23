@@ -1,7 +1,7 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 
-namespace U3D.Editor
+namespace U3D
 {
     /// <summary>
     /// Placeholder component for missing object references.
@@ -29,6 +29,7 @@ namespace U3D.Editor
     /// <summary>
     /// Placeholder component that tracks missing object references for later restoration.
     /// Similar to MissingScriptPlaceholder but for missing references within existing components.
+    /// Runtime component so it can be attached to scene GameObjects.
     /// </summary>
     [AddComponentMenu("")]
     public class MissingReferencePlaceholder : MonoBehaviour
@@ -47,7 +48,6 @@ namespace U3D.Editor
             var info = new MissingReferenceInfo(componentType, propertyName, expectedType, propertyPath, gameObjectPath);
             missingReferences.Add(info);
 
-            // Update placeholder info display
             UpdatePlaceholderInfo();
         }
 
@@ -94,7 +94,7 @@ namespace U3D.Editor
             else if (missingReferences.Count == 1)
             {
                 var info = missingReferences[0];
-                placeholderInfo = $"Tracks 1 missing reference:\n• {info.componentType}.{info.propertyName} (expecting {info.expectedType})";
+                placeholderInfo = $"Tracks 1 missing reference:\nâ€¢ {info.componentType}.{info.propertyName} (expecting {info.expectedType})";
             }
             else
             {
@@ -102,25 +102,23 @@ namespace U3D.Editor
                 for (int i = 0; i < Mathf.Min(3, missingReferences.Count); i++)
                 {
                     var info = missingReferences[i];
-                    placeholderInfo += $"• {info.componentType}.{info.propertyName}\n";
+                    placeholderInfo += $"â€¢ {info.componentType}.{info.propertyName}\n";
                 }
                 if (missingReferences.Count > 3)
                 {
-                    placeholderInfo += $"• ... and {missingReferences.Count - 3} more";
+                    placeholderInfo += $"â€¢ ... and {missingReferences.Count - 3} more";
                 }
             }
         }
 
         private void Awake()
         {
-            // Update info display on startup
             UpdatePlaceholderInfo();
         }
 
 #if UNITY_EDITOR
         private void Reset()
         {
-            // When component is first added, show helpful info
             placeholderInfo = "Missing reference placeholder - use Asset Cleanup Tools to restore references.";
         }
 #endif
