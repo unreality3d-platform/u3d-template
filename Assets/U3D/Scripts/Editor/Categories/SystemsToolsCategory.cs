@@ -25,7 +25,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Scorable", "Creates a worldspace scoreboard you can place anywhere in your scene.", () => U3DScorableTools.AddScorable()),
                 new CreatorTool("🟢 Make Scorable", "Adds a U3DScorable component to the selected object. The object should have a TextMeshPro component in its hierarchy.", () => U3DScorableTools.MakeScorable(), true),
                 new CreatorTool("🟢 Add Gaze Reticle", "Adds a small aiming dot at screen center to the player. Helps players see where they're pointing for UI and interaction, especially in VR. Hides automatically in third-person. Adds to the player prefab; will not add a duplicate.", AddGazeReticle),
-                new CreatorTool("🚧 Add Inventory System", "Essential for collecting, managing, and using items in exploration games", () => { }),
+                new CreatorTool("🟢 Add Inventory", "10-slot hotkey inventory for the local player. Press keys 1-0 to use items from each slot. Items are collected via Make Collectable in the Interactions category.", () => U3DInventoryTools.AddInventory()),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => { }),
                 new CreatorTool("🚧 Add Quiz System", "Interactive questions and knowledge tests", () => { }),
                 new CreatorTool("🚧 Add Checkpoint System", "Save progress and restart points for complex experiences", () => { }),

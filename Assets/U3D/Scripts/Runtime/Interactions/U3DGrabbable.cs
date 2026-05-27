@@ -14,7 +14,7 @@ namespace U3D
     /// only gates proximity via min/max grab distance.
     /// </summary>
     [RequireComponent(typeof(Collider))]
-    public class U3DGrabbable : NetworkBehaviour, IU3DInteractable
+    public class U3DGrabbable : NetworkBehaviour, IU3DInteractable, IU3DInventoryActivatable
     {
         [Header("Grab Distance Configuration")]
         [Tooltip("Minimum distance to grab from (0 = touch only)")]
@@ -77,6 +77,13 @@ namespace U3D
         private Camera playerCamera;
         private NetworkObject networkObject;
         private U3DPlayerController playerController;
+
+        // Remote-viewer cache for tracking the grabber's hand bone. Lets Render()
+        // interpolate the held object toward the grabber's hand on every remote
+        // client without walking the entire player hierarchy every frame. Cache
+        // invalidates when NetworkGrabbedBy changes or when the object is released.
+        private PlayerRef cachedGrabberRef = PlayerRef.None;
+        private Transform cachedGrabberHand;
 
         // Deterministic state management
         private GrabState localGrabState = GrabState.Free;
@@ -245,20 +252,127 @@ namespace U3D
         {
             base.Render();
 
-            if (localGrabState == GrabState.Grabbed && handTransform != null && hasNetworkRb3D
-                && isNetworked && !Object.HasStateAuthority)
-            {
-                transform.position = Vector3.Lerp(
-                    transform.position,
-                    handTransform.position + handTransform.TransformVector(grabOffset),
-                    0.5f
-                );
+            // Remote-viewer interpolation: when this object is grabbed and we are
+            // NOT the state authority (i.e. someone else is holding it), follow
+            // the grabber's hand bone so the held object appears in the right
+            // place on our screen. Without this, the object stays frozen at
+            // wherever it was teleported at the moment of grab, because the
+            // grabber's local SetParent + SyncParent=false means no position
+            // updates are replicated to us.
+            //
+            // Note: the previous version of this method gated on localGrabState
+            // == Grabbed, which is only ever true on the state authority — so
+            // the interpolation never actually ran on remote viewers. This is
+            // the fix for the long-standing "held object invisible to other
+            // players" bug.
+            if (!isNetworked) return;
+            if (!hasNetworkRb3D) return;
+            if (Object == null || !Object.IsValid) return;
+            if (Object.HasStateAuthority) return;
+            if (!NetworkIsGrabbed) return;
+            if (NetworkGrabbedBy == PlayerRef.None) return;
 
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    handTransform.rotation,
-                    0.5f
-                );
+            Transform grabberHand = GetGrabberHandTransform();
+            if (grabberHand == null) return;
+
+            transform.position = Vector3.Lerp(
+                transform.position,
+                grabberHand.position + grabberHand.TransformVector(grabOffset),
+                0.5f
+            );
+
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                grabberHand.rotation,
+                0.5f
+            );
+        }
+
+        /// <summary>
+        /// Returns the hand bone Transform of whichever player is currently holding
+        /// this object, from the perspective of a remote viewer (i.e. not the holder).
+        /// Cached per-grab — the cache invalidates when NetworkGrabbedBy changes,
+        /// avoiding a player-hierarchy walk every Render() frame.
+        ///
+        /// Returns null if the grabber's player controller isn't found yet (joining,
+        /// despawning) or if their hand bone can't be located. Callers must handle null.
+        /// </summary>
+        private Transform GetGrabberHandTransform()
+        {
+            if (NetworkGrabbedBy != cachedGrabberRef)
+            {
+                cachedGrabberRef = NetworkGrabbedBy;
+                cachedGrabberHand = null;
+            }
+
+            if (cachedGrabberHand != null) return cachedGrabberHand;
+            if (NetworkGrabbedBy == PlayerRef.None) return null;
+
+            // Find the player controller whose input authority matches NetworkGrabbedBy.
+            // This is the remote grabber. U3DPlayerController.FindLocalPlayer() can't be
+            // used because it finds the local viewer's player, not the grabber's.
+            U3DPlayerController[] allPlayers = FindObjectsByType<U3DPlayerController>(FindObjectsSortMode.None);
+            U3DPlayerController grabberController = null;
+            for (int i = 0; i < allPlayers.Length; i++)
+            {
+                NetworkObject playerNetObj = allPlayers[i].GetComponent<NetworkObject>();
+                if (playerNetObj != null && playerNetObj.InputAuthority == NetworkGrabbedBy)
+                {
+                    grabberController = allPlayers[i];
+                    break;
+                }
+            }
+            if (grabberController == null) return null;
+
+            // Walk the grabber's children to find their hand bone by name. Same matching
+            // logic as FindHandBone() — same handBoneName field, same exclusions —
+            // applied to a different player's transform.
+            if (string.IsNullOrEmpty(handBoneName)) return null;
+
+            Transform[] allTransforms = grabberController.transform.GetComponentsInChildren<Transform>();
+            for (int i = 0; i < allTransforms.Length; i++)
+            {
+                Transform t = allTransforms[i];
+                if (t.name == handBoneName && !t.name.Contains("Camera"))
+                {
+                    cachedGrabberHand = t;
+                    return cachedGrabberHand;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Performs the grab without the proximity-distance gate. Called by
+        /// U3DInventory when an item is summoned from inventory directly to the
+        /// player's hand — the distance check exists for world-object grabs
+        /// (where the player walked up to a thing) and is not appropriate for
+        /// items the player intentionally summoned.
+        /// </summary>
+        public void OnInventoryActivate()
+        {
+            if (localGrabState == GrabState.Grabbed) return;
+
+            if (playerTransform == null)
+            {
+                FindPlayer();
+                if (playerTransform == null) return;
+            }
+
+            if (!isNetworked)
+            {
+                PerformGrab();
+                return;
+            }
+
+            if (Object.HasStateAuthority)
+            {
+                PerformGrab();
+            }
+            else if (!isRequestingAuthority)
+            {
+                RequestGrabAuthority();
             }
         }
 
@@ -395,6 +509,13 @@ namespace U3D
             localGrabState = GrabState.Free;
             if (currentlyGrabbed == this)
                 currentlyGrabbed = null;
+
+            // Invalidate the remote-viewer's cached grabber hand transform. This runs
+            // on whichever client is calling release; on remote viewers the cache will
+            // also self-invalidate when NetworkGrabbedBy flips to PlayerRef.None in
+            // GetGrabberHandTransform, but clearing here is belt-and-suspenders.
+            cachedGrabberRef = PlayerRef.None;
+            cachedGrabberHand = null;
 
             PerformDirectUnparenting();
 
@@ -663,8 +784,17 @@ namespace U3D
                 if (networkRb3D != null)
                     networkRb3D.SyncParent = true;
 
-                try { transform.SetParent(originalParent); }
-                catch { }
+                // Skip reparenting when the scene/app is shutting down — calling
+                // SetParent on a GameObject during teardown logs a Unity warning
+                // even when wrapped in try/catch (the warning is emitted before
+                // the exception, so the catch can't suppress it). The reparent
+                // is unnecessary anyway since both this object and its parent
+                // are about to be destroyed.
+                if (gameObject.scene.isLoaded)
+                {
+                    try { transform.SetParent(originalParent); }
+                    catch { }
+                }
 
                 if (col != null)
                     col.isTrigger = false;

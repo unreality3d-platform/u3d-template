@@ -26,6 +26,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
+                new CreatorTool("🟢 Make Collectable", "Players can pick this up into their Inventory. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyCollectable, true),
                 new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
                 new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),

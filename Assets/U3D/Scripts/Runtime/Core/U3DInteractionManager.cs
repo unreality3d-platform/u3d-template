@@ -145,4 +145,25 @@ namespace U3D
         bool CanInteract();
         string GetInteractionPrompt();
     }
+
+    /// <summary>
+    /// Optional interface for interactable components that need a non-proximity-gated
+    /// activation path when used from U3DInventory.
+    ///
+    /// The standard IU3DInteractable.OnInteract() path is gated by proximity (e.g.
+    /// Grabbable's CanAttemptGrab, Kickable's isInKickRange) because in the world
+    /// context, the player has to walk up to a thing to interact with it. When the
+    /// player summons an item from their own inventory, that gate is the wrong one:
+    /// the player has already intentionally chosen the item, and the item spawns
+    /// directly at the player's hand. Implementing this interface lets a component
+    /// expose a parallel "activate without world-context gates" path that Inventory
+    /// can call instead of OnInteract().
+    ///
+    /// Implementations should still honor non-proximity gates: tag checks,
+    /// triggerOnce flags, cooldowns. Only the spatial proximity gate is bypassed.
+    /// </summary>
+    public interface IU3DInventoryActivatable
+    {
+        void OnInventoryActivate();
+    }
 }

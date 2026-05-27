@@ -13,7 +13,7 @@ namespace U3D
     /// Uses camera-based kick direction similar to throwable physics
     /// </summary>
     [RequireComponent(typeof(Rigidbody), typeof(Collider))]
-    public class U3DKickable : NetworkBehaviour, IU3DInteractable
+    public class U3DKickable : NetworkBehaviour, IU3DInteractable, IU3DInventoryActivatable
     {
         [Header("Kick Configuration")]
         [Tooltip("Base kick force multiplier")]
@@ -792,7 +792,6 @@ namespace U3D
             originalRotation = newRotation;
         }
 
-        // IU3DInteractable implementation
         public void OnInteract()
         {
             if (CanAttemptKick())
@@ -802,6 +801,47 @@ namespace U3D
             else
             {
                 OnKickFailed?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Performs the kick without the isInKickRange proximity check. Called by
+        /// U3DInventory when an item is summoned from inventory directly to the
+        /// player's hand — the range check exists for world-object kicks (where
+        /// the player walked up to a thing) and is not appropriate for items the
+        /// player intentionally summoned.
+        ///
+        /// Mirrors Kick()'s body but skips CanAttemptKick(). Other guards
+        /// (already-grabbed, camera availability, network authority) still apply.
+        /// </summary>
+        public void OnInventoryActivate()
+        {
+            if (grabbable != null && grabbable.IsGrabbed) return;
+
+            if (playerCamera == null || playerTransform == null)
+            {
+                FindPlayerComponents();
+                if (playerCamera == null)
+                {
+                    Debug.LogWarning("U3DKickable: No player camera found - cannot determine kick direction");
+                    OnKickFailed?.Invoke();
+                    return;
+                }
+            }
+
+            if (!isNetworked)
+            {
+                ExecuteCameraKick();
+                return;
+            }
+
+            if (Object.HasStateAuthority)
+            {
+                ExecuteCameraKick();
+            }
+            else
+            {
+                RequestKickAuthority(useCamera: true, direction: Vector3.zero, force: 0f);
             }
         }
 
