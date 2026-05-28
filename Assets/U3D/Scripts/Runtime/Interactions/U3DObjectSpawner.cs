@@ -45,7 +45,8 @@ namespace U3D
         [Tooltip("Respawn automatically when the spawned object is destroyed.")]
         public bool respawnWhenDestroyed = false;
 
-        [Tooltip("Maximum number of spawned objects that can exist at once. New spawns are blocked when this limit is reached.")]
+        [Tooltip("Maximum number of spawned objects that can exist at once. New spawns are blocked when this limit is reached. Set to 0 for unlimited.")]
+        [Min(0)]
         public int maxInstances = 1;
 
         [Header("Optional Label")]
@@ -59,6 +60,17 @@ namespace U3D
         [Networked] private int NetworkActiveCount { get; set; }
 
         private int _localActiveCount = 0;
+
+        /// <summary>
+        /// Whether another spawn is allowed given the current active count.
+        /// maxInstances of 0 means unlimited — always allowed. Otherwise allowed
+        /// only while the active count is below the cap. Single source of truth so
+        /// every guard site reads the limit identically.
+        /// </summary>
+        private bool CanSpawnMore(int currentCount)
+        {
+            return maxInstances <= 0 || currentCount < maxInstances;
+        }
 
         public override void Spawned()
         {
@@ -95,7 +107,7 @@ namespace U3D
             }
 
             int activeCount = Object != null ? NetworkActiveCount : _localActiveCount;
-            if (activeCount >= maxInstances)
+            if (!CanSpawnMore(activeCount))
             {
                 onSpawnFailed?.Invoke();
                 return;
@@ -114,7 +126,7 @@ namespace U3D
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         private void RPC_RequestSpawn()
         {
-            if (NetworkActiveCount >= maxInstances)
+            if (!CanSpawnMore(NetworkActiveCount))
                 return;
 
             GameObject resolved = ResolvePrefab();
@@ -144,7 +156,10 @@ namespace U3D
                     tracker.Initialize(this);
                 }
 
-                if (labelUI != null && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
+                // Hide the label only when a finite cap has just been reached and we
+                // won't respawn. At unlimited (maxInstances <= 0) the cap is never
+                // "reached", so the label stays visible.
+                if (labelUI != null && maxInstances > 0 && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
                     labelUI.gameObject.SetActive(false);
 
                 onSpawned?.Invoke(instance.gameObject);
@@ -167,7 +182,7 @@ namespace U3D
                 return;
             }
 
-            if (_localActiveCount >= maxInstances)
+            if (!CanSpawnMore(_localActiveCount))
             {
                 onSpawnFailed?.Invoke();
                 return;
@@ -194,7 +209,7 @@ namespace U3D
             {
                 NetworkActiveCount = Mathf.Max(0, NetworkActiveCount - 1);
                 if (labelUI != null) labelUI.gameObject.SetActive(true);
-                if (respawnWhenDestroyed && NetworkActiveCount < maxInstances)
+                if (respawnWhenDestroyed && CanSpawnMore(NetworkActiveCount))
                 {
                     GameObject resolved = ResolvePrefab();
                     if (resolved != null)
@@ -205,7 +220,7 @@ namespace U3D
             {
                 _localActiveCount = Mathf.Max(0, _localActiveCount - 1);
                 if (labelUI != null) labelUI.gameObject.SetActive(true);
-                if (respawnWhenDestroyed && _localActiveCount < maxInstances)
+                if (respawnWhenDestroyed && CanSpawnMore(_localActiveCount))
                     SpawnLocal();
             }
         }

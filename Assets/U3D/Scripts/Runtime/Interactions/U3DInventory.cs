@@ -26,6 +26,13 @@ namespace U3D
     /// held, pressing the hotkey one more time releases it — closing the "stuck
     /// last item" gap so the same key fires throughout the entire stack.
     ///
+    /// Live spawn cap: maxLiveSpawnedInstances limits how many inventory-spawned
+    /// objects can exist in the world at once across all slots. 0 = unlimited.
+    /// When the cap is reached, hotkey presses that would spawn a new object are
+    /// blocked (the banked stack is not consumed) and OnSpawnLimitReached fires.
+    /// This guards against a player banking a large stack and spam-spawning enough
+    /// world meshes to crash the browser.
+    ///
     /// State is in-memory and per-session. There is no Firestore or PlayerPrefs
     /// persistence in v1.
     /// </summary>
@@ -46,6 +53,11 @@ namespace U3D
         [Tooltip("Name of the hand bone on the player avatar where items spawn. Matches U3DGrabbable's default.")]
         [SerializeField] private string handBoneName = "RightHand";
 
+        [Header("Spawn Limit")]
+        [Tooltip("Maximum number of inventory-spawned objects that can exist in the world at once, across all slots combined. When reached, pressing a slot hotkey will not spawn a new object (the banked stack is left untouched) and OnSpawnLimitReached fires. Set to 0 for unlimited.")]
+        [Min(0)]
+        [SerializeField] private int maxLiveSpawnedInstances = 0;
+
         [Header("Events")]
         [Tooltip("Fired when an item is added to inventory. Args: prefab added, new stack count in its slot.")]
         public UnityEvent<GameObject, int> OnItemAdded;
@@ -59,8 +71,11 @@ namespace U3D
         [Tooltip("Fired when a slot's hotkey is pressed and an item is successfully spawned. Args: slot index, prefab that was spawned.")]
         public UnityEvent<int, GameObject> OnSlotUsed;
 
-        [Tooltip("Fired when AddItem fails because all 10 slots are occupied with different prefabs. Wire to UI feedback like a 'full!' message.")]
+        [Tooltip("Fired when AddItem fails because all 10 slots are occupied with different prefabs. Wire to UI feedback like a 'pack full' message.")]
         public UnityEvent<GameObject> OnInventoryFull;
+
+        [Tooltip("Fired when a slot hotkey press is blocked because the live spawn limit is reached. The banked stack is not consumed. Wire to UI feedback like a 'too many out — pick some up' message. Arg: the prefab that would have spawned.")]
+        public UnityEvent<GameObject> OnSpawnLimitReached;
 
         private GameObject[] slotPrefabs = new GameObject[SLOT_COUNT];
         private int[] slotCounts = new int[SLOT_COUNT];
@@ -70,6 +85,11 @@ namespace U3D
         // that slot will release it — closing the "stuck last item" gap in
         // the rapid-fire flow.
         private GameObject[] lastSpawnedFromSlot = new GameObject[SLOT_COUNT];
+
+        // Inventory-wide count of live spawned-from-inventory objects. Only tracked
+        // when maxLiveSpawnedInstances > 0; stays at 0 and is never read when the
+        // cap is disabled, so uncapped behavior carries no tracking overhead.
+        private int _liveSpawnedCount = 0;
 
         private U3DPlayerController playerController;
         private Transform playerTransform;
@@ -249,6 +269,11 @@ namespace U3D
         ///   2. Slot empty but the last spawned item is still held → release it
         ///      so the same hotkey closes the stack with the last item firing.
         ///   3. Slot empty and nothing relevant held → no-op.
+        ///
+        /// When maxLiveSpawnedInstances > 0 and the live spawn count is at the cap,
+        /// the spawn in path 1 is blocked: the banked stack is left untouched and
+        /// OnSpawnLimitReached fires. The release path (path 2) is never blocked —
+        /// releasing a held item lowers world-object pressure rather than raising it.
         /// </summary>
         public void UseSlot(int slotIndex)
         {
@@ -262,6 +287,15 @@ namespace U3D
             if (prefab == null)
             {
                 ReleaseHeldFromSlot(slotIndex);
+                return;
+            }
+
+            // Live spawn cap (inventory-wide). Checked before spawning and before
+            // the stack is decremented, so a blocked press does not consume a
+            // banked item. 0 = unlimited (cap disabled).
+            if (maxLiveSpawnedInstances > 0 && _liveSpawnedCount >= maxLiveSpawnedInstances)
+            {
+                OnSpawnLimitReached?.Invoke(prefab);
                 return;
             }
 
@@ -284,6 +318,16 @@ namespace U3D
 
             lastSpawnedFromSlot[slotIndex] = spawned;
 
+            // Track the live instance for the cap. Only attach the tracker and count
+            // when the cap is enabled, so uncapped scenes carry no extra component
+            // or bookkeeping. The tracker decrements the count on destruction.
+            if (maxLiveSpawnedInstances > 0)
+            {
+                _liveSpawnedCount++;
+                var tracker = spawned.AddComponent<U3DInventorySpawnTracker>();
+                tracker.Initialize(this);
+            }
+
             // Decrement the stack regardless of whether the spawned instance has an
             // activatable component — the spawn itself counts as "using" the item.
             slotCounts[slotIndex]--;
@@ -304,6 +348,16 @@ namespace U3D
             // their non-proximity-gated path called; everything else falls through to
             // the standard IU3DInteractable.OnInteract() path.
             StartCoroutine(ActivateAfterFrame(spawned));
+        }
+
+        /// <summary>
+        /// Called by U3DInventorySpawnTracker when a tracked spawned instance is
+        /// destroyed. Lowers the live spawn count so the cap reflects current world
+        /// state. Guarded against going negative.
+        /// </summary>
+        public void OnLiveSpawnedInstanceDestroyed()
+        {
+            _liveSpawnedCount = Mathf.Max(0, _liveSpawnedCount - 1);
         }
 
         private IEnumerator ActivateAfterFrame(GameObject spawned)
@@ -511,5 +565,38 @@ namespace U3D
         }
 
         public int SlotCount => SLOT_COUNT;
+
+        /// <summary>
+        /// Current number of live inventory-spawned objects in the world.
+        /// Always 0 when the cap is disabled (maxLiveSpawnedInstances == 0).
+        /// </summary>
+        public int LiveSpawnedCount => _liveSpawnedCount;
+
+        /// <summary>
+        /// The configured live spawn cap. 0 means unlimited.
+        /// </summary>
+        public int MaxLiveSpawnedInstances => maxLiveSpawnedInstances;
+    }
+
+    /// <summary>
+    /// Internal helper attached to inventory-spawned instances to notify the
+    /// inventory when one is destroyed, so the live spawn count stays accurate.
+    /// Only attached when U3DInventory's live spawn cap is enabled.
+    /// Not intended for direct use by creators.
+    /// </summary>
+    public class U3DInventorySpawnTracker : MonoBehaviour
+    {
+        private U3DInventory _inventory;
+
+        public void Initialize(U3DInventory inventory)
+        {
+            _inventory = inventory;
+        }
+
+        void OnDestroy()
+        {
+            if (_inventory != null)
+                _inventory.OnLiveSpawnedInstanceDestroyed();
+        }
     }
 }

@@ -22,7 +22,7 @@ namespace U3D
         public enum CollectionMethod { OnEnter, OnInteract }
 
         [Header("What Gets Collected")]
-        [Tooltip("Prefab to add to the player's Inventory when this object is collected. Defaults to this GameObject's own prefab — fine when the collectable IS the prefab being dispensed (gems, coins, items).")]
+        [Tooltip("Prefab to add to the player's Inventory. Defaults to this GameObject for when the collectable IS the prefab being dispensed (gems, coins, items). For scattered pickups where many scene instances should stack together, assign the shared source prefab.")]
         [SerializeField] private GameObject prefabToCollect;
 
         [Tooltip("How many copies are added per successful collection.")]

@@ -4612,6 +4612,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DInventory
   slotHotkeys: 31000000320000003300000034000000350000003600000037000000380000003900000030000000
   handBoneName: RightHand
+  maxLiveSpawnedInstances: 200
   OnItemAdded:
     m_PersistentCalls:
       m_Calls: []
@@ -4625,6 +4626,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   OnInventoryFull:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSpawnLimitReached:
     m_PersistentCalls:
       m_Calls: []
 --- !u!1 &631124381
