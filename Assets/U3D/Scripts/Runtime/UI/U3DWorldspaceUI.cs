@@ -9,6 +9,11 @@ namespace U3D
     /// Proximity fade is measured from the local player's body position, not the camera,
     /// so third-person camera distance doesn't affect visibility.
     ///
+    /// When an interactable calls BeginFollowing(target), this UI tracks the target's
+    /// world position with a captured Y offset, but does NOT reparent to it and does
+    /// NOT inherit its rotation or scale. The label remains a free-standing world-space
+    /// object that just happens to chase another object's position.
+    ///
     /// Labels remain hidden during the bootstrap window and begin their fade only after
     /// U3DLoadingCamera fires OnHandoffComplete, so the fade doesn't coincide with the
     /// camera swap. A safety timeout opens the gate anyway if no LoadingCamera exists
@@ -51,6 +56,32 @@ namespace U3D
         private float targetAlpha;
         private bool _fadeGateOpen;
         private float _nextCameraSearchTime;
+
+        // Follow-target state. Set by an interactable's BeginFollowing call.
+        // When _followTarget is non-null, LateUpdate overrides this UI's world position
+        // to (target.x, target.y + _followYOffset, target.z), tracking the target
+        // horizontally and at a fixed world-space height above it. The label is NOT
+        // reparented to the target — it stays where the creator authored it in the
+        // scene hierarchy, and never inherits the target's rotation or scale.
+        //
+        // A scene-placed worldspace UI that no interactable has called BeginFollowing
+        // on is left entirely alone — its position and hierarchy are untouched.
+        private Transform _followTarget;
+        private float _followYOffset;
+
+        /// <summary>
+        /// Called by an interactable to begin tracking its world position. Captures
+        /// the current world-space Y delta between this label and the target, so
+        /// LateUpdate can preserve that offset as the target moves. Calling this
+        /// multiple times is safe — the most recent target wins and the offset is
+        /// recaptured each call.
+        /// </summary>
+        public void BeginFollowing(Transform target)
+        {
+            if (target == null) return;
+            _followTarget = target;
+            _followYOffset = transform.position.y - target.position.y;
+        }
 
         void Awake()
         {
@@ -101,6 +132,9 @@ namespace U3D
             if (_localPlayerTransform == null)
                 FindLocalPlayer();
 
+            if (_followTarget != null)
+                UpdateFollowPosition();
+
             if (faceCamera)
                 UpdateBillboardRotation();
 
@@ -132,6 +166,18 @@ namespace U3D
             var localPlayer = U3DPlayerController.FindLocalPlayer();
             if (localPlayer != null)
                 _localPlayerTransform = localPlayer.transform;
+        }
+
+        /// <summary>
+        /// Override world position to track the follow target horizontally with the
+        /// captured Y offset preserved. Rotation and scale are left untouched —
+        /// rotation gets handled by the billboard code below, and scale stays at
+        /// whatever the creator authored.
+        /// </summary>
+        void UpdateFollowPosition()
+        {
+            Vector3 targetPos = _followTarget.position;
+            transform.position = new Vector3(targetPos.x, targetPos.y + _followYOffset, targetPos.z);
         }
 
         void UpdateBillboardRotation()

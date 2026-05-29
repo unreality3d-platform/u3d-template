@@ -43,7 +43,7 @@ namespace U3D
         [SerializeField] private bool startActive = false;
 
         [Header("Optional Label")]
-        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly. At runtime the label tracks this object's position so it travels with it.")]
         public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
@@ -162,6 +162,7 @@ namespace U3D
         {
             FindPlayerComponents();
             RecordOriginalTransform();
+            LinkLabelUI();
 
             if (!isNetworked)
             {
@@ -170,6 +171,19 @@ namespace U3D
 
             StartBoundsMonitoring();
             CheckForInputConflicts();
+        }
+
+        /// <summary>
+        /// Tell the assigned label UI to track this object's position from here on.
+        /// The label is NOT reparented — it stays in its authored scene location and
+        /// hierarchy. It just updates its own world position each frame to follow
+        /// this transform horizontally, with the captured Y offset preserved.
+        /// No-op if no label is assigned.
+        /// </summary>
+        private void LinkLabelUI()
+        {
+            if (labelUI == null) return;
+            labelUI.BeginFollowing(transform);
         }
 
         private void Update()

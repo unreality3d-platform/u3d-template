@@ -42,7 +42,7 @@ namespace U3D
         [SerializeField] private bool startActive = false;
 
         [Header("Optional Label")]
-        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly. At runtime the label tracks this object's position so it travels with it.")]
         public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
@@ -156,13 +156,22 @@ namespace U3D
             StoreOriginalPhysicsState();
             CheckForInputConflicts();
             ApplyStartActiveState();
+            LinkLabelUI();
         }
 
         /// <summary>
-        /// When Start Active is enabled and no Throwable is present, activate gravity
-        /// so the object falls to the ground, then settle back to original physics state.
-        /// When a Throwable is present, Throwable's own Start Active handles this.
+        /// Tell the assigned label UI to track this object's position from here on.
+        /// The label is NOT reparented — it stays in its authored scene location and
+        /// hierarchy. It just updates its own world position each frame to follow
+        /// this transform horizontally, with the captured Y offset preserved.
+        /// No-op if no label is assigned.
         /// </summary>
+        private void LinkLabelUI()
+        {
+            if (labelUI == null) return;
+            labelUI.BeginFollowing(transform);
+        }
+
         /// <summary>
         /// When Start Active is enabled and no Throwable is present, activate gravity
         /// so the object falls to the ground, then settle back to original physics state.
@@ -555,7 +564,15 @@ namespace U3D
                 ClearPlayerReferences();
 
             OnReleased?.Invoke();
-            if (labelUI != null) labelUI.gameObject.SetActive(true);
+
+            // Label timing: when a Throwable is present, the release is the start
+            // of a flight (throw or drop). Don't restore the label here — the
+            // object is still in motion. Throwable.ReturnToGrabbableSleepState
+            // will restore the label when the object actually settles. This
+            // mirrors the Start Active precedence pattern: when both components
+            // are present, Throwable owns the post-release lifecycle.
+            if (labelUI != null && throwable == null)
+                labelUI.gameObject.SetActive(true);
         }
 
         private void OnRemoteGrab()

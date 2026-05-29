@@ -645,6 +645,15 @@ namespace U3D
                 NetworkAwaitingMotion = false;
             }
 
+            // Restore the sibling Grabbable's label here, not at release time, so the
+            // label doesn't fly along with a thrown or dropped object. Mirrors the
+            // Start Active precedence pattern — when Throwable is present, it owns
+            // the post-release lifecycle, including label timing.
+            if (grabbable != null && grabbable.labelUI != null)
+            {
+                grabbable.labelUI.gameObject.SetActive(true);
+            }
+
             OnSleep?.Invoke();
         }
 
@@ -716,6 +725,14 @@ namespace U3D
                 NetworkIsThrown = false;
                 NetworkIsPhysicsActive = false;
                 NetworkAwaitingMotion = false;
+            }
+
+            // Restore the sibling Grabbable's label after a bounds-triggered reset.
+            // Without this, if a thrown object falls out of the world before settling,
+            // it gets teleported back to spawn but the label stays hidden.
+            if (grabbable != null && grabbable.labelUI != null)
+            {
+                grabbable.labelUI.gameObject.SetActive(true);
             }
 
             OnWorldBoundsReset?.Invoke();

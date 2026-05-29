@@ -238,7 +238,7 @@ GameObject:
   m_Component:
   - component: {fileID: 24171359}
   m_Layer: 0
-  m_Name: Water Volume
+  m_Name: Swimmable Water Volume
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5372,7 +5372,7 @@ GameObject:
   - component: {fileID: 710018668}
   - component: {fileID: 710018667}
   m_Layer: 0
-  m_Name: Check Mark
+  m_Name: Clickable Check Mark
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -7388,7 +7388,7 @@ GameObject:
   - component: {fileID: 934474724}
   - component: {fileID: 934474723}
   m_Layer: 0
-  m_Name: Green Cube
+  m_Name: Throwable Green Cube
   m_TagString: Weight
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -7593,6 +7593,7 @@ MonoBehaviour:
       m_Calls: []
   _NetworkIsGrabbed: 0
   _NetworkGrabState: 0
+  _NetworkGrabLocalRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!114 &934474727
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10895,7 +10896,7 @@ GameObject:
   - component: {fileID: 1246158087}
   - component: {fileID: 1246158086}
   m_Layer: 0
-  m_Name: Red Cube
+  m_Name: Grabbable Red Cube
   m_TagString: Weight
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -11142,6 +11143,7 @@ MonoBehaviour:
       m_Calls: []
   _NetworkIsGrabbed: 0
   _NetworkGrabState: 0
+  _NetworkGrabLocalRotation: {x: 0, y: 0, z: 0, w: 0}
 --- !u!1 &1253246900
 GameObject:
   m_ObjectHideFlags: 0
@@ -11159,7 +11161,7 @@ GameObject:
   - component: {fileID: 1253246906}
   - component: {fileID: 1253246905}
   m_Layer: 0
-  m_Name: Pink Cube
+  m_Name: Pushable Pink Cube
   m_TagString: Weight
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -13860,7 +13862,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Approach this sign to enable the volume effect
+  m_text: Approach this sign to swim in the volume
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -15032,7 +15034,7 @@ GameObject:
   - component: {fileID: 1805814813}
   - component: {fileID: 1805814812}
   m_Layer: 0
-  m_Name: Purple Cube
+  m_Name: Scorable Purple Cube
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -16230,7 +16232,7 @@ GameObject:
   - component: {fileID: 1938776875}
   - component: {fileID: 1938776874}
   m_Layer: 0
-  m_Name: Exclamation Point
+  m_Name: Clickable Exclamation Point
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -16953,7 +16955,7 @@ GameObject:
   - component: {fileID: 2047400990}
   - component: {fileID: 2047400989}
   m_Layer: 0
-  m_Name: Plus Sign
+  m_Name: Plus Sign Spawner
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -17417,7 +17419,7 @@ GameObject:
   - component: {fileID: 4434605098844491516}
   - component: {fileID: 6473990682871084102}
   m_Layer: 0
-  m_Name: Blue Sphere
+  m_Name: Kickable Blue Sphere
   m_TagString: Weight
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

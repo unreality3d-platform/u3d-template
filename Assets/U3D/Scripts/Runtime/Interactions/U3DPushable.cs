@@ -33,7 +33,7 @@ namespace U3D
         [SerializeField] private bool startActive = false;
 
         [Header("Optional Label")]
-        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly.")]
+        [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly. At runtime the label tracks this object's position so it travels with it.")]
         public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
@@ -143,6 +143,7 @@ namespace U3D
             FindPlayerComponents();
             RecordOriginalTransform();
             ApplyPushResistanceToMass();
+            LinkLabelUI();
 
             if (!isNetworked)
             {
@@ -151,6 +152,19 @@ namespace U3D
 
             StartBoundsMonitoring();
             CheckForInputConflicts();
+        }
+
+        /// <summary>
+        /// Tell the assigned label UI to track this object's position from here on.
+        /// The label is NOT reparented — it stays in its authored scene location and
+        /// hierarchy. It just updates its own world position each frame to follow
+        /// this transform horizontally, with the captured Y offset preserved.
+        /// No-op if no label is assigned.
+        /// </summary>
+        private void LinkLabelUI()
+        {
+            if (labelUI == null) return;
+            labelUI.BeginFollowing(transform);
         }
 
         private void Update()
@@ -255,7 +269,6 @@ namespace U3D
                 if (isPushActive)
                 {
                     isPushActive = false;
-                    if (labelUI != null) labelUI.gameObject.SetActive(true);
                     OnPushEnd?.Invoke();
                 }
                 SyncLocalPhysicsState();
@@ -358,11 +371,12 @@ namespace U3D
                 NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 0.3f);
             }
 
-            if (labelUI != null) labelUI.gameObject.SetActive(true);
             OnPushEnd?.Invoke();
 
             // Object remains in Active physics state — damping decelerates it,
-            // sleep detection in FixedUpdateNetwork will return it to Sleeping
+            // sleep detection in FixedUpdateNetwork will return it to Sleeping.
+            // Label stays hidden during this active-physics tail and is restored
+            // by ReturnToPushableSleepState, so it doesn't fly along with a rolling cube.
         }
 
         private void ReturnToPushableSleepState()
