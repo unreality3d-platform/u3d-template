@@ -66,6 +66,15 @@ namespace U3D
         [Networked] public PlayerRef NetworkGrabbedBy { get; set; }
         [Networked] public byte NetworkGrabState { get; set; } // 0=Free, 1=Grabbing, 2=Grabbed
 
+        // Rotation of the held object relative to the grabber's hand bone, captured at
+        // grab moment on the state authority. Remote viewers multiply this by the
+        // grabber's hand world rotation to reconstruct the exact orientation the
+        // grabber sees, so non-identity initial rotations (like a sideways-held cup
+        // or an upright magical critter) replicate correctly. Without this, remote
+        // viewers would either see the object aligned to the hand's forward axis
+        // (wrong for objects with meaningful starting orientation) or have to guess.
+        [Networked] public Quaternion NetworkGrabLocalRotation { get; set; }
+
         // Components
         private Rigidbody rb;
         private NetworkRigidbody3D networkRb3D;
@@ -260,11 +269,14 @@ namespace U3D
             // grabber's local SetParent + SyncParent=false means no position
             // updates are replicated to us.
             //
-            // Note: the previous version of this method gated on localGrabState
-            // == Grabbed, which is only ever true on the state authority — so
-            // the interpolation never actually ran on remote viewers. This is
-            // the fix for the long-standing "held object invisible to other
-            // players" bug.
+            // Position uses TransformPoint(grabOffset) to match exactly what the
+            // grabber does locally — handles non-unit avatar rig scale correctly.
+            //
+            // Rotation uses grabberHand.rotation * NetworkGrabLocalRotation, where
+            // NetworkGrabLocalRotation was captured at grab moment by the state
+            // authority. This reconstructs the grabber's transform.rotation as
+            // (parent.rotation * localRotation), so non-identity grab orientations
+            // (sideways cups, upright critters) replicate exactly.
             if (!isNetworked) return;
             if (!hasNetworkRb3D) return;
             if (Object == null || !Object.IsValid) return;
@@ -277,13 +289,13 @@ namespace U3D
 
             transform.position = Vector3.Lerp(
                 transform.position,
-                grabberHand.position + grabberHand.TransformVector(grabOffset),
+                grabberHand.TransformPoint(grabOffset),
                 0.5f
             );
 
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
-                grabberHand.rotation,
+                grabberHand.rotation * NetworkGrabLocalRotation,
                 0.5f
             );
         }
@@ -475,6 +487,15 @@ namespace U3D
             transform.SetParent(handTransform);
             transform.localPosition = grabOffset;
 
+            // Capture the object's rotation relative to the hand bone right after
+            // parenting. This is what Render() on remote viewers needs to
+            // reconstruct the same world rotation the grabber sees. Done AFTER
+            // SetParent so localRotation is meaningful relative to the hand bone.
+            if (isNetworked && Object.HasStateAuthority)
+            {
+                NetworkGrabLocalRotation = transform.localRotation;
+            }
+
             OnGrabbed?.Invoke();
             if (labelUI != null) labelUI.gameObject.SetActive(false);
         }
@@ -495,6 +516,7 @@ namespace U3D
                 NetworkGrabState = (byte)GrabState.Free;
                 NetworkIsGrabbed = false;
                 NetworkGrabbedBy = PlayerRef.None;
+                NetworkGrabLocalRotation = Quaternion.identity;
             }
 
             // Only re-enable SyncParent if there's no throwable to manage it
