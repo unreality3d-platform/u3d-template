@@ -145,6 +145,14 @@ namespace U3D
 
         private void HandleRespawn(GameObject obj, Rigidbody rb)
         {
+            // A held object is in the player's hand, not lost. Teleporting it here while
+            // it's still parented to the hand bone bakes a fixed offset into its local
+            // position, so it floats off the hand instead of staying held. Leave held
+            // objects alone — the player throws or drops it to send it through respawn
+            // as a loose object.
+            U3DGrabbable heldCheck = obj.GetComponent<U3DGrabbable>();
+            if (heldCheck != null && heldCheck.IsGrabbed) return;
+
             // U3D interactables: delegate to their internal reset methods.
             // Check each type — an object can have multiple (e.g. Grabbable + Throwable).
             bool handledByU3D = false;
