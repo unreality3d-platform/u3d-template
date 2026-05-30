@@ -98,8 +98,7 @@ public class U3DUIInputManager : MonoBehaviour, IUIInputHandler
         if (_networkManager != null)
         {
             _networkManager.RegisterUIInputHandler(this);
-            _registeredWithNetwork = true;
-            Debug.Log($"🎮 {componentName} registered with network input system");
+            _registeredWithNetwork = true;            
         }
     }
 
@@ -110,8 +109,7 @@ public class U3DUIInputManager : MonoBehaviour, IUIInputHandler
         if (_networkManager != null)
         {
             _networkManager.UnregisterUIInputHandler(this);
-            _registeredWithNetwork = false;
-            Debug.Log($"🎮 {componentName} unregistered from network input system");
+            _registeredWithNetwork = false;            
         }
     }
 

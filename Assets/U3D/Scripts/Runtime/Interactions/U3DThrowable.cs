@@ -35,6 +35,9 @@ namespace U3D
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming throwable. Use this for objects spawned above ground level.")]
         [SerializeField] private bool startActive = false;
 
+        [Tooltip("When enabled, this object is permanently destroyed when it falls out of world bounds instead of respawning. Requires a U3DDestroyable component on this object.")]
+        [SerializeField] private bool destroyOnOutOfBounds = false;
+
         [Header("Impact Filter")]
         [Tooltip("Only fire OnImpact for collisions with a specific tag")]
         [SerializeField] private bool requireTag = false;
@@ -688,7 +691,18 @@ namespace U3D
 
                 if (needsReset)
                 {
-                    ResetToSpawnPosition();
+                    if (destroyOnOutOfBounds)
+                    {
+                        U3DDestroyable destroyable = GetComponent<U3DDestroyable>();
+                        if (destroyable != null)
+                            destroyable.RequestDestroy();
+                        else
+                            Debug.LogWarning($"U3DThrowable: '{name}' has Destroy On Out Of Bounds enabled but no U3DDestroyable component.");
+                    }
+                    else
+                    {
+                        ResetToSpawnPosition();
+                    }
                 }
             }
         }

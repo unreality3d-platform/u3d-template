@@ -42,6 +42,9 @@ namespace U3D
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming kickable. Use this for objects spawned above ground level.")]
         [SerializeField] private bool startActive = false;
 
+        [Tooltip("When enabled, this object is permanently destroyed when it falls out of world bounds instead of respawning. Requires a U3DDestroyable component on this object.")]
+        [SerializeField] private bool destroyOnOutOfBounds = false;
+
         [Header("Optional Label")]
         [Tooltip("Assign a U3DWorldspaceUI in your scene to show a label near this object. Edit the text on that object directly. At runtime the label tracks this object's position so it travels with it.")]
         public U3DWorldspaceUI labelUI;
@@ -750,7 +753,18 @@ namespace U3D
 
                 if (needsReset)
                 {
-                    ResetToSpawnPosition();
+                    if (destroyOnOutOfBounds)
+                    {
+                        U3DDestroyable destroyable = GetComponent<U3DDestroyable>();
+                        if (destroyable != null)
+                            destroyable.RequestDestroy();
+                        else
+                            Debug.LogWarning($"U3DKickable: '{name}' has Destroy On Out Of Bounds enabled but no U3DDestroyable component.");
+                    }
+                    else
+                    {
+                        ResetToSpawnPosition();
+                    }
                 }
             }
         }
@@ -797,6 +811,11 @@ namespace U3D
         public void PutToSleep()
         {
             ReturnToKickableSleepState();
+        }
+
+        public void ResetToSpawn()
+        {
+            ResetToSpawnPosition();
         }
 
         // Public method to update spawn position (useful for dynamic spawn points)

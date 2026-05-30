@@ -26,6 +26,9 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Scorable", "Adds a U3DScorable component to the selected object. The object should have a TextMeshPro component in its hierarchy.", () => U3DScorableTools.MakeScorable(), true),
                 new CreatorTool("🟢 Add Gaze Reticle", "Adds a small aiming dot at screen center to the player. Helps players see where they're pointing for UI and interaction, especially in VR. Hides automatically in third-person. Adds to the player prefab; will not add a duplicate.", AddGazeReticle),
                 new CreatorTool("🟢 Add Inventory", "10-slot hotkey inventory for the local player. Press keys 1-0 to use items from each slot. Items are collected via Make Collectable in the Interactions category.", () => U3DInventoryTools.AddInventory()),
+                new CreatorTool("🟢 Make Destroyable", "Marks this object as destroyable. Required for Destroy On Out Of Bounds on Kickable, Throwable, and Pushable, and for clean networked destruction by a Trash Handler zone. Fires OnDestroyed before removal for effects and scoring hooks.", AddDestroyable, true),
+                new CreatorTool("🟢 Add Trash Handler", "Creates a trigger zone that destroys or respawns objects that enter it. Use as a world floor catcher, an out-of-bounds reset zone, or a scored-object collector.", AddTrashHandler),
+                new CreatorTool("🟢 Make Trash Handler", "Turns the selected object's trigger collider into a destroy or respawn zone. Requires a trigger Collider on the object.", MakeTrashHandler, true),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => { }),
                 new CreatorTool("🚧 Add Quiz System", "Interactive questions and knowledge tests", () => { }),
                 new CreatorTool("🚧 Add Checkpoint System", "Save progress and restart points for complex experiences", () => { }),
@@ -81,6 +84,62 @@ namespace U3D.Editor
 
             Selection.activeGameObject = instance;
             EditorGUIUtility.PingObject(instance);
+        }
+
+        private static void AddDestroyable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            if (selected.GetComponent<U3DDestroyable>() == null)
+                selected.AddComponent<U3DDestroyable>();
+            else
+                EditorUtility.DisplayDialog("Make Destroyable",
+                    $"'{selected.name}' already has a U3DDestroyable component.", "OK");
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void AddTrashHandler()
+        {
+            GameObject go = new GameObject("Trash Handler");
+
+            BoxCollider col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(10f, 1f, 10f);
+
+            go.AddComponent<U3DTrashHandler>();
+
+            Undo.RegisterCreatedObjectUndo(go, "Add Trash Handler");
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
+        }
+
+        private static void MakeTrashHandler()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Collider col = selected.GetComponent<Collider>();
+            if (col == null)
+                col = selected.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+
+            if (selected.GetComponent<U3DTrashHandler>() == null)
+                selected.AddComponent<U3DTrashHandler>();
+            else
+                EditorUtility.DisplayDialog("Make Trash Handler",
+                    $"'{selected.name}' already has a U3DTrashHandler component.", "OK");
+
+            EditorUtility.SetDirty(selected);
         }
 
         private static void AddGazeReticle()

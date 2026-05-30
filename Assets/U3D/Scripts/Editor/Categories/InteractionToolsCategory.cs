@@ -31,8 +31,6 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
                 new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
                 new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
-                new CreatorTool("🚧 Make Object Destroy Trigger", "Removes objects when triggered", () => { }, true),
-                new CreatorTool("🚧 Make Object Reset Trigger", "Returns objects to starting position", () => { }, true),
                 new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true),
                 // ── Movement ──
                 new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
@@ -307,6 +305,21 @@ namespace U3D.Editor
                 selected.AddComponent<U3DPushable>();
 
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void AddTrashHandler()
+        {
+            GameObject go = new GameObject("Trash Handler");
+
+            BoxCollider col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(10f, 1f, 10f);
+
+            go.AddComponent<U3DTrashHandler>();
+
+            Undo.RegisterCreatedObjectUndo(go, "Add Trash Handler");
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
         }
 
         private static void ApplyEnterTrigger()

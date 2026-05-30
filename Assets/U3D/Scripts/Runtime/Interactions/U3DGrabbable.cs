@@ -518,6 +518,29 @@ namespace U3D
             PerformRelease();
         }
 
+        public void ResetToSpawn()
+        {
+            if (IsGrabbed) Release();
+
+            if (spawnPosition != Vector3.zero || hasRecordedSpawn)
+            {
+                CharacterController cc = null;
+                U3DPlayerController player = U3DPlayerController.FindLocalPlayer();
+                if (player != null) cc = player.GetComponent<CharacterController>();
+
+                NetworkRigidbody3D nrb = GetComponent<NetworkRigidbody3D>();
+                if (nrb != null)
+                {
+                    nrb.Teleport(spawnPosition, spawnRotation);
+                }
+                else
+                {
+                    transform.position = spawnPosition;
+                    transform.rotation = spawnRotation;
+                }
+            }
+        }
+
         private void PerformRelease()
         {
             if (isNetworked && Object.HasStateAuthority)
@@ -805,6 +828,8 @@ namespace U3D
         public GrabState CurrentGrabState => localGrabState;
         public bool IsRequestingAuthority => isRequestingAuthority;
         public KeyCode GrabKey { get => grabKey; set => grabKey = value; }
+        public Vector3 SpawnPosition => spawnPosition;
+        public Quaternion SpawnRotation => spawnRotation;
 
         private void OnDestroy()
         {
@@ -823,17 +848,12 @@ namespace U3D
                 if (networkRb3D != null)
                     networkRb3D.SyncParent = true;
 
-                // Skip reparenting when the scene/app is shutting down — calling
-                // SetParent on a GameObject during teardown logs a Unity warning
-                // even when wrapped in try/catch (the warning is emitted before
-                // the exception, so the catch can't suppress it). The reparent
-                // is unnecessary anyway since both this object and its parent
-                // are about to be destroyed.
-                if (gameObject.scene.isLoaded)
-                {
-                    try { transform.SetParent(originalParent); }
-                    catch { }
-                }
+                // No reparenting here. OnDestroy means this object is being torn down,
+                // and SetParent during destruction logs a Unity warning that try/catch
+                // cannot suppress (the warning fires before the exception). Reparenting a
+                // destroyed object accomplishes nothing — its hierarchy is discarded the
+                // same frame. This covers both shutdown and mid-play destruction, such as
+                // a held object entering a Destroy-mode trash zone.
 
                 if (col != null)
                     col.isTrigger = false;
