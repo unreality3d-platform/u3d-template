@@ -242,14 +242,13 @@ namespace U3D
 
             (Vector3 spawnPosition, Quaternion spawnRotation) = U3DPlayerSpawner.Instance.GetSpawnData();
 
-            // Disable CharacterController briefly so we can set position directly.
-            CharacterController cc = player.GetComponent<CharacterController>();
-            if (cc != null) cc.enabled = false;
-
-            player.transform.position = spawnPosition;
-            player.transform.rotation = spawnRotation;
-
-            if (cc != null) cc.enabled = true;
+            // Route through the controller's own move/rotate API rather than writing the
+            // transform directly. SetPosition handles the CharacterController toggle, detaches
+            // from any rideable, resets velocity, and syncs NetworkPosition; SetRotation syncs
+            // NetworkRotation and the internal cameraYaw so the view doesn't swing to the old
+            // heading on the first step after respawn.
+            player.SetPosition(spawnPosition);
+            player.SetRotation(spawnRotation.eulerAngles.y);
 
             OnObjectRespawned?.Invoke();
         }

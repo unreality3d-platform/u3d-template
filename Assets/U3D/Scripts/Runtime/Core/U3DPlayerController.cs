@@ -1764,7 +1764,14 @@ public class U3DPlayerController : NetworkBehaviour
     public void SetRotation(float yRotation)
     {
         if (!_isLocalPlayer) return;
+
         transform.rotation = Quaternion.Euler(0, yRotation, 0);
+        NetworkRotation = transform.rotation;
+
+        // HandleMovementFusion snaps the body to cameraYaw on the first step after standing
+        // still. An external rotation (e.g. respawn) that doesn't update cameraYaw leaves it
+        // stale, so that snap swings the view back to the pre-respawn heading. Keep them matched.
+        cameraYaw = yRotation;
     }
 
     public void SetCameraPitch(float pitch)
