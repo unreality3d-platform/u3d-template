@@ -84,9 +84,9 @@ namespace U3D
             if (prefabToCollect == null)
                 prefabToCollect = gameObject;
 
-            // Force the collider to a trigger when added via the dashboard or Add Component.
-            Collider c = GetComponent<Collider>();
-            if (c != null) c.isTrigger = true;
+            // Intentionally does NOT change the collider's isTrigger state. Forcing a trigger
+            // silently removes a creator's intended blocking collider. The dashboard's two
+            // "Make ... Collectable" tools set up the correct collider for each intent.
         }
 
         private void Awake()
@@ -292,6 +292,11 @@ namespace U3D
                 hasBeenCollected = false;
                 lastCollectTime = 0f;
             }
+        }
+
+        public void SetCollectionMethod(CollectionMethod method)
+        {
+            collectionMethod = method;
         }
 
         public bool HasBeenCollected => isNetworked ? NetworkHasBeenCollected : hasBeenCollected;

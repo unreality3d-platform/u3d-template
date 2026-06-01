@@ -34,9 +34,6 @@ namespace U3D
         [Tooltip("Offset from the hand position")]
         [SerializeField] private Vector3 grabOffset = Vector3.zero;
 
-        [Tooltip("Allow multiple players to hold this object simultaneously. When disabled, grabbing steals from whoever currently holds it.")]
-        [SerializeField] private bool allowMultiGrab = false;
-
         [Header("Starting State")]
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming grabbable. Use this for objects spawned above ground level. When a Throwable component is also present, use Throwable's Start Active toggle instead.")]
         [SerializeField] private bool startActive = false;

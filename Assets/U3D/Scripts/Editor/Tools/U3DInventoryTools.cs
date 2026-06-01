@@ -33,12 +33,33 @@ namespace U3D.Editor
         }
 
         /// <summary>
-        /// Adds U3DCollectable to the selected object. Auto-adds a trigger Collider
-        /// and (when missing) a NetworkObject configured for Shared Mode.
-        /// Also ensures the scene has a U3DInventory — Collectable cannot function
-        /// without one, so we pair-add it the same way Make Throwable pair-adds Grabbable.
+        /// On Interact collection: the player presses the Interact key while near the object.
+        /// Needs any collider so the interaction system can find the object, never a trigger,
+        /// so an existing collider is left exactly as authored — a solid collider keeps the
+        /// object blocking the player, which is valid for this mode.
         /// </summary>
-        public static void ApplyCollectable()
+        public static void ApplyInteractCollectable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            if (selected.GetComponent<Collider>() == null)
+                selected.AddComponent<BoxCollider>();
+
+            EnsureCollectable(selected, U3DCollectable.CollectionMethod.OnInteract);
+        }
+
+        /// <summary>
+        /// On Enter collection: the player picks the object up by walking into it (pass-through
+        /// pickups like coins and gems). Requires a trigger collider. Adds one when the object
+        /// has none. If the object already has a solid collider, converting it to a trigger
+        /// stops it blocking the player, so the creator is asked to confirm before that happens.
+        /// </summary>
+        public static void ApplyEnterCollectable()
         {
             GameObject selected = Selection.activeGameObject;
             if (selected == null)
@@ -49,32 +70,54 @@ namespace U3D.Editor
 
             Collider collider = selected.GetComponent<Collider>();
             if (collider == null)
-                collider = selected.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
+            {
+                BoxCollider box = selected.AddComponent<BoxCollider>();
+                box.isTrigger = true;
+            }
+            else if (!collider.isTrigger)
+            {
+                bool proceed = EditorUtility.DisplayDialog(
+                    "Make On Enter Collectable",
+                    $"'{selected.name}' has a solid collider that currently blocks the player.\n\n" +
+                    "On Enter collection needs the player to pass through the object, so this collider " +
+                    "will be changed to a trigger and will stop blocking. If this object should stay solid, " +
+                    "cancel and use Make On Interact Collectable instead.\n\nProceed?",
+                    "Proceed",
+                    "Cancel"
+                );
 
+                if (!proceed)
+                    return;
+
+                // A MeshCollider must be convex before it can act as a trigger.
+                if (collider is MeshCollider meshCollider)
+                    meshCollider.convex = true;
+                collider.isTrigger = true;
+            }
+
+            EnsureCollectable(selected, U3DCollectable.CollectionMethod.OnEnter);
+        }
+
+        /// <summary>
+        /// Shared setup for both collectable tools: ensures a Shared Mode NetworkObject and a
+        /// U3DCollectable set to the given mode, and pair-adds a U3DInventory if the scene has
+        /// none (Collectable does nothing without one). Restores the original selection after
+        /// any inventory pair-add so the creator stays focused on the object they just set up.
+        /// </summary>
+        private static void EnsureCollectable(GameObject selected, U3DCollectable.CollectionMethod method)
+        {
             if (!selected.GetComponent<NetworkObject>())
             {
                 var networkObject = selected.AddComponent<NetworkObject>();
                 InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
-            if (selected.GetComponent<U3DCollectable>() == null)
-            {
-                selected.AddComponent<U3DCollectable>();
-            }
-            else
-            {
-                Debug.Log(
-                    $"'{selected.name}' already has a U3D Collectable. " +
-                    $"To add a second collectable with different settings, use the Inspector's Add Component button " +
-                    $"and search for 'U3D Collectable'."
-                );
-            }
+            U3DCollectable collectable = selected.GetComponent<U3DCollectable>();
+            if (collectable == null)
+                collectable = selected.AddComponent<U3DCollectable>();
 
-            // Pair-add: Collectable does nothing without an Inventory. If the scene doesn't
-            // have one, create it now so the creator gets a working setup from one click.
-            // Restore the original selection afterward so the creator stays focused on the
-            // object they just made collectable.
+            collectable.SetCollectionMethod(method);
+
             if (UnityEngine.Object.FindAnyObjectByType<U3DInventory>() == null)
             {
                 AddInventory();
