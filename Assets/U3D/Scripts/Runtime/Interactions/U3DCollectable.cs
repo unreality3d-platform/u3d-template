@@ -29,10 +29,10 @@ namespace U3D
         [Min(1)]
         [SerializeField] private int quantity = 1;
 
-        [Header("Collection Trigger")]
-        [Tooltip("How the player triggers collection. OnEnter = automatic on trigger overlap. OnInteract = requires the Interact key (R by default) while in range.")]
+        [HideInInspector]
         [SerializeField] private CollectionMethod collectionMethod = CollectionMethod.OnEnter;
 
+        [Header("Collection Trigger")]
         [Tooltip("Maximum distance for OnInteract collection (ignored for OnEnter). The U3DInteractionManager's overall interaction range still applies as a coarse outer filter.")]
         [SerializeField] private float interactDistance = 3f;
 
