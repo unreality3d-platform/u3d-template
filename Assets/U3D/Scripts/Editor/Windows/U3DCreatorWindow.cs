@@ -103,6 +103,15 @@ namespace U3D.Editor
             // DON'T initialize styles here - wait for OnGUI when Editor is ready
         }
 
+        // Single repaint mechanism for the window. Unity fires this ~10x/sec while the
+        // window is open, so async state changes in any tab (auth, publishing, uploads,
+        // validation) surface without the user moving the mouse. Replaces the scattered
+        // in-OnGUI Repaint() calls that previously only covered the version checker.
+        void OnInspectorUpdate()
+        {
+            Repaint();
+        }
+
         void LoadLogo()
         {
             string[] guids = AssetDatabase.FindAssets("U3D512Logo t:Texture2D");
@@ -327,10 +336,10 @@ namespace U3D.Editor
             {
                 fontSize = 10,
                 normal = {
-                    textColor = EditorGUIUtility.isProSkin
-                        ? new Color(0.7f, 0.7f, 0.7f)
-                        : new Color(0.35f, 0.35f, 0.35f)
-                },
+            textColor = EditorGUIUtility.isProSkin
+                ? new Color(0.7f, 0.7f, 0.7f)
+                : new Color(0.35f, 0.35f, 0.35f)
+        },
                 alignment = TextAnchor.MiddleCenter
             };
 
@@ -357,7 +366,6 @@ namespace U3D.Editor
 
                 case U3DTemplateUpdateChecker.UpdateStatus.Checking:
                     DrawCenteredMiniLabel("Checking for updates...", checkingColor);
-                    Repaint();
                     break;
 
                 case U3DTemplateUpdateChecker.UpdateStatus.UpToDate:
@@ -385,7 +393,6 @@ namespace U3D.Editor
                     else
                     {
                         DrawCenteredMiniLabel("Downloading...", downloadingColor);
-                        Repaint();
                     }
                     break;
 

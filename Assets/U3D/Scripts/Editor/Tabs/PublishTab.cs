@@ -31,6 +31,8 @@ namespace U3D.Editor
         private string currentStatus = "";
         private bool isPublishing = false;
         private bool shouldCreateNewRepository = false;
+        private PublishMode currentMode = PublishMode.PublishExperience;
+        private MarketPackagerView marketView = new MarketPackagerView();
 
         private List<ProjectOption> availableOptions = new List<ProjectOption>();
         private bool optionsLoaded = false;
@@ -68,6 +70,11 @@ namespace U3D.Editor
             DeployingToGitHub,
             WaitingForGitHub,
             Complete
+        }
+        private enum PublishMode
+        {
+            PublishExperience,
+            PackageForMarket
         }
 
         /// <summary>
@@ -262,6 +269,42 @@ namespace U3D.Editor
         }
 
         public void DrawTab()
+        {
+            EditorGUILayout.Space(10);
+
+            // Mode toggle — always visible. Each mode owns its own state and drawing,
+            // so the publish/deploy flow and the market packager never interact.
+            DrawModeToggle();
+
+            EditorGUILayout.Space(10);
+
+            if (currentMode == PublishMode.PackageForMarket)
+            {
+                marketView.Draw();
+                return;
+            }
+
+            DrawPublishExperienceMode();
+        }
+
+        private void DrawModeToggle()
+        {
+            var modeLabels = new[] { "Publish Experience", "Package for Market" };
+
+            // Lock the toggle while a publish is running so an in-progress deploy
+            // can't be hidden behind a mode switch.
+            EditorGUI.BeginDisabledGroup(isPublishing);
+            int newMode = GUILayout.Toolbar((int)currentMode, modeLabels, GUILayout.Height(28));
+            EditorGUI.EndDisabledGroup();
+
+            if (newMode != (int)currentMode)
+            {
+                currentMode = (PublishMode)newMode;
+                GUI.FocusControl(null);
+            }
+        }
+
+        private void DrawPublishExperienceMode()
         {
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Publish Your Content", EditorStyles.boldLabel);
@@ -733,7 +776,7 @@ namespace U3D.Editor
             // Refresh button for repository list
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("🔄 Refresh Repositories", EditorStyles.miniButton, GUILayout.Width(140)))
+            if (GUILayout.Button("🔄 Refresh Repos", EditorStyles.miniButton, GUILayout.Width(140)))
             {
                 optionsLoaded = false;
                 loadingOptions = false;

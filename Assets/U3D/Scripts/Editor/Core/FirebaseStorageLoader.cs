@@ -22,6 +22,63 @@ public class FirebaseStorageUploader
         _idToken = idToken;
         _httpClient = new HttpClient() { Timeout = TimeSpan.FromMinutes(10) };
     }
+    public class MarketUploadResult
+    {
+        public bool Success { get; set; }
+        public string StoragePath { get; set; }
+        public string ErrorMessage { get; set; }
+    }
+
+    public async Task<MarketUploadResult> UploadMarketPackage(string localFilePath, string uid, string assetId)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(uid))
+                return new MarketUploadResult { Success = false, ErrorMessage = "Missing user id. Log in again before uploading." };
+            if (string.IsNullOrEmpty(assetId))
+                return new MarketUploadResult { Success = false, ErrorMessage = "Missing asset id." };
+            if (!File.Exists(localFilePath))
+                return new MarketUploadResult { Success = false, ErrorMessage = $"Package file not found: {localFilePath}" };
+
+            var fileBytes = await File.ReadAllBytesAsync(localFilePath);
+
+            var storagePath = $"market/{uid}/{assetId}/package.unitypackage";
+            var storageUrl = $"https://firebasestorage.googleapis.com/v0/b/{_storageBucket}/o?name={storagePath}";
+
+            // Dedicated long-timeout client: a 1 GiB single-request upload on a slow
+            // connection can run ~30 minutes, well past the shared client's limit.
+            using var marketClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+
+            using var content = new ByteArrayContent(fileBytes);
+            content.Headers.Add("Content-Type", "application/octet-stream");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, storageUrl);
+            request.Content = content;
+            request.Headers.Add("Authorization", $"Bearer {_idToken}");
+
+            var response = await marketClient.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return new MarketUploadResult { Success = true, StoragePath = storagePath };
+            }
+
+            var errorText = await response.Content.ReadAsStringAsync();
+            return new MarketUploadResult
+            {
+                Success = false,
+                ErrorMessage = $"Upload failed ({(int)response.StatusCode}): {errorText}"
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new MarketUploadResult { Success = false, ErrorMessage = "Upload timed out. Check your connection and retry." };
+        }
+        catch (Exception ex)
+        {
+            return new MarketUploadResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
 
     public async Task<bool> UploadBuildToStorage(string buildPath, string creatorUsername, string projectName)
     {
@@ -57,7 +114,7 @@ public class FirebaseStorageUploader
         }
     }
 
-    // === CHANGED: Added productDisplayName parameter so PublishTab can send
+    // === Added productDisplayName parameter so PublishTab can send
     // === PlayerSettings.productName (the raw, case-preserving typed value) to
     // === the server, which stores it as creator_projects.productDisplayName
     // === and uses it in the Unity loading-screen title and generated README.
@@ -97,7 +154,7 @@ public class FirebaseStorageUploader
         }
     }
 
-    // === CHANGED: Added productDisplayName parameter and included it in the
+    // === Added productDisplayName parameter and included it in the
     // === deployment request payload. Server-side deployFromStorage (file 5)
     // === destructures this field and threads it through the deploy chain.
     private async Task<DeploymentResult> TriggerGitHubDeploymentWithIntent(string creatorUsername, string baseProjectName, string deploymentIntent, List<BuildFileInfo> files, string productDisplayName)

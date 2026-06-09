@@ -17,6 +17,7 @@ public static class U3DAuthenticator
     private static string _userEmail;
     private static string _displayName;
     private static string _creatorUsername;
+    private static string _userId;
     private static string _paypalEmail;
     private static bool _stayLoggedIn = true;
     private static HttpClient _sharedHttpClient;
@@ -29,12 +30,14 @@ public static class U3DAuthenticator
     private const string USER_EMAIL_KEY = "U3D_UserEmail";
     private const string DISPLAY_NAME_KEY = "U3D_DisplayName";
     private const string CREATOR_USERNAME_KEY = "U3D_CreatorUsername";
+    private const string USER_ID_KEY = "U3D_UserId";
     private const string PAYPAL_EMAIL_KEY = "U3D_PayPalEmail";
     private const string STAY_LOGGED_IN_KEY = "U3D_StayLoggedIn";
 
     public static bool IsLoggedIn => !string.IsNullOrEmpty(_idToken);
     public static string UserEmail => _userEmail;
     public static string DisplayName => _displayName;
+    public static string UserId => _userId ?? "";
     public static string CreatorUsername => _creatorUsername;
     public static string PayPalEmail => _paypalEmail;
 
@@ -72,7 +75,7 @@ public static class U3DAuthenticator
 
     public static class CurrentUser
     {
-        public static string UserId => U3DAuthenticator.IsLoggedIn ? "user-id-placeholder" : "";
+        public static string UserId => U3DAuthenticator.UserId;
         public static string Email => U3DAuthenticator.UserEmail;
         public static string DisplayName => U3DAuthenticator.DisplayName;
         public static string CreatorUsername => U3DAuthenticator.CreatorUsername;
@@ -1040,7 +1043,11 @@ public static class U3DAuthenticator
     {
         try
         {
-            var result = await CallFirebaseFunction("getUserProfile", new { });
+            var result = await CallFirebaseFunctionWithAuthRetry("getUserProfile", new { });
+
+            _userId = result.ContainsKey("userId") && result["userId"] != null
+                ? result["userId"].ToString()
+                : _userId;
 
             _creatorUsername = result.ContainsKey("creatorUsername") && result["creatorUsername"] != null
                 ? result["creatorUsername"].ToString()
@@ -1096,6 +1103,7 @@ public static class U3DAuthenticator
             if (!string.IsNullOrEmpty(_displayName))
                 EditorPrefs.SetString(DISPLAY_NAME_KEY, _displayName);
 
+            EditorPrefs.SetString(USER_ID_KEY, _userId ?? "");
             EditorPrefs.SetString(CREATOR_USERNAME_KEY, _creatorUsername ?? "");
             EditorPrefs.SetString(PAYPAL_EMAIL_KEY, _paypalEmail ?? "");
         }
@@ -1110,6 +1118,7 @@ public static class U3DAuthenticator
         _refreshToken = EditorPrefs.GetString(REFRESH_TOKEN_KEY, "");
         _userEmail = EditorPrefs.GetString(USER_EMAIL_KEY, "");
         _displayName = EditorPrefs.GetString(DISPLAY_NAME_KEY, "");
+        _userId = EditorPrefs.GetString(USER_ID_KEY, "");
         _creatorUsername = EditorPrefs.GetString(CREATOR_USERNAME_KEY, "");
         _paypalEmail = EditorPrefs.GetString(PAYPAL_EMAIL_KEY, "");
         _stayLoggedIn = EditorPrefs.GetBool(STAY_LOGGED_IN_KEY, true);
@@ -1190,6 +1199,7 @@ public static class U3DAuthenticator
         EditorPrefs.DeleteKey(REFRESH_TOKEN_KEY);
         EditorPrefs.DeleteKey(USER_EMAIL_KEY);
         EditorPrefs.DeleteKey(DISPLAY_NAME_KEY);
+        EditorPrefs.DeleteKey(USER_ID_KEY);
         EditorPrefs.DeleteKey(CREATOR_USERNAME_KEY);
         EditorPrefs.DeleteKey(PAYPAL_EMAIL_KEY);
 
@@ -1197,6 +1207,7 @@ public static class U3DAuthenticator
         _refreshToken = "";
         _userEmail = "";
         _displayName = "";
+        _userId = "";
         _creatorUsername = "";
         _paypalEmail = "";
     }
