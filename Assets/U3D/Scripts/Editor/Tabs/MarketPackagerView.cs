@@ -167,9 +167,9 @@ namespace U3D.Editor
             string uid = U3DAuthenticator.CurrentUser.UserId;
             bool haveUid = !string.IsNullOrEmpty(uid);
 
-            // Logged in but the account id hasn't loaded this session: fetch the profile
-            // once rather than telling the creator to log in (they already are). The
-            // window's OnInspectorUpdate repaint refreshes this section when it lands.
+            string paypalEmail = U3DAuthenticator.GetPayPalEmail();
+            bool havePayPal = !string.IsNullOrEmpty(paypalEmail);
+
             if (loggedIn && !haveUid && !profileLoading && !profileLoadAttempted)
             {
                 EnsureMarketProfileLoadedAsync();
@@ -202,10 +202,23 @@ namespace U3D.Editor
             if (loggedIn && haveUid)
             {
                 EditorGUILayout.LabelField($"Submitting as: {ResolveSubmitterIdentity()}", EditorStyles.miniLabel);
+                if (havePayPal)
+                {
+                    EditorGUILayout.LabelField($"Payments go to: {paypalEmail}", EditorStyles.miniLabel);
+                }
                 EditorGUILayout.Space(4);
             }
 
-            EditorGUI.BeginDisabledGroup(!attested || !loggedIn || !haveUid || isUploading || isValidating);
+            if (loggedIn && haveUid && !havePayPal)
+            {
+                EditorGUILayout.HelpBox(
+                    "Add a PayPal email on the Setup tab. Buyers' payments go directly to your PayPal account — " +
+                    "a payout address is required before you can upload.",
+                    MessageType.Warning);
+                EditorGUILayout.Space(4);
+            }
+
+            EditorGUI.BeginDisabledGroup(!attested || !loggedIn || !haveUid || !havePayPal || isUploading || isValidating);
             string uploadLabel;
             if (isUploading) uploadLabel = "Uploading…";
             else if (isValidating) uploadLabel = "Checking…";
@@ -220,6 +233,10 @@ namespace U3D.Editor
             if (!attested)
             {
                 EditorGUILayout.LabelField("Tick the rights box above to enable upload.", EditorStyles.miniLabel);
+            }
+            else if (loggedIn && haveUid && !havePayPal)
+            {
+                EditorGUILayout.LabelField("Add a PayPal email in the Setup tab to enable upload.", EditorStyles.miniLabel);
             }
 
             if (!string.IsNullOrEmpty(lastUploadError))
@@ -392,7 +409,7 @@ namespace U3D.Editor
             return list;
         }
 
-        private async Task ValidateUploadedPackageAsync(string assetId, string title)
+        private async Task ValidateUploadedPackageAsync(string assetId, string title, string paypalEmail)
         {
             isValidating = true;
             validationDone = false;
@@ -405,11 +422,12 @@ namespace U3D.Editor
             try
             {
                 var request = new Dictionary<string, object>
-                {
-                    { "assetId", assetId },
-                    { "title", title },
-                    { "attested", true }
-                };
+        {
+            { "assetId", assetId },
+            { "title", title },
+            { "attested", true },
+            { "paypalEmail", paypalEmail }
+        };
 
                 var response = await U3DAuthenticator.CallFirebaseFunctionWithAuthRetry(
                     "validateMarketPackage", request);
@@ -468,6 +486,13 @@ namespace U3D.Editor
                 if (string.IsNullOrEmpty(uid) || string.IsNullOrEmpty(idToken))
                 {
                     lastUploadError = "Not logged in. Open the Creator Dashboard, log in, then try again.";
+                    return;
+                }
+
+                string paypalEmail = U3DAuthenticator.GetPayPalEmail();
+                if (string.IsNullOrEmpty(paypalEmail))
+                {
+                    lastUploadError = "Add a PayPal email in the Setup tab before uploading to the market.";
                     return;
                 }
 
@@ -556,7 +581,7 @@ namespace U3D.Editor
 
             if (uploadSucceeded)
             {
-                await ValidateUploadedPackageAsync(uploadedAssetId, title);
+                await ValidateUploadedPackageAsync(uploadedAssetId, title, U3DAuthenticator.GetPayPalEmail());
             }
         }
 
