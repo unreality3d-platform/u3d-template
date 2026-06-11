@@ -489,6 +489,16 @@ namespace U3D.Editor
                     return;
                 }
 
+                bool authReady = await U3DAuthenticator.PrepareForDeployment();
+                if (!authReady)
+                {
+                    lastUploadError = "Authentication check failed. Log out and back in, then try again.";
+                    return;
+                }
+
+                // Re-fetch the token after PrepareForDeployment guarantees it's fresh
+                idToken = U3DAuthenticator.GetIdToken();
+
                 string paypalEmail = U3DAuthenticator.GetPayPalEmail();
                 if (string.IsNullOrEmpty(paypalEmail))
                 {
