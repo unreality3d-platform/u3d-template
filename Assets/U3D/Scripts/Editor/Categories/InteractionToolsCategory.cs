@@ -29,13 +29,10 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make On Interact Collectable", "Players press the Interact key nearby to pick this up into their Inventory. Stays solid, so it can still block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyInteractCollectable, true),
                 new CreatorTool("🟢 Make On Enter Collectable", "Players pick this up by walking into it — for pass-through items like coins or gems. Becomes a trigger, so it won't block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyEnterCollectable, true),new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
                 new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
-                new CreatorTool("🚧 Make Random", "Add component with list of GameObjects (audio, particles, etc.) that randomizes between them on trigger or continuously", () => { }, true),
-                new CreatorTool("🚧 Make Mutually Exclusive", "Only one can be selected at a time", () => { }, true),
-                new CreatorTool("🚧 Add Player Reset Trigger", "Reset player position and state to spawn point", () => { }, true),
                 // ── Movement ──
-                new CreatorTool("🚧 Add Seat", "Triggers avatar sit animation players can exit by resuming movement", () => { }, true),
-                new CreatorTool("🟢 Make Rideable", "Players can stand on top and will be moved with the object", ApplyMakeRideable, true),
-                new CreatorTool("🚧 Make Steerable", "Lets player controller movement steer the visual object while W and D smoothly accelerate and decelerate (wheel animations can be added manually)", () => { }, true),
+                new CreatorTool("🟢 Add Seat", "Adds a sit point to this object. Position and rotate the Seat child to match your visuals. Players exit by resuming movement from stationary seats, and via the interact key from seats on Steerables.", ApplyAddSeat, true),
+                new CreatorTool("🟢 Make Rideable", "Players can get on top and will be moved with the object", ApplyMakeRideable, true),
+                new CreatorTool("🟢 Make Steerable", "Lets players steer this object with movement controls. Place this on a persistent scene object — not spawned objects. Assign your steerable's visuals and optional avatar-replacement in the Inspector.", ApplyMakeSteerable, true),
                 new CreatorTool("🚧 Add Scene Portal", "Portal to load a different scene", () => { }, true),
                 new CreatorTool("🚧 Add 1-Way Portal", "Portal for one-direction travel within scene", () => { }, true),
                 new CreatorTool("🚧 Add 2-Way Portal", "Portal for bi-directional travel within scene", () => { }, true),
@@ -74,9 +71,9 @@ namespace U3D.Editor
 
         private static bool IsMovementTool(string title)
         {
-            return title == "🚧 Add Seat"
+            return title == "🟢 Add Seat"
                 || title == "🟢 Make Rideable"
-                || title == "🚧 Make Steerable"
+                || title == "🟢 Make Steerable"
                 || title == "🚧 Add Scene Portal"
                 || title == "🚧 Add 1-Way Portal"
                 || title == "🚧 Add 2-Way Portal";
@@ -545,6 +542,192 @@ namespace U3D.Editor
             EditorUtility.SetDirty(selected);
         }
 
+        private static void ApplyAddSeat()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Add Seat on a Steerable installs a driver seat (U3DDriverPose) inside the
+            // steerable's assigned visual prefab, rather than a networked U3DSeat in the scene.
+            var steerable = selected.GetComponent<U3D.U3DSteerable>();
+            if (steerable != null)
+            {
+                AddDriverSeatToSteerable(steerable);
+                return;
+            }
+
+            // Ensure the parent has a NetworkObject in its ancestor chain.
+            // U3DSeat is a NetworkBehaviour and Fusion requires a NetworkObject
+            // somewhere above it. We add to the selected object itself if missing.
+            if (selected.GetComponentInParent<NetworkObject>() == null)
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            // Idempotent seat child — reuse if already present.
+            Transform existingSeat = selected.transform.Find("Seat");
+            if (existingSeat != null)
+            {
+                Debug.Log($"'{selected.name}' already has a Seat child. Adjust its position and rotation in the Inspector.");
+                Selection.activeGameObject = existingSeat.gameObject;
+                EditorGUIUtility.PingObject(existingSeat.gameObject);
+                return;
+            }
+
+            GameObject seatGO = new GameObject("Seat");
+            Undo.RegisterCreatedObjectUndo(seatGO, "Add Seat");
+            seatGO.transform.SetParent(selected.transform, false);
+            seatGO.transform.localPosition = Vector3.zero;
+            seatGO.transform.localRotation = Quaternion.identity;
+
+            // U3DSeat has [RequireComponent(typeof(Collider))]. AddComponent will refuse
+            // to add U3DSeat unless a Collider already exists on the same GameObject.
+            // This is a trigger — the OverlapSphere in U3DInteractionManager uses
+            // QueryTriggerInteraction.Collide and only hits triggers, not solid colliders.
+            // Sphere is small and unobtrusive; it's a detection volume, not a physics body.
+            var seatCollider = seatGO.AddComponent<SphereCollider>();
+            seatCollider.isTrigger = true;
+            seatCollider.radius = 0.3f;
+
+            seatGO.AddComponent<U3DSeat>();
+
+            // Select and ping so the creator immediately sees what needs adjusting.
+            EditorUtility.SetDirty(selected);
+            Selection.activeGameObject = seatGO;
+            EditorGUIUtility.PingObject(seatGO);
+        }
+
+        /// <summary>
+        /// Installs a driver seat (U3DDriverPose) inside the steerable's assigned visual
+        /// prefab. Mirrors the spawner's prefab-edit pattern: load isolated contents, add an
+        /// idempotent child, save. Deliberately does NOT add a NetworkObject and does NOT
+        /// rebuild the Fusion prefab table — the marker is non-networked. If the steerable's
+        /// avatar mode is Hidden (the default), it is switched to Seated so the posed driver
+        /// is visible to everyone.
+        /// </summary>
+        private static void AddDriverSeatToSteerable(U3D.U3DSteerable steerable)
+        {
+            GameObject visualPrefab = steerable.VehicleVisualPrefab;
+            if (visualPrefab == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Seat",
+                    "This Steerable has no visual prefab assigned yet. Assign your steerable's visual (the costume the driver rides) to 'Vehicle Visual Prefab' first, then click Add Seat to place the driver seat inside it.",
+                    "OK");
+                return;
+            }
+
+            string path = AssetDatabase.GetAssetPath(visualPrefab);
+            if (string.IsNullOrEmpty(path))
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Seat",
+                    "The assigned visual is not a Project prefab asset. Assign a prefab from your Project (not a scene object) to 'Vehicle Visual Prefab', then click Add Seat.",
+                    "OK");
+                return;
+            }
+
+            ConfigureDriverPosePrefab(path, out string message);
+
+            // A driver seat needs a visible humanoid to pose onto. HiddenAvatar (the steerable
+            // default) would hide it, so move to a visible mode. Avatar Mode governs the pose
+            // (Seated vs Standing) from here.
+            if (steerable.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar)
+            {
+                var so = new SerializedObject(steerable);
+                var modeProp = so.FindProperty("avatarMode");
+                if (modeProp != null)
+                {
+                    modeProp.enumValueIndex = (int)U3D.SteerableAvatarMode.SeatedAvatar;
+                    so.ApplyModifiedProperties();
+                    message += "\n\nAvatar Mode was Hidden, so it was set to Seated — otherwise the driver would be invisible.";
+                }
+            }
+
+            EditorUtility.DisplayDialog("Add Seat", message, "OK");
+
+            EditorGUIUtility.PingObject(visualPrefab);
+            Debug.Log($"U3DSteerable driver seat: open the '{visualPrefab.name}' prefab and move its 'Driver Seat' child to where the driver should be. Choose Seated or Standing in this steerable's Avatar Mode — Standing anchors the feet to the marker so you can sit it on a surface, Seated anchors the hips.");
+        }
+
+        /// <summary>
+        /// Adds an idempotent U3DDriverPose child to the prefab at the given path using the
+        /// LoadPrefabContents pattern. Adding only a child leaves the prefab root's authored
+        /// transform untouched, so the visual still places itself on the player exactly as
+        /// the creator built it.
+        /// </summary>
+        private static void ConfigureDriverPosePrefab(string path, out string message)
+        {
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                var existing = prefabRoot.GetComponentInChildren<U3D.U3DDriverPose>(true);
+                if (existing != null)
+                {
+                    message = $"'{prefabRoot.name}' already has a driver seat ('{existing.name}'). Open the prefab to reposition it.";
+                    return;
+                }
+
+                GameObject seatGO = new GameObject("Driver Seat");
+                seatGO.transform.SetParent(prefabRoot.transform, false);
+                seatGO.transform.localPosition = Vector3.zero;
+                seatGO.transform.localRotation = Quaternion.identity;
+                seatGO.AddComponent<U3D.U3DDriverPose>();
+
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, path);
+
+                message = $"Added a driver seat to '{prefabRoot.name}'. Open the prefab and move the 'Driver Seat' child to where the driver should sit or stand.";
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        private static void ApplyMakeSteerable()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // The OverlapSphere in U3DInteractionManager uses QueryTriggerInteraction.Collide
+            // and only hits triggers — a solid collider is invisible to it.
+            // If the creator wants a solid vehicle body for physics, they should add a
+            // separate solid collider on a child GameObject.
+            Collider existingCollider = selected.GetComponent<Collider>();
+            if (existingCollider == null)
+            {
+                var cap = selected.AddComponent<CapsuleCollider>();
+                cap.isTrigger = true;
+            }
+            else if (!existingCollider.isTrigger)
+            {
+                existingCollider.isTrigger = true;
+                Debug.Log($"'{selected.name}': existing {existingCollider.GetType().Name} was solid — set to trigger so the interaction system can detect it. Add a solid collider on a child object if you need a physics body.");
+            }
+
+            // NetworkObject with AllowStateAuthorityOverride — authority transfers to
+            // whoever takes the wheel, same pattern as other interactables.
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (selected.GetComponent<U3DSteerable>() == null)
+                selected.AddComponent<U3DSteerable>();
+
+            EditorUtility.SetDirty(selected);
+        }
+
         private static void ApplyMakeRideable()
         {
             GameObject selected = Selection.activeGameObject;
@@ -698,15 +881,15 @@ namespace U3D.Editor
         private static void ConfigureNetworkRigidbody3DForSharedMode(NetworkRigidbody3D networkRigidbody)
         {
             var so = new SerializedObject(networkRigidbody);
-
+ 
             var syncParentProp = so.FindProperty("_syncParent");
             if (syncParentProp != null)
                 syncParentProp.boolValue = false;
-
+ 
             var syncModeProp = so.FindProperty("_syncMode");
             if (syncModeProp != null)
                 syncModeProp.intValue = 0;
-
+ 
             so.ApplyModifiedProperties();
         }
 #endif

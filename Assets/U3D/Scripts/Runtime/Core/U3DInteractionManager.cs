@@ -8,12 +8,15 @@ namespace U3D
     /// The closest one that CanInteract() returns true wins. No priority scoring,
     /// no directionality — proximity alone determines selection.
     ///
-    /// If the player is currently holding a grabbable object, R is routed directly
-    /// to that object so it can handle its own release. The OverlapSphere is skipped
-    /// in that case.
+    /// If the player is currently holding a grabbable, steering a steerable, or
+    /// occupying a seat, R is routed directly to that object. The OverlapSphere is
+    /// skipped in those cases.
     /// </summary>
     public class U3DInteractionManager : MonoBehaviour
     {
+        // Direct-route static references — checked before OverlapSphere, mirrors CurrentlyGrabbed pattern.
+        // U3DSteerable.CurrentlySteering is added in Phase 2.
+
         [Header("Interaction Detection")]
         [Tooltip("Radius of the OverlapSphere used to find interactables near the player.")]
         [SerializeField] private float interactionRange = 10f;
@@ -82,6 +85,18 @@ namespace U3D
             if (U3DGrabbable.CurrentlyGrabbed != null)
             {
                 U3DGrabbable.CurrentlyGrabbed.OnInteract();
+                return;
+            }
+
+            if (U3DSteerable.CurrentlySteering != null)
+            {
+                U3DSteerable.CurrentlySteering.Exit();
+                return;
+            }
+
+            if (U3DSeat.CurrentlyOccupied != null)
+            {
+                U3DSeat.CurrentlyOccupied.Stand();
                 return;
             }
 

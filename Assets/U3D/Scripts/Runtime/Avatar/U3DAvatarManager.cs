@@ -240,10 +240,27 @@ public class U3DAvatarManager : NetworkBehaviour
     {
         if (avatarRenderers == null) return;
 
-        // Per-client visibility decision: every client decides what to show for every
-        // avatar based on the avatar owner's networked state. This replaces the old
-        // gate that only let the owning client update visibility, which left remote
-        // viewers' renderers stuck in whatever state the FBX shipped with.
+        // Resolve the steerable this player is currently controlling so ShouldRender
+        // can check its avatar mode. Done here because UpdateAvatarVisibility runs on
+        // a NetworkBehaviour (has Runner access); U3DAvatarIK does not.
+        // Local player: CurrentlySteering is authoritative, no Runner lookup needed.
+        // Remote player: resolve from NetworkSteerableRef via Runner.
+        if (avatarIK != null)
+        {
+            U3D.U3DSteerable resolvedSteerable = null;
+
+            if (playerController.IsLocalPlayer)
+            {
+                resolvedSteerable = U3D.U3DSteerable.CurrentlySteering;
+            }
+            else if (Runner != null && playerController.NetworkSteerableRef != default)
+            {
+                Runner.TryFindBehaviour(playerController.NetworkSteerableRef, out resolvedSteerable);
+            }
+
+            avatarIK.SetResolvedSteerable(resolvedSteerable);
+        }
+
         bool shouldShow = (avatarIK != null)
             ? avatarIK.ShouldRender(hideInFirstPerson)
             : ResolveVisibilityFallback();
@@ -267,7 +284,21 @@ public class U3DAvatarManager : NetworkBehaviour
         bool inVR = playerController.NetworkIsInVR;
         bool isFirstPerson = playerController.NetworkIsFirstPerson;
 
-        if (!isLocal) return true;
+        if (!isLocal)
+        {
+            // Non-humanoid remote avatar: check networked steerable ref directly
+            // since there's no IK component to delegate to.
+            if (Runner != null && playerController.NetworkSteerableRef != default)
+            {
+                U3D.U3DSteerable resolvedSteerable;
+                if (Runner.TryFindBehaviour(playerController.NetworkSteerableRef, out resolvedSteerable)
+                    && resolvedSteerable != null
+                    && resolvedSteerable.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar)
+                    return false;
+            }
+            return true;
+        }
+
         if (inVR) return true;
         if (hideInFirstPerson && isFirstPerson) return false;
         return true;

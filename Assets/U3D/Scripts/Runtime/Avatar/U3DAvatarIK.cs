@@ -121,6 +121,16 @@ namespace U3D
             && _leftUpperArm != null && _leftLowerArm != null
             && _rightUpperArm != null && _rightLowerArm != null;
 
+        // Set each frame by U3DAvatarManager.UpdateAvatarVisibility before ShouldRender
+        // is called. Carries the resolved U3DSteerable for remote players so ShouldRender
+        // can check avatar mode without needing a Runner reference.
+        private U3D.U3DSteerable _resolvedSteerable;
+
+        public void SetResolvedSteerable(U3D.U3DSteerable steerable)
+        {
+            _resolvedSteerable = steerable;
+        }
+
         /// <summary>
         /// Called by U3DAvatarManager after avatar instantiation. Wires the IK component
         /// to its owning player controller and the XR input asset.
@@ -699,15 +709,24 @@ namespace U3D
             bool inVR = _playerController.NetworkIsInVR;
             bool isFirstPerson = _playerController.NetworkIsFirstPerson;
 
-            // Remote viewer always sees the avatar.
-            if (!isLocal) return true;
+            // Remote viewer always sees the avatar unless the steerable mode hides it.
+            if (!isLocal)
+            {
+                if (_resolvedSteerable != null
+                    && _resolvedSteerable.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar)
+                    return false;
+                return true;
+            }
 
             // Local VR player: show the body, head will be chopped separately.
             if (inVR) return true;
 
+            // Hide humanoid when the local player is steering in HiddenAvatar mode.
+            if (U3D.U3DSteerable.CurrentlySteering != null
+                && U3D.U3DSteerable.CurrentlySteering.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar)
+                return false;
+
             // Local desktop player: respect the creator's hideInFirstPerson preference.
-            // Delay the hide until the scroll transition completes so the avatar doesn't
-            // vanish while the camera is still pulling in from third person.
             if (hideInFirstPersonPref && isFirstPerson && !_playerController.IsCameraTransitioning) return false;
 
             return true;

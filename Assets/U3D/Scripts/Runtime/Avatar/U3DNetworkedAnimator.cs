@@ -35,6 +35,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     private int hashMoveX;
     private int hashMoveY;
     private int hashJumpTrigger;
+    private int hashIsSeated;
 
     // State tracking for jump trigger
     private bool lastIsJumping;
@@ -107,6 +108,7 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         hashMoveX = Animator.StringToHash("MoveX");
         hashMoveY = Animator.StringToHash("MoveY");
         hashJumpTrigger = Animator.StringToHash("JumpTrigger");
+        hashIsSeated = Animator.StringToHash("IsSeated");
     }
 
     /// <summary>
@@ -127,7 +129,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     /// </summary>
     void UpdateAnimationParameters()
     {
-        // Read PlayerController states (NEVER modify them)
         bool isMoving = playerController.NetworkIsMoving;
         bool isCrouching = playerController.NetworkIsCrouching;
         bool isFlying = playerController.NetworkIsFlying;
@@ -135,26 +136,31 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         bool isJumping = playerController.NetworkIsJumping;
         bool isSwimming = playerController.NetworkIsSwimming;
         bool isClimbing = playerController.NetworkIsClimbing;
+        bool isSeated = playerController.NetworkIsSeated;
 
-        // Calculate movement values using PlayerController's actual speed logic
         Vector3 velocity = playerController.Velocity;
-        
-        // CORRECT: Use PlayerController's intended speed, not CharacterController velocity
+
         float moveSpeed = 0f;
         if (isMoving)
-        {
-            // Get the actual speed the PlayerController is using
             moveSpeed = playerController.CurrentSpeed;
-        }
 
         Vector3 localVelocity = playerController.transform.InverseTransformDirection(velocity);
         Vector2 moveDirection = new Vector2(localVelocity.x, localVelocity.z);
         if (moveDirection.magnitude > 0.1f) moveDirection.Normalize();
 
-        // FUSION 2 CRITICAL: Set parameters on NetworkMecanimAnimator's actual Animator
-        // This ensures parameters and network sync target the same animator
+        // Pose-lock override: while the player is held in a standing idle (a standing
+        // steerable, or later a stand-configured seat), show the locomotion blend at rest
+        // instead of walk/run, even though the body is actually moving. Seated and the
+        // other pose states are unaffected — they win through their own parameters.
+        if (playerController.NetworkSuppressLocomotion)
+        {
+            isMoving = false;
+            moveSpeed = 0f;
+            moveDirection = Vector2.zero;
+        }
+
         Animator activeAnimator = networkAnimator.Animator;
-        
+
         activeAnimator.SetBool(hashIsMoving, isMoving);
         activeAnimator.SetBool(hashIsCrouching, isCrouching);
         activeAnimator.SetBool(hashIsFlying, isFlying);
@@ -162,19 +168,15 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         activeAnimator.SetBool(hashIsGrounded, isGrounded);
         activeAnimator.SetBool(hashIsClimbing, isClimbing);
         activeAnimator.SetBool(hashIsJumping, isJumping);
+        activeAnimator.SetBool(hashIsSeated, isSeated);
 
         activeAnimator.SetFloat(hashMoveSpeed, moveSpeed);
         activeAnimator.SetFloat(hashMoveX, moveDirection.x);
         activeAnimator.SetFloat(hashMoveY, moveDirection.y);
 
-        // Handle jump trigger using NetworkMecanimAnimator (FUSION 2 WAY)
         if (isJumping && !lastIsJumping)
-        {
-            // CRITICAL: Use NetworkMecanimAnimator.SetTrigger for proper network sync
             networkAnimator.SetTrigger("JumpTrigger");
-        }
 
-        // Store for next frame
         lastIsJumping = isJumping;
     }
 

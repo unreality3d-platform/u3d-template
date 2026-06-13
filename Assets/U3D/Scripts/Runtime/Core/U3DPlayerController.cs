@@ -116,6 +116,8 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public bool NetworkIsJumping { get; set; }
     [HideInInspector][Networked] public bool NetworkIsSwimming { get; set; }
     [HideInInspector][Networked] public bool NetworkIsClimbing { get; set; }
+    [HideInInspector][Networked] public bool NetworkIsSeated { get; set; }
+    [HideInInspector][Networked] public bool NetworkSuppressLocomotion { get; set; }
     [HideInInspector][Networked] public bool NetworkIsInVR { get; set; }
     [HideInInspector][Networked] public Vector3 NetworkHeadPosition { get; set; }
     [HideInInspector][Networked] public Quaternion NetworkHeadRotation { get; set; }
@@ -125,6 +127,7 @@ public class U3DPlayerController : NetworkBehaviour
     [HideInInspector][Networked] public Quaternion NetworkRightHandRot { get; set; }
     [HideInInspector][Networked] public NetworkBool NetworkIsFirstPerson { get; set; }
     [HideInInspector][Networked] public NetworkBehaviourId NetworkRideableRef { get; set; }
+    [HideInInspector][Networked] public NetworkBehaviourId NetworkSteerableRef { get; set; }
     [HideInInspector][Networked, Capacity(40)] public string NetworkedDisplayName { get; set; }
 
     private Queue<Vector2> _mouseInputBuffer = new Queue<Vector2>();
@@ -204,6 +207,17 @@ public class U3DPlayerController : NetworkBehaviour
 
     private U3D.U3DRideableController _currentRideable;
     private U3D.U3DRideableController _remoteRideable;
+
+    private U3D.U3DSteerable _remoteSteerable;
+    private GameObject _remoteVehicleVisualInstance;
+    private GameObject _remoteReplacementVisualInstance;
+    private Animator _remoteReplacementAnimator;
+    private Animator _remoteVehicleAnimator;
+
+    private static readonly int _hashIsMoving = Animator.StringToHash("IsMoving");
+    private static readonly int _hashMoveSpeed = Animator.StringToHash("MoveSpeed");
+    private static readonly int _hashMoveX = Animator.StringToHash("MoveX");
+    private static readonly int _hashMoveY = Animator.StringToHash("MoveY");
 
     void CalculateRuntimeSensitivity()
     {
@@ -627,6 +641,79 @@ public class U3DPlayerController : NetworkBehaviour
             _remoteRideable = resolvedRideable;
         }
 
+        // Remote steerable resolution — mirrors the rideable pattern above.
+        // Resolve the U3DSteerable scene object from the networked ref, then spawn or
+        // destroy local visual instances to match. The visuals are instantiated through
+        // U3DSteerable.InstantiateVisual so they sit exactly where the creator authored
+        // them in the prefab — the same placement the driver sees — and ride this remote
+        // player's already-networked position with no additional sync needed.
+        U3D.U3DSteerable resolvedSteerable = null;
+        if (NetworkSteerableRef != default)
+            Runner.TryFindBehaviour(NetworkSteerableRef, out resolvedSteerable);
+
+        if (resolvedSteerable != _remoteSteerable)
+        {
+            // Tear down old instances whenever the ref changes (including to null).
+            if (_remoteVehicleVisualInstance != null)
+            {
+                Destroy(_remoteVehicleVisualInstance);
+                _remoteVehicleVisualInstance = null;
+                _remoteVehicleAnimator = null;
+            }
+            if (_remoteReplacementVisualInstance != null)
+            {
+                Destroy(_remoteReplacementVisualInstance);
+                _remoteReplacementVisualInstance = null;
+                _remoteReplacementAnimator = null;
+            }
+
+            if (resolvedSteerable != null)
+            {
+                GameObject vehiclePrefab = resolvedSteerable.VehicleVisualPrefab;
+                if (vehiclePrefab != null)
+                {
+                    _remoteVehicleVisualInstance = U3D.U3DSteerable.InstantiateVisual(vehiclePrefab, transform);
+                    _remoteVehicleAnimator = _remoteVehicleVisualInstance.GetComponent<Animator>();
+                }
+
+                GameObject replacementPrefab = resolvedSteerable.ReplacementVisualPrefab;
+                if (replacementPrefab != null)
+                {
+                    _remoteReplacementVisualInstance = U3D.U3DSteerable.InstantiateVisual(replacementPrefab, transform);
+                    _remoteReplacementAnimator = _remoteReplacementVisualInstance.GetComponent<Animator>();
+                }
+            }
+
+            _remoteSteerable = resolvedSteerable;
+        }
+
+        // Drive the remote costume and replacement animators from this player's networked
+        // movement state every render frame, the same values the local driver uses. MoveX is
+        // unavailable remotely (movement input isn't networked), so directional blends only
+        // show on the driver's own client. Animators without these parameters are unaffected.
+        if (_remoteVehicleAnimator != null || _remoteReplacementAnimator != null)
+        {
+            bool moving = NetworkIsMoving;
+            float speed = NetworkIsSprinting ? 2f : (moving ? 1f : 0f);
+            float moveY = moving ? 1f : 0f;
+
+            if (_remoteVehicleAnimator != null)
+            {
+                _remoteVehicleAnimator.SetBool(_hashIsMoving, moving);
+                _remoteVehicleAnimator.SetFloat(_hashMoveSpeed, speed);
+                _remoteVehicleAnimator.SetFloat(_hashMoveX, 0f);
+                _remoteVehicleAnimator.SetFloat(_hashMoveY, moveY);
+            }
+
+            if (_remoteReplacementAnimator != null)
+            {
+                _remoteReplacementAnimator.SetBool(_hashIsMoving, moving);
+                _remoteReplacementAnimator.SetFloat(_hashMoveSpeed, speed);
+                _remoteReplacementAnimator.SetFloat(_hashMoveX, 0f);
+                _remoteReplacementAnimator.SetFloat(_hashMoveY, moveY);
+            }
+        }
+
         if (NetworkRotation == Quaternion.identity ||
             float.IsNaN(NetworkRotation.x) || float.IsNaN(NetworkRotation.y) ||
             float.IsNaN(NetworkRotation.z) || float.IsNaN(NetworkRotation.w))
@@ -1037,6 +1124,13 @@ public class U3DPlayerController : NetworkBehaviour
         if (!IsLocalLookMoveInputAuthoritative()) return;
 
         moveInput = input.MovementInput;
+
+        // While seated on a plain U3DSeat the CharacterController is switched off — the
+        // seat anchors the body directly. moveInput is captured above so U3DSeat can still
+        // detect the player trying to move and stand them up, but the disabled controller
+        // must not be driven (that logs "Move called on inactive controller"). Steerables
+        // leave the controller enabled, so steering is unaffected.
+        if (!characterController.enabled) return;
 
         if (NetworkIsClimbing) return;
 
@@ -1579,6 +1673,7 @@ public class U3DPlayerController : NetworkBehaviour
     void ApplyGravityFixed()
     {
         if (isFlying || isSwimming || isGrounded || NetworkIsClimbing || !_isLocalPlayer) return;
+        if (!characterController.enabled) return;
 
         velocity.y += gravity * Runner.DeltaTime;
         characterController.Move(new Vector3(0, velocity.y, 0) * Runner.DeltaTime);
@@ -1843,6 +1938,19 @@ public class U3DPlayerController : NetworkBehaviour
         NetworkPosition = transform.position;
 
         NetworkRideableRef = default;
+    }
+
+    public void TakeControlOfSteerable(U3D.U3DSteerable steerable)
+    {
+        if (!_isLocalPlayer) return;
+        NetworkSteerableRef = steerable;
+    }
+
+    public void ExitSteerable()
+    {
+        if (!_isLocalPlayer) return;
+        NetworkIsSeated = false;
+        NetworkSteerableRef = default;
     }
 
     public bool IsRiding(U3D.U3DRideableController rideable) => _currentRideable == rideable;

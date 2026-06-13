@@ -331,6 +331,7 @@ MonoBehaviour:
   _NetworkIsJumping: 0
   _NetworkIsSwimming: 0
   _NetworkIsClimbing: 0
+  _NetworkIsSeated: 0
   _NetworkIsInVR: 0
   _NetworkHeadPosition: {x: 0, y: 0, z: 0}
   _NetworkHeadRotation: {x: 0, y: 0, z: 0, w: 0}
@@ -341,6 +342,10 @@ MonoBehaviour:
   _NetworkIsFirstPerson:
     _value: 0
   _NetworkRideableRef:
+    Object:
+      Raw: 0
+    Behaviour: 0
+  _NetworkSteerableRef:
     Object:
       Raw: 0
     Behaviour: 0
@@ -419,9 +424,9 @@ MonoBehaviour:
   Animator: {fileID: 2927287290641100187}
   ApplyTiming: 2
   SyncSettings: 79
-  StateHashes: 000000006dacfe3e773dc4d4f57f984db6d1ab4e2b1a167c794069552638cb43a21b1dacf3b09ce077934a0f2445ff7f3ed4c5958b7cfd670f5f2b88f38ddc86184e547b
+  StateHashes: 000000006dacfe3e773dc4d4f57f984db6d1ab4e2b1a167c794069552638cb43a21b1dacf3b09ce077934a0f2445ff7f3ed4c5958b7cfd670f5f2b88f38ddc86184e547b8e493de8cde70eeb
   TriggerHashes: 0000000087a0c606
-  TotalWords: 4
+  TotalWords: 5
 --- !u!114 &3563563381108832062
 MonoBehaviour:
   m_ObjectHideFlags: 0
