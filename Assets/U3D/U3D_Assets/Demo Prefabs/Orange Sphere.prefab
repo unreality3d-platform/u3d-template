@@ -11,9 +11,6 @@ GameObject:
   - component: {fileID: 1203622005838887967}
   - component: {fileID: 8116050545190599227}
   - component: {fileID: 7874989133860954902}
-  - component: {fileID: 3283862540265118399}
-  - component: {fileID: 5366493714544072851}
-  - component: {fileID: 77509111673855903}
   m_Layer: 0
   m_Name: Orange Sphere
   m_TagString: Untagged
@@ -94,61 +91,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!135 &3283862540265118399
-SphereCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2477251595284783247}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &5366493714544072851
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2477251595284783247}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
-  SortKey: 2513167796
-  ObjectInterest: 1
-  Flags: 524289
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 77509111673855903}
-  ForceRemoteRenderTimeframe: 0
---- !u!114 &77509111673855903
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2477251595284783247}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ea143fc4d3a021b48b74a061d55e5d41, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DSteerable
-  vehicleVisualPrefab: {fileID: 2477251595284783247}
-  replacementVisualPrefab: {fileID: 0}
-  avatarMode: 1
 --- !u!1 &4992678946775670608
 GameObject:
   m_ObjectHideFlags: 0

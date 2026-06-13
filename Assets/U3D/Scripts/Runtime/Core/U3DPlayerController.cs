@@ -214,6 +214,17 @@ public class U3DPlayerController : NetworkBehaviour
     private Animator _remoteReplacementAnimator;
     private Animator _remoteVehicleAnimator;
 
+    // Remote driver-seat anchoring. Mirrors U3DSteerable's local anchor fields: captured in
+    // Render when the steerable ref resolves, applied in LateUpdate. The avatar instance is this
+    // remote player's own (from _avatarManager); the marker lives in the remote costume instance.
+    // No networked state — AvatarMode is read from the resolved steerable.
+    private U3D.U3DDriverPose _remoteDriverPose;
+    private GameObject _remoteDriverAvatarInstance;
+    private Transform _remoteDriverHips;
+    private Vector3 _remoteDriverAvatarOriginalLocalPos;
+    private bool _remoteDriverAnchorActive;
+    private bool _remoteDriverAnchorToHips;
+
     private static readonly int _hashIsMoving = Animator.StringToHash("IsMoving");
     private static readonly int _hashMoveSpeed = Animator.StringToHash("MoveSpeed");
     private static readonly int _hashMoveX = Animator.StringToHash("MoveX");
@@ -653,6 +664,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (resolvedSteerable != _remoteSteerable)
         {
+            // Release the driver anchor tied to the old steerable before tearing its visuals
+            // down — restores the avatar to its default local offset so a subsequent capture
+            // records a clean original position.
+            ReleaseRemoteDriverAnchor();
+
             // Tear down old instances whenever the ref changes (including to null).
             if (_remoteVehicleVisualInstance != null)
             {
@@ -682,6 +698,11 @@ public class U3DPlayerController : NetworkBehaviour
                     _remoteReplacementVisualInstance = U3D.U3DSteerable.InstantiateVisual(replacementPrefab, transform);
                     _remoteReplacementAnimator = _remoteReplacementVisualInstance.GetComponent<Animator>();
                 }
+
+                // Anchor this remote player's avatar to the driver-seat marker if the costume
+                // has one. Must run after the vehicle visual is instantiated — the marker lives
+                // inside it. Mirrors U3DSteerable's local CaptureAvatarAnchorTargets.
+                CaptureRemoteDriverAnchor(resolvedSteerable);
             }
 
             _remoteSteerable = resolvedSteerable;
@@ -895,7 +916,13 @@ public class U3DPlayerController : NetworkBehaviour
 
     void LateUpdate()
     {
-        if (!_isInVRMode || !_isLocalPlayer || playerCamera == null) return;
+        if (!_isLocalPlayer)
+        {
+            HandleRemoteDriverAnchor();
+            return;
+        }
+
+        if (!_isInVRMode || playerCamera == null) return;
 
         if (_avatarHeadBone == null)
         {
@@ -955,6 +982,91 @@ public class U3DPlayerController : NetworkBehaviour
         }
 
         _vrSnapTurnedThisFrame = false;
+    }
+
+    /// <summary>
+    /// Captures the remote driver-seat anchor for this remote player, mirroring
+    /// U3DSteerable.CaptureAvatarAnchorTargets. Reads the marker from the just-built remote
+    /// costume instance and this player's own avatar (via _avatarManager). Seated anchors the
+    /// hips bone (humanoid only); Standing anchors the avatar instance's base. If any required
+    /// reference is missing, the anchor stays inactive and the avatar rides its default offset.
+    /// HiddenAvatar has nothing visible to anchor, so it is skipped.
+    /// </summary>
+    private void CaptureRemoteDriverAnchor(U3D.U3DSteerable steerable)
+    {
+        _remoteDriverAnchorActive = false;
+        _remoteDriverPose = null;
+        _remoteDriverAvatarInstance = null;
+        _remoteDriverHips = null;
+        _remoteDriverAnchorToHips = false;
+
+        if (steerable == null) return;
+        if (_remoteVehicleVisualInstance == null) return;
+        if (steerable.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar) return;
+
+        U3D.U3DDriverPose marker = _remoteVehicleVisualInstance.GetComponentInChildren<U3D.U3DDriverPose>(true);
+        if (marker == null) return;
+
+        if (_avatarManager == null) return;
+
+        GameObject avatarInstance = _avatarManager.GetAvatarInstance();
+        if (avatarInstance == null) return;
+
+        if (steerable.AvatarMode == U3D.SteerableAvatarMode.SeatedAvatar)
+        {
+            Animator animator = _avatarManager.GetAvatarAnimator();
+            if (animator == null || !animator.isHuman) return;
+
+            Transform hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            if (hips == null) return;
+
+            _remoteDriverHips = hips;
+            _remoteDriverAnchorToHips = true;
+        }
+        // Standing: the avatar instance's own transform (rig base) is the reference; no bone
+        // needed, so the feet/floor plane lands on the marker surface.
+
+        _remoteDriverPose = marker;
+        _remoteDriverAvatarInstance = avatarInstance;
+        _remoteDriverAvatarOriginalLocalPos = avatarInstance.transform.localPosition;
+        _remoteDriverAnchorActive = true;
+    }
+
+    /// <summary>
+    /// Clears the remote driver anchor and restores the avatar instance to its captured local
+    /// offset. Mirrors U3DSteerable.ReleaseAvatarAnchor. Safe to call when no anchor is active.
+    /// </summary>
+    private void ReleaseRemoteDriverAnchor()
+    {
+        if (_remoteDriverAvatarInstance != null)
+            _remoteDriverAvatarInstance.transform.localPosition = _remoteDriverAvatarOriginalLocalPos;
+
+        _remoteDriverAnchorActive = false;
+        _remoteDriverPose = null;
+        _remoteDriverAvatarInstance = null;
+        _remoteDriverHips = null;
+        _remoteDriverAnchorToHips = false;
+    }
+
+    /// <summary>
+    /// Applies the remote driver anchor each frame for a non-local player, running the same
+    /// delta-anchor as U3DSteerable.LateUpdate: shift the avatar instance so the reference point
+    /// (hips when Seated, the instance transform when Standing) lands on the marker. The marker
+    /// rides the costume which rides the player root, so root motion cancels in the delta and
+    /// there is no feedback. Runs at LateUpdate timing, after the Animator has posed the bones.
+    /// </summary>
+    private void HandleRemoteDriverAnchor()
+    {
+        if (!_remoteDriverAnchorActive) return;
+        if (_remoteDriverAvatarInstance == null || _remoteDriverPose == null) return;
+
+        Vector3 reference = (_remoteDriverAnchorToHips && _remoteDriverHips != null)
+            ? _remoteDriverHips.position
+            : _remoteDriverAvatarInstance.transform.position;
+
+        Vector3 delta = _remoteDriverPose.transform.position - reference;
+        if (delta.sqrMagnitude < 1e-10f) return;
+        _remoteDriverAvatarInstance.transform.position += delta;
     }
 
     /// <summary>
