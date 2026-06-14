@@ -282,7 +282,7 @@ public class FirebaseStorageUploader
                 var deleteResponse = await _httpClient.SendAsync(deleteRequest);
 
                 if (!deleteResponse.IsSuccessStatusCode)
-                    Debug.LogWarning($"⚠️ Failed to delete existing build file: {fileName}");
+                    Debug.Log($"[U3D] Could not delete existing build file (non-fatal): {fileName} — {(int)deleteResponse.StatusCode}");
             }
         }
         catch (Exception ex)

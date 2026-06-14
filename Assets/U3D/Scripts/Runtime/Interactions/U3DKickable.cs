@@ -581,6 +581,8 @@ namespace U3D
         /// </summary>
         private void ExecuteCameraKick()
         {
+            TriggerPlayerAnimation("KickTrigger");
+
             SetPhysicsState(PhysicsState.Active);
 
             if (isNetworked && Object.HasStateAuthority)
@@ -591,12 +593,10 @@ namespace U3D
             StartCoroutine(ApplyKickVelocityAfterPhysicsActivation());
         }
 
-        /// <summary>
-        /// Execute a directional kick with explicit direction and force.
-        /// Only call when we have authority (or non-networked).
-        /// </summary>
         private void ExecuteDirectionalKick(Vector3 direction, float force)
         {
+            TriggerPlayerAnimation("KickTrigger");
+
             SetPhysicsState(PhysicsState.Active);
 
             Vector3 kickVelocity = direction.normalized * force;
@@ -615,6 +615,18 @@ namespace U3D
             }
 
             OnKicked?.Invoke();
+        }
+
+        private void TriggerPlayerAnimation(string triggerName)
+        {
+            U3DPlayerController playerController = U3DPlayerController.FindLocalPlayer();
+            if (playerController == null) return;
+
+            U3DNetworkedAnimator networkedAnimator =
+                playerController.GetComponent<U3DNetworkedAnimator>();
+            if (networkedAnimator == null) return;
+
+            networkedAnimator.TriggerAnimation(triggerName);
         }
 
         private IEnumerator ApplyKickVelocityAfterPhysicsActivation()

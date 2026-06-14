@@ -413,7 +413,9 @@ namespace U3D
                 return;
             }
 
-            // Throw path — unchanged except add the awaiting-motion flag
+            // Fire throw animation immediately so windup has maximum lead time
+            TriggerPlayerAnimation("ThrowTrigger");
+
             if (hasNetworkRb3D && networkRigidbody != null)
             {
                 networkRigidbody.enabled = true;
@@ -868,6 +870,17 @@ namespace U3D
         public bool HasNetworkRigidbody => networkRigidbody != null;
         public bool IsPhysicsActive => isNetworked ? NetworkIsPhysicsActive : (currentPhysicsState == PhysicsState.Active);
 
+        private void TriggerPlayerAnimation(string triggerName)
+        {
+            U3DPlayerController playerController = U3DPlayerController.FindLocalPlayer();
+            if (playerController == null) return;
+
+            U3DNetworkedAnimator networkedAnimator =
+                playerController.GetComponent<U3DNetworkedAnimator>();
+            if (networkedAnimator == null) return;
+
+            networkedAnimator.TriggerAnimation(triggerName);
+        }
         private void OnDestroy()
         {
             if (boundsCheckCoroutine != null)

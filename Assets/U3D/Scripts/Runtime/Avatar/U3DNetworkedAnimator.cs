@@ -10,20 +10,17 @@ using Fusion;
 public class U3DNetworkedAnimator : NetworkBehaviour
 {
     [Header("🎬 Animation Controller")]
-    [SerializeField] private RuntimeAnimatorController animatorController; // Your U3DAnimatorController
+    [SerializeField] private RuntimeAnimatorController animatorController;
 
     [Header("🔧 Settings")]
     [SerializeField] private bool debugAnimationStates = false;
 
-    // Core Components
     private NetworkMecanimAnimator networkAnimator;
     private Animator targetAnimator;
     private U3DPlayerController playerController;
 
-    // Avatar animator handling
-    private Animator pendingAvatarAnimator; // Store avatar animator until initialization complete
+    private Animator pendingAvatarAnimator;
 
-    // Cached parameter IDs for Unity 6+ performance
     private int hashIsMoving;
     private int hashIsCrouching;
     private int hashIsFlying;
@@ -37,7 +34,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     private int hashJumpTrigger;
     private int hashIsSeated;
 
-    // State tracking for jump trigger
     private bool lastIsJumping;
 
     public bool IsInitialized { get; private set; }
@@ -47,16 +43,10 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         InitializeComponents();
     }
 
-    /// <summary>
-    /// Initialize all required components
-    /// </summary>
     void InitializeComponents()
     {
-        // Get required components
         networkAnimator = GetComponent<NetworkMecanimAnimator>();
         playerController = GetComponent<U3DPlayerController>();
-
-        // CRITICAL: Get the TEMPORARY Animator component from the prefab
         targetAnimator = GetComponent<Animator>();
 
         if (networkAnimator == null || targetAnimator == null || playerController == null)
@@ -65,7 +55,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
             return;
         }
 
-        // Apply the animation controller to the temporary animator
         if (animatorController != null)
         {
             targetAnimator.runtimeAnimatorController = animatorController;
@@ -76,15 +65,12 @@ public class U3DNetworkedAnimator : NetworkBehaviour
             return;
         }
 
-        // Connect NetworkMecanimAnimator to our temporary Animator
         networkAnimator.Animator = targetAnimator;
 
-        // Cache parameter IDs for performance
         CacheParameterIDs();
 
         IsInitialized = true;
 
-        // CRITICAL: Apply pending avatar animator if one was set before initialization
         if (pendingAvatarAnimator != null)
         {
             SetAvatarAnimator(pendingAvatarAnimator);
@@ -92,9 +78,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Cache parameter IDs for Unity 6+ performance
-    /// </summary>
     void CacheParameterIDs()
     {
         hashIsMoving = Animator.StringToHash("IsMoving");
@@ -111,9 +94,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         hashIsSeated = Animator.StringToHash("IsSeated");
     }
 
-    /// <summary>
-    /// FUSION 2 CRITICAL: Only State Authority updates animation parameters
-    /// </summary>
     public override void FixedUpdateNetwork()
     {
         if (!Object.HasStateAuthority) return;
@@ -123,10 +103,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         UpdateAnimationParameters();
     }
 
-    /// <summary>
-    /// Update animation parameters based on PlayerController state
-    /// CRITICAL: Only called by State Authority
-    /// </summary>
     void UpdateAnimationParameters()
     {
         bool isMoving = playerController.NetworkIsMoving;
@@ -148,10 +124,6 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         Vector2 moveDirection = new Vector2(localVelocity.x, localVelocity.z);
         if (moveDirection.magnitude > 0.1f) moveDirection.Normalize();
 
-        // Pose-lock override: while the player is held in a standing idle (a standing
-        // steerable, or later a stand-configured seat), show the locomotion blend at rest
-        // instead of walk/run, even though the body is actually moving. Seated and the
-        // other pose states are unaffected — they win through their own parameters.
         if (playerController.NetworkSuppressLocomotion)
         {
             isMoving = false;
@@ -181,9 +153,18 @@ public class U3DNetworkedAnimator : NetworkBehaviour
     }
 
     /// <summary>
-    /// Called by U3DAvatarManager when avatar changes
-    /// CRITICAL: Must handle both temporary animator and avatar animator
+    /// Fires a one-shot Trigger parameter through NetworkMecanimAnimator so it syncs
+    /// to all clients. Only valid on the local player (State Authority). Use this for
+    /// action animations like kick and throw that originate from interaction components.
+    /// The trigger name must exist as a Trigger parameter in U3DAnimatorController.
     /// </summary>
+    public void TriggerAnimation(string triggerName)
+    {
+        if (!IsInitialized) return;
+        if (!Object.HasStateAuthority) return;
+        networkAnimator.SetTrigger(triggerName);
+    }
+
     public void SetAvatarAnimator(Animator avatarAnimator)
     {
         if (avatarAnimator == null) return;
@@ -194,43 +175,24 @@ public class U3DNetworkedAnimator : NetworkBehaviour
             return;
         }
 
-        // Apply controller to avatar animator
         if (animatorController != null)
-        {
             avatarAnimator.runtimeAnimatorController = animatorController;
-        }
 
-        // IMPORTANT: Remove the temporary animator FIRST
         Animator tempAnimator = GetComponent<Animator>();
         if (tempAnimator != null)
-        {
             DestroyImmediate(tempAnimator);
-        }
 
-        // CRITICAL: NOW connect NetworkMecanimAnimator to avatar animator
         networkAnimator.Animator = avatarAnimator;
-        
-        // VERIFY the connection worked
-        if (networkAnimator.Animator == avatarAnimator)
-        {
-        }
-        else
-        {
+
+        if (networkAnimator.Animator != avatarAnimator)
             Debug.LogError($"❌ NetworkMecanimAnimator connection failed! Expected: {avatarAnimator.name}, Got: {(networkAnimator.Animator?.name ?? "NULL")}");
-        }
-        
-        // Update our reference
+
         targetAnimator = avatarAnimator;
     }
 
-    /// <summary>
-    /// Validate setup in editor
-    /// </summary>
     void OnValidate()
     {
         if (animatorController == null)
-        {
             Debug.LogWarning("⚠️ No Animator Controller assigned! Please assign your U3DAnimatorController.");
-        }
     }
 }
