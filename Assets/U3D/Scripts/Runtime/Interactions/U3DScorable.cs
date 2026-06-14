@@ -1,10 +1,11 @@
 ﻿using UnityEngine;
 using UnityEngine.Events;
 using TMPro;
+using Fusion;
 
 namespace U3D
 {
-    public class U3DScorable : MonoBehaviour
+    public class U3DScorable : NetworkBehaviour
     {
         [Header("Score Configuration")]
         [Tooltip("Starting score value")]
@@ -27,43 +28,105 @@ namespace U3D
         public UnityEvent<int> OnScoreChanged;
         public UnityEvent<int> OnScoreReset;
 
-        private int currentScore;
+        [Networked, OnChangedRender(nameof(OnNetworkScoreChanged))]
+        private int NetworkScore { get; set; }
+
+        private bool _isNetworked = false;
+        private int _localScore;
 
         private void Start()
         {
             if (scoreText == null)
                 scoreText = GetComponentInChildren<TextMeshProUGUI>();
 
-            currentScore = startingScore;
-            UpdateDisplay();
+            if (!_isNetworked)
+            {
+                _localScore = startingScore;
+                UpdateDisplay(_localScore);
+            }
         }
 
-        public void AddScore() => SetScore(currentScore + incrementAmount);
+        public override void Spawned()
+        {
+            _isNetworked = true;
 
-        public void SubtractScore() => SetScore(currentScore - decrementAmount);
+            if (scoreText == null)
+                scoreText = GetComponentInChildren<TextMeshProUGUI>();
 
-        public void AddAmount(int amount) => SetScore(currentScore + amount);
+            if (Object.HasStateAuthority)
+                NetworkScore = startingScore;
+
+            // Always sync display on join — OnChangedRender won't fire at spawn.
+            UpdateDisplay(NetworkScore);
+        }
+
+        private void OnNetworkScoreChanged()
+        {
+            UpdateDisplay(NetworkScore);
+            OnScoreChanged?.Invoke(NetworkScore);
+        }
+
+        // ── Public API ─────────────────────────────────────────────────────────
+
+        public void AddScore()
+        {
+            if (_isNetworked) RequestDelta(incrementAmount);
+            else { _localScore += incrementAmount; UpdateDisplay(_localScore); OnScoreChanged?.Invoke(_localScore); }
+        }
+
+        public void SubtractScore()
+        {
+            if (_isNetworked) RequestDelta(-decrementAmount);
+            else { _localScore -= decrementAmount; UpdateDisplay(_localScore); OnScoreChanged?.Invoke(_localScore); }
+        }
+
+        public void AddAmount(int amount)
+        {
+            if (_isNetworked) RequestDelta(amount);
+            else { _localScore += amount; UpdateDisplay(_localScore); OnScoreChanged?.Invoke(_localScore); }
+        }
 
         public void SetScore(int value)
         {
-            currentScore = value;
-            UpdateDisplay();
-            OnScoreChanged?.Invoke(currentScore);
+            if (_isNetworked)
+            {
+                if (Object.HasStateAuthority) NetworkScore = value;
+                else RPC_SetScore(value);
+            }
+            else { _localScore = value; UpdateDisplay(_localScore); OnScoreChanged?.Invoke(_localScore); }
         }
 
         public void ResetScore()
         {
-            currentScore = startingScore;
-            UpdateDisplay();
-            OnScoreReset?.Invoke(currentScore);
+            if (_isNetworked)
+            {
+                if (Object.HasStateAuthority) NetworkScore = startingScore;
+                else RPC_SetScore(startingScore);
+                OnScoreReset?.Invoke(NetworkScore);
+            }
+            else { _localScore = startingScore; UpdateDisplay(_localScore); OnScoreReset?.Invoke(_localScore); }
         }
 
-        private void UpdateDisplay()
+        public int CurrentScore => _isNetworked ? NetworkScore : _localScore;
+
+        // ── Internal ───────────────────────────────────────────────────────────
+
+        private void RequestDelta(int delta)
+        {
+            if (Object.HasStateAuthority) NetworkScore += delta;
+            else RPC_AddDelta(delta);
+        }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_AddDelta(int delta) => NetworkScore += delta;
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_SetScore(int value) => NetworkScore = value;
+
+        private void UpdateDisplay(int value)
         {
             if (scoreText != null)
-                scoreText.text = string.Format(displayFormat, currentScore);
+                scoreText.text = string.Format(displayFormat, value);
         }
-
-        public int CurrentScore => currentScore;
     }
 }

@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEditor;
 using TMPro;
+using Fusion;
 
 namespace U3D.Editor
 {
@@ -8,7 +9,6 @@ namespace U3D.Editor
     {
         public static void AddScorable()
         {
-            // Create a billboard-style scorable from scratch, ignoring any current selection.
             GameObject scoreObj = new GameObject("Scorable");
 
             Canvas canvas = scoreObj.AddComponent<Canvas>();
@@ -42,11 +42,27 @@ namespace U3D.Editor
                 tmp.alignment = TMPro.TextAlignmentOptions.Center;
             }
 
+            // NetworkObject is required because U3DScorable is a NetworkBehaviour.
+            // Configure with AllowStateAuthorityOverride so any client can RPC score
+            // changes up to authority, matching the pattern used by other interactables.
+            var networkObject = scoreObj.AddComponent<NetworkObject>();
+            InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(networkObject);
+
             U3DScorable scorable = scoreObj.AddComponent<U3DScorable>();
+
+            // Wire the TMP reference automatically so creators don't have to.
+            var so = new SerializedObject(scorable);
+            var scoreTextProp = so.FindProperty("scoreText");
+            if (scoreTextProp != null)
+            {
+                scoreTextProp.objectReferenceValue = tmp;
+                so.ApplyModifiedProperties();
+            }
 
             if (SceneView.lastActiveSceneView != null)
                 scoreObj.transform.position = SceneView.lastActiveSceneView.pivot;
 
+            Undo.RegisterCreatedObjectUndo(scoreObj, "Add Scorable");
             Selection.activeGameObject = scoreObj;
             EditorGUIUtility.PingObject(scoreObj);
             EditorUtility.SetDirty(scoreObj);
@@ -59,6 +75,12 @@ namespace U3D.Editor
             {
                 Debug.LogWarning("Please select an object first. To create a new worldspace scoreboard instead, use Add Scorable.");
                 return;
+            }
+
+            if (selected.GetComponent<NetworkObject>() == null)
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(networkObject);
             }
 
             if (selected.GetComponent<U3DScorable>() == null)

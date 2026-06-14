@@ -38,45 +38,46 @@ namespace U3D
 
         private void OnTriggerEnter(Collider other)
         {
-            // Authority/null guard MUST come first, before any [Networked] property
-            // access. OnTriggerEnter can fire on the first physics frame at scene
-            // load, before Spawned() has run, while Object is still null.
-            // Reading a [Networked] property in that window throws.
-            if (isNetworked && (Object == null || !Object.HasStateAuthority))
-                return;
+            if (requireTag && !other.CompareTag(requiredTag)) return;
 
-            float currentTime = Time.time;
-            float timeSinceLastTrigger = isNetworked
-                ? currentTime - NetworkLastTriggerTime
-                : currentTime - lastTriggerTime;
-
-            if (cooldownTime > 0f && timeSinceLastTrigger < cooldownTime)
-                return;
-
-            bool alreadyTriggered = isNetworked ? NetworkHasTriggered : hasTriggered;
-            if (triggerOnce && alreadyTriggered)
-                return;
-
-            if (requireTag && !other.CompareTag(requiredTag))
-                return;
-
-            ExecuteTrigger();
-        }
-
-        private void ExecuteTrigger()
-        {
-            if (isNetworked)
+            if (!isNetworked || Object == null)
             {
-                NetworkHasTriggered = triggerOnce ? true : NetworkHasTriggered;
-                NetworkLastTriggerTime = Time.time;
-            }
-            else
-            {
-                hasTriggered = triggerOnce ? true : hasTriggered;
+                float timeSinceLast = Time.time - lastTriggerTime;
+                if (cooldownTime > 0f && timeSinceLast < cooldownTime) return;
+                if (triggerOnce && hasTriggered) return;
+                hasTriggered = triggerOnce || hasTriggered;
                 lastTriggerTime = Time.time;
+                OnEnterTrigger?.Invoke();
+                return;
             }
+
+            // Networked: any client whose local player enters fires the event locally.
+            // Cooldown and once-guard checked against current networked state.
+            float localTimeSinceLast = Time.time - NetworkLastTriggerTime;
+            if (cooldownTime > 0f && localTimeSinceLast < cooldownTime) return;
+            if (triggerOnce && NetworkHasTriggered) return;
 
             OnEnterTrigger?.Invoke();
+
+            if (Object.HasStateAuthority)
+                UpdateNetworkState();
+            else
+                RPC_RequestTrigger();
+        }
+
+        private void UpdateNetworkState()
+        {
+            if (triggerOnce) NetworkHasTriggered = true;
+            NetworkLastTriggerTime = Time.time;
+        }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_RequestTrigger()
+        {
+            float timeSinceLast = Time.time - NetworkLastTriggerTime;
+            if (cooldownTime > 0f && timeSinceLast < cooldownTime) return;
+            if (triggerOnce && NetworkHasTriggered) return;
+            UpdateNetworkState();
         }
 
         public void ResetTrigger()
@@ -95,9 +96,8 @@ namespace U3D
 
         public void SetCooldownTime(float newCooldownTime) => cooldownTime = Mathf.Max(0f, newCooldownTime);
         public void SetTriggerOnce(bool value) => triggerOnce = value;
-
-        public bool HasTriggered => isNetworked ? NetworkHasTriggered : hasTriggered;
-        public float LastTriggerTime => isNetworked ? NetworkLastTriggerTime : lastTriggerTime;
+        public bool HasTriggered => isNetworked && Object != null ? NetworkHasTriggered : hasTriggered;
+        public float LastTriggerTime => isNetworked && Object != null ? NetworkLastTriggerTime : lastTriggerTime;
         public bool IsOnCooldown => Time.time - LastTriggerTime < cooldownTime;
         public bool IsNetworked => isNetworked;
 

@@ -5,14 +5,6 @@ using System.Collections.Generic;
 
 namespace U3D
 {
-    /// <summary>
-    /// Stateful trigger zone that tracks occupancy and fires events based on whether
-    /// anything is currently inside. Use this instead of paired Enter/Exit triggers
-    /// when you need "while occupied" logic: pressure plates, safe zones, proximity areas.
-    ///
-    /// OnZoneOccupied fires when the first qualifying object enters an empty zone.
-    /// OnZoneCleared fires when the last qualifying object leaves.
-    /// </summary>
     [RequireComponent(typeof(Collider))]
     public class U3DTriggerZone : NetworkBehaviour
     {
@@ -39,9 +31,6 @@ namespace U3D
         private bool hasTriggered = false;
         private bool isNetworked = false;
 
-        private bool IsNetworkedAndLacksAuthority =>
-            isNetworked && (Object == null || !Object.HasStateAuthority);
-
         private void Awake()
         {
             GetComponent<Collider>().isTrigger = true;
@@ -51,47 +40,52 @@ namespace U3D
         private void OnTriggerEnter(Collider other)
         {
             if (requireTag && !other.CompareTag(requiredTag)) return;
-            if (IsNetworkedAndLacksAuthority) return;
+
+            bool alreadyTriggered = isNetworked && Object != null ? NetworkHasTriggered : hasTriggered;
+            if (triggerOnce && alreadyTriggered) return;
 
             if (!_occupants.Contains(other))
                 _occupants.Add(other);
 
             if (_occupants.Count == 1)
-                FireOccupied();
+            {
+                OnZoneOccupied?.Invoke();
+                // Tell authority the zone is now occupied (for triggerOnce tracking).
+                if (isNetworked && Object != null && !Object.HasStateAuthority)
+                    RPC_NotifyOccupied();
+            }
         }
 
         private void OnTriggerExit(Collider other)
         {
             if (requireTag && !other.CompareTag(requiredTag)) return;
-            if (IsNetworkedAndLacksAuthority) return;
 
             _occupants.Remove(other);
 
             if (_occupants.Count == 0)
-                FireCleared();
-        }
-
-        private void FireOccupied()
-        {
-            bool alreadyTriggered = isNetworked ? NetworkHasTriggered : hasTriggered;
-            if (triggerOnce && alreadyTriggered) return;
-
-            OnZoneOccupied?.Invoke();
-        }
-
-        private void FireCleared()
-        {
-            bool alreadyTriggered = isNetworked ? NetworkHasTriggered : hasTriggered;
-            if (triggerOnce && alreadyTriggered) return;
-
-            if (triggerOnce)
             {
-                if (isNetworked) NetworkHasTriggered = true;
-                else hasTriggered = true;
-            }
+                bool alreadyTriggered = isNetworked && Object != null ? NetworkHasTriggered : hasTriggered;
+                if (triggerOnce && alreadyTriggered) return;
 
-            OnZoneCleared?.Invoke();
+                OnZoneCleared?.Invoke();
+
+                if (triggerOnce)
+                {
+                    if (isNetworked && Object != null)
+                    {
+                        if (Object.HasStateAuthority) NetworkHasTriggered = true;
+                        else RPC_MarkTriggered();
+                    }
+                    else hasTriggered = true;
+                }
+            }
         }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_NotifyOccupied() { }
+
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        private void RPC_MarkTriggered() => NetworkHasTriggered = true;
 
         public void ResetZone()
         {
@@ -105,10 +99,7 @@ namespace U3D
         public bool IsOccupied => _occupants.Count > 0;
         public int OccupantCount => _occupants.Count;
 
-        private void OnDisable()
-        {
-            _occupants.Clear();
-        }
+        private void OnDisable() => _occupants.Clear();
 
         public override void Spawned()
         {
