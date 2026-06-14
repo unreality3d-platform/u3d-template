@@ -137,11 +137,6 @@ namespace U3D
                 spawnRot,
                 onBeforeSpawned: (runner, obj) =>
                 {
-                    // Stamp position into networked state before the object is
-                    // visible to any client. This runs on the spawning client
-                    // before tick 0 state is broadcast, preventing late-joining
-                    // clients from seeing the object snap from 0,0,0 to its
-                    // correct position on their first received snapshot.
                     var tracker = obj.GetComponent<U3DSpawnTracker>();
                     if (tracker != null)
                         tracker.InitPosition(spawnPos, spawnRot);
@@ -152,12 +147,16 @@ namespace U3D
             {
                 NetworkActiveCount++;
 
+                // Always attach tracker — needed for tick-0 position fix on all networked
+                // spawns, not just respawnable ones.
+                var tracker = instance.GetComponent<U3DSpawnTracker>();
+                if (tracker == null)
+                    tracker = instance.gameObject.AddComponent<U3DSpawnTracker>();
+
+                tracker.InitPosition(spawnPos, spawnRot);
+
                 if (respawnWhenDestroyed)
-                {
-                    var tracker = instance.GetComponent<U3DSpawnTracker>();
-                    if (tracker != null)
-                        tracker.Initialize(this);
-                }
+                    tracker.Initialize(this);
 
                 if (labelUI != null && maxInstances > 0 && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
                     labelUI.gameObject.SetActive(false);
