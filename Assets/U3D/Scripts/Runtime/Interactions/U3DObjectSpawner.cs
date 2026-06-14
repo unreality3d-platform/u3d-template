@@ -61,12 +61,6 @@ namespace U3D
 
         private int _localActiveCount = 0;
 
-        /// <summary>
-        /// Whether another spawn is allowed given the current active count.
-        /// maxInstances of 0 means unlimited — always allowed. Otherwise allowed
-        /// only while the active count is below the cap. Single source of truth so
-        /// every guard site reads the limit identically.
-        /// </summary>
         private bool CanSpawnMore(int currentCount)
         {
             return maxInstances <= 0 || currentCount < maxInstances;
@@ -84,12 +78,6 @@ namespace U3D
                 SpawnLocal();
         }
 
-        /// <summary>
-        /// Call this from any UnityEvent, trigger, or script to request a spawn.
-        /// When networkedSpawn is enabled, non-host clients automatically forward the
-        /// request to the host via RPC. When disabled, spawns happen locally on the
-        /// calling client only.
-        /// </summary>
         public void Spawn()
         {
             GameObject resolved = ResolvePrefab();
@@ -114,20 +102,15 @@ namespace U3D
             }
 
             if (Object.HasStateAuthority)
-            {
                 ExecuteNetworkedSpawn(resolved);
-            }
             else
-            {
                 RPC_RequestSpawn();
-            }
         }
 
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         private void RPC_RequestSpawn()
         {
-            if (!CanSpawnMore(NetworkActiveCount))
-                return;
+            if (!CanSpawnMore(NetworkActiveCount)) return;
 
             GameObject resolved = ResolvePrefab();
             if (resolved == null) return;
@@ -145,20 +128,37 @@ namespace U3D
                 return;
             }
 
-            var instance = Runner.Spawn(prefab, transform.position, transform.rotation);
+            Vector3 spawnPos = transform.position;
+            Quaternion spawnRot = transform.rotation;
+
+            var instance = Runner.Spawn(
+                prefab,
+                spawnPos,
+                spawnRot,
+                onBeforeSpawned: (runner, obj) =>
+                {
+                    // Stamp position into networked state before the object is
+                    // visible to any client. This runs on the spawning client
+                    // before tick 0 state is broadcast, preventing late-joining
+                    // clients from seeing the object snap from 0,0,0 to its
+                    // correct position on their first received snapshot.
+                    var tracker = obj.GetComponent<U3DSpawnTracker>();
+                    if (tracker != null)
+                        tracker.InitPosition(spawnPos, spawnRot);
+                }
+            );
+
             if (instance != null)
             {
                 NetworkActiveCount++;
 
                 if (respawnWhenDestroyed)
                 {
-                    var tracker = instance.gameObject.AddComponent<U3DSpawnTracker>();
-                    tracker.Initialize(this);
+                    var tracker = instance.GetComponent<U3DSpawnTracker>();
+                    if (tracker != null)
+                        tracker.Initialize(this);
                 }
 
-                // Hide the label only when a finite cap has just been reached and we
-                // won't respawn. At unlimited (maxInstances <= 0) the cap is never
-                // "reached", so the label stays visible.
                 if (labelUI != null && maxInstances > 0 && NetworkActiveCount >= maxInstances && !respawnWhenDestroyed)
                     labelUI.gameObject.SetActive(false);
 
@@ -193,16 +193,14 @@ namespace U3D
 
             if (respawnWhenDestroyed)
             {
-                var tracker = instance.AddComponent<U3DSpawnTracker>();
-                tracker.Initialize(this);
+                var tracker = instance.GetComponent<U3DSpawnTracker>();
+                if (tracker != null)
+                    tracker.Initialize(this);
             }
 
             onSpawned?.Invoke(instance);
         }
 
-        /// <summary>
-        /// Called by U3DSpawnTracker when a tracked instance is destroyed.
-        /// </summary>
         public void OnTrackedInstanceDestroyed()
         {
             if (Runner != null && Object != null && Object.HasStateAuthority)
@@ -225,10 +223,6 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// Resolves which prefab to use. If prefabList has entries, picks one
-        /// using weighted random selection. Otherwise falls back to prefabToSpawn.
-        /// </summary>
         private GameObject ResolvePrefab()
         {
             if (prefabList != null && prefabList.Length > 0)
@@ -248,7 +242,6 @@ namespace U3D
                     {
                         if (prefabList[i].prefab == null || prefabList[i].weight <= 0f)
                             continue;
-
                         cumulative += prefabList[i].weight;
                         if (roll < cumulative)
                             return prefabList[i].prefab;
@@ -305,16 +298,48 @@ namespace U3D
     }
 
     /// <summary>
-    /// Internal helper attached to spawned instances to notify the spawner on destruction.
-    /// Not intended for direct use by creators.
+    /// Attached to spawned instances. Notifies the spawner on destruction and
+    /// stamps spawn position into networked state before tick 0 to prevent
+    /// late-joining clients from seeing objects snap from 0,0,0.
     /// </summary>
-    public class U3DSpawnTracker : MonoBehaviour
+    public class U3DSpawnTracker : NetworkBehaviour
     {
+        [Networked] private Vector3 NetworkSpawnPosition { get; set; }
+        [Networked] private Quaternion NetworkSpawnRotation { get; set; }
+
         private U3DObjectSpawner _spawner;
+        private bool _positionInitialized = false;
+
+        public void InitPosition(Vector3 position, Quaternion rotation)
+        {
+            NetworkSpawnPosition = position;
+            NetworkSpawnRotation = rotation;
+            _positionInitialized = true;
+        }
 
         public void Initialize(U3DObjectSpawner spawner)
         {
             _spawner = spawner;
+        }
+
+        public override void Spawned()
+        {
+            // On all clients: apply the networked position immediately at spawn.
+            // This is what late-joining clients read on their first snapshot —
+            // the correct position rather than 0,0,0.
+            transform.position = NetworkSpawnPosition;
+            transform.rotation = NetworkSpawnRotation;
+        }
+
+        public override void FixedUpdateNetwork()
+        {
+            // Tick-0 guard: force position from networked state for the first tick
+            // to cover the window between Runner.Spawn and the first state broadcast.
+            if (Runner.Tick <= 1)
+            {
+                transform.position = NetworkSpawnPosition;
+                transform.rotation = NetworkSpawnRotation;
+            }
         }
 
         void OnDestroy()
