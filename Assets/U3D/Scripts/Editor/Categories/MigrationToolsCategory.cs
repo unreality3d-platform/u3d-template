@@ -39,6 +39,36 @@ namespace U3D.Editor
             EditorGUILayout.HelpBox("Clean up missing script references, broken object references, and broken Visual Scripting graphs. Use these tools when migrating scenes from other platforms or updating assets.", MessageType.Info);
             EditorGUILayout.Space(10);
 
+            // See What Needs Fixing Section
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("🔍 See What Needs Fixing:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Highlight problem objects in the Scene view before you change anything. This only looks — it never edits your scene.", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.Space(3);
+
+            bool overlayActive = MigrationHighlightOverlay.IsActive;
+            bool newOverlayActive = EditorGUILayout.ToggleLeft(
+                "Highlight issues in Scene view  (red = missing scripts, yellow = missing references, blue = placeholders)",
+                overlayActive);
+            if (newOverlayActive != overlayActive)
+                MigrationHighlightOverlay.SetActive(newOverlayActive);
+
+            if (GUILayout.Button("Scan and Select All Issues", GUILayout.Height(30)))
+                ScanAndSelectAllIssues();
+
+            MigrationScanResult scan = MigrationHighlightOverlay.LastScan;
+            if (scan.missingScripts != null)
+            {
+                EditorGUILayout.LabelField(
+                    $"Found: {scan.missingScripts.Count} missing script(s), {scan.missingReferences.Count} missing reference(s), {scan.placeholders.Count} placeholder(s)",
+                    EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.LabelField("No scan yet — turn on the highlight or run a scan.", EditorStyles.miniLabel);
+            }
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(10);
+
             // Missing Scripts Section
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("🔄 Missing Scripts Workflow:", EditorStyles.boldLabel);
@@ -85,6 +115,34 @@ namespace U3D.Editor
             DrawTool(tools[8]);
         }
 
+        private void ScanAndSelectAllIssues()
+        {
+            MigrationHighlightOverlay.Rescan();
+            MigrationScanResult scan = MigrationHighlightOverlay.LastScan;
+
+            HashSet<GameObject> union = new HashSet<GameObject>();
+            AddNonNull(union, scan.missingScripts);
+            AddNonNull(union, scan.missingReferences);
+            AddNonNull(union, scan.placeholders);
+
+            GameObject[] selection = new GameObject[union.Count];
+            union.CopyTo(selection);
+            Selection.objects = selection;
+
+            int scripts = scan.missingScripts != null ? scan.missingScripts.Count : 0;
+            int references = scan.missingReferences != null ? scan.missingReferences.Count : 0;
+            int placeholders = scan.placeholders != null ? scan.placeholders.Count : 0;
+
+            Debug.Log($"[Asset Cleanup] Scan found {scripts} missing script(s), {references} missing reference(s), {placeholders} placeholder(s). Selected {union.Count} object(s).");
+        }
+
+        private static void AddNonNull(HashSet<GameObject> set, List<GameObject> source)
+        {
+            if (source == null) return;
+            foreach (GameObject go in source)
+                if (go != null) set.Add(go);
+        }
+
         private void DrawTool(CreatorTool tool)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -98,12 +156,7 @@ namespace U3D.Editor
 
                 if (GUILayout.Button("Apply", GUILayout.Height(35)))
                 {
-                    if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
-                        $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
-                        "Continue", "Cancel"))
-                    {
-                        tool.action?.Invoke();
-                    }
+                    ConfirmAndRunTool(tool);
                 }
             }
             else
@@ -117,12 +170,7 @@ namespace U3D.Editor
 
                 if (GUILayout.Button("Apply", GUILayout.Width(80), GUILayout.Height(35)))
                 {
-                    if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
-                        $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
-                        "Continue", "Cancel"))
-                    {
-                        tool.action?.Invoke();
-                    }
+                    ConfirmAndRunTool(tool);
                 }
 
                 EditorGUILayout.EndHorizontal();
@@ -130,6 +178,21 @@ namespace U3D.Editor
 
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(5);
+        }
+
+        private void ConfirmAndRunTool(CreatorTool tool)
+        {
+            if (EditorUtility.DisplayDialog("Confirm Asset Cleanup",
+                $"This will run: {tool.title}\n\n{tool.description}\n\nThis action can be undone with Ctrl+Z.",
+                "Continue", "Cancel"))
+            {
+                tool.action?.Invoke();
+
+                // Most cleanup tools change components rather than the hierarchy, which does not
+                // reliably fire hierarchyChanged — so refresh the highlight explicitly here.
+                if (MigrationHighlightOverlay.IsActive)
+                    MigrationHighlightOverlay.Rescan();
+            }
         }
     }
 }
