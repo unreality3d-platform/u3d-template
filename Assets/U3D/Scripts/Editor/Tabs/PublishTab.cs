@@ -270,10 +270,14 @@ namespace U3D.Editor
 
         public void DrawTab()
         {
+            if (EditorPrefs.GetBool("U3D_NavigateToMarketPackager", false))
+            {
+                EditorPrefs.DeleteKey("U3D_NavigateToMarketPackager");
+                currentMode = PublishMode.PackageForMarket;
+            }
+
             EditorGUILayout.Space(10);
 
-            // Mode toggle — always visible. Each mode owns its own state and drawing,
-            // so the publish/deploy flow and the market packager never interact.
             DrawModeToggle();
 
             EditorGUILayout.Space(10);
@@ -407,6 +411,12 @@ namespace U3D.Editor
 
         public void OnFocus()
         {
+            if (EditorPrefs.GetBool("U3D_NavigateToMarketPackager", false))
+            {
+                EditorPrefs.DeleteKey("U3D_NavigateToMarketPackager");
+                currentMode = PublishMode.PackageForMarket;
+            }
+
             // Check for external Product Name changes when tab gains focus
             var currentProductName = Application.productName;
             if (currentProductName != cachedProductName)
@@ -418,7 +428,7 @@ namespace U3D.Editor
                 loadingOptions = false;
             }
 
-            // 🆕 CHECK AUTHENTICATION STATE: Reset if user logged out
+            // CHECK AUTHENTICATION STATE: Reset if user logged out
             if (!U3DAuthenticator.IsLoggedIn && optionsLoaded)
             {
                 // Clear loaded options and reset to prerequisites

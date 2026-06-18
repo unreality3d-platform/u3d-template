@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Events;
 using Fusion;
 using Fusion.Addons.Physics;
@@ -7,29 +7,29 @@ using System.Collections;
 namespace U3D
 {
     /// <summary>
-    /// Pushable interaction component for objects that can be pushed by the player.
-    /// Toggle-based: press interaction key to start pushing, press again or walk out of range to stop.
-    /// Direction follows camera forward (horizontal, normalized) — consistent with Kickable/Throwable.
-    /// Speed derives from the player's actual movement velocity — no artificial push speed setting.
-    /// Push Resistance adjusts the Rigidbody's mass directly for creator-friendly tuning.
+    /// Pullable interaction component for objects that can be pulled along surfaces by the player.
+    /// Toggle-based: press interaction key to start pulling, press again or walk out of range to stop.
+    /// Direction is camera backward (horizontal, normalized) — the inverse of Pushable.
+    /// Speed derives from the player's actual movement velocity — no artificial pull speed setting.
+    /// Pull Resistance adjusts the Rigidbody's mass directly for creator-friendly tuning.
     /// Supports both networked and non-networked modes with Photon Fusion 2 Shared Mode.
     /// </summary>
     [RequireComponent(typeof(Rigidbody), typeof(Collider))]
-    public class U3DPushable : NetworkBehaviour, IU3DInteractable
+    public class U3DPullable : NetworkBehaviour, IU3DInteractable
     {
-        [Header("Push Resistance")]
-        [Tooltip("Higher values make this object harder to push. Adjusts this object's Rigidbody mass.")]
-        [SerializeField] private float pushResistance = 5f;
+        [Header("Pull Resistance")]
+        [Tooltip("Higher values make this object harder to pull. Adjusts this object's Rigidbody mass.")]
+        [SerializeField] private float pullResistance = 5f;
 
         [Header("Interaction Settings")]
-        [Tooltip("Key to toggle push mode (remappable)")]
-        [SerializeField] private KeyCode pushKey = KeyCode.R;
+        [Tooltip("Key to toggle pull mode (remappable)")]
+        [SerializeField] private KeyCode pullKey = KeyCode.R;
 
-        [Tooltip("Maximum distance to push from. Player walking beyond this auto-disengages push mode.")]
-        [SerializeField] private float maxPushDistance = 2f;
+        [Tooltip("Maximum distance to pull from. Player walking beyond this auto-disengages pull mode.")]
+        [SerializeField] private float maxPullDistance = 2f;
 
         [Header("Starting State")]
-        [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming pushable. Use this for objects spawned above ground level.")]
+        [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming pullable. Use this for objects spawned above ground level.")]
         [SerializeField] private bool startActive = false;
 
         [Tooltip("When enabled, this object is permanently destroyed when it falls out of world bounds instead of respawning. Requires a U3DDestroyable component on this object.")]
@@ -40,16 +40,16 @@ namespace U3D
         public U3DWorldspaceUI labelUI;
 
         [Header("Events")]
-        [Tooltip("Called when player begins pushing this object")]
-        public UnityEvent OnPushStart;
+        [Tooltip("Called when player begins pulling this object")]
+        public UnityEvent OnPullStart;
 
-        [Tooltip("Called when player stops pushing this object")]
-        public UnityEvent OnPushEnd;
+        [Tooltip("Called when player stops pulling this object")]
+        public UnityEvent OnPullEnd;
 
-        [Tooltip("Called when pushed object hits something with force")]
+        [Tooltip("Called when pulled object hits something with force")]
         public UnityEvent OnImpact;
 
-        [Tooltip("Called when object returns to sleep after being pushed")]
+        [Tooltip("Called when object returns to sleep after being pulled")]
         public UnityEvent OnSleep;
 
         [Tooltip("Called when object is reset due to world bounds violation")]
@@ -72,7 +72,7 @@ namespace U3D
         [SerializeField] private float boundsCheckInterval = 1f;
 
         // Network state for physics management
-        [Networked] public bool NetworkIsPushing { get; set; }
+        [Networked] public bool NetworkIsPulling { get; set; }
         [Networked] public bool NetworkIsPhysicsActive { get; set; }
         [Networked] public TickTimer NetworkSleepTimer { get; set; }
         [Networked] public TickTimer NetworkSettleGraceTimer { get; set; }
@@ -90,8 +90,8 @@ namespace U3D
 
         // State tracking
         private bool isNetworked = false;
-        private bool isInPushRange = false;
-        private bool isPushActive = false;
+        private bool isInPullRange = false;
+        private bool isPullActive = false;
         private Coroutine boundsCheckCoroutine;
 
         // Authority request management
@@ -115,12 +115,12 @@ namespace U3D
 
         // Animation state tracking
         private U3DNetworkedAnimator cachedNetworkedAnimator;
-        private bool lastPushAnimState = false;
+        private bool lastPullAnimState = false;
 
         public enum PhysicsState
         {
-            Sleeping,      // Kinematic, no gravity - pushable state
-            Active,        // Non-kinematic, gravity - physics simulation during/after push
+            Sleeping,      // Kinematic, no gravity - pullable state
+            Active,        // Non-kinematic, gravity - physics simulation during/after pull
             Resetting      // Temporarily kinematic while resetting position
         }
 
@@ -139,7 +139,7 @@ namespace U3D
         {
             if (!isNetworked) return;
 
-            NetworkIsPushing = false;
+            NetworkIsPulling = false;
             NetworkIsPhysicsActive = false;
 
             InitializePhysicsState();
@@ -149,7 +149,7 @@ namespace U3D
         {
             FindPlayerComponents();
             RecordOriginalTransform();
-            ApplyPushResistanceToMass();
+            ApplyPullResistanceToMass();
             LinkLabelUI();
 
             if (!isNetworked)
@@ -178,26 +178,26 @@ namespace U3D
         {
             UpdatePlayerProximity();
 
-            if (isPushActive)
+            if (isPullActive)
             {
-                if (!isInPushRange)
-                    EndPush();
+                if (!isInPullRange)
+                    EndPull();
             }
 
-            // IsPushing drives the animation only while push mode is on AND the player is moving.
-            // Evaluating every frame ensures the animator exits push state immediately when the
-            // player stops, rather than waiting for the push session to end or the object to sleep.
-            bool shouldPushAnimate = isPushActive && playerController != null && playerController.NetworkIsMoving;
-            if (shouldPushAnimate != lastPushAnimState)
+            // IsPulling drives the animation only while pull mode is on AND the player is moving.
+            // Evaluating every frame ensures the animator exits pull state immediately when the
+            // player stops, rather than waiting for the pull session to end or the object to sleep.
+            bool shouldPullAnimate = isPullActive && playerController != null && playerController.NetworkIsMoving;
+            if (shouldPullAnimate != lastPullAnimState)
             {
                 if (cachedNetworkedAnimator != null)
-                    cachedNetworkedAnimator.SetAnimationBool("IsPushing", shouldPushAnimate);
-                lastPushAnimState = shouldPushAnimate;
+                    cachedNetworkedAnimator.SetAnimationBool("IsPulling", shouldPullAnimate);
+                lastPullAnimState = shouldPullAnimate;
             }
 
             if (isRequestingAuthority && Time.time - authorityRequestTime > AUTHORITY_REQUEST_TIMEOUT)
             {
-                Debug.LogWarning($"U3DPushable: Authority request timeout for {name}");
+                Debug.LogWarning($"U3DPullable: Authority request timeout for {name}");
                 isRequestingAuthority = false;
             }
         }
@@ -206,20 +206,15 @@ namespace U3D
         {
             if (!isNetworked || !Object.HasStateAuthority) return;
 
-            // Skip checks if object has been grabbed
             if (grabbable != null && grabbable.IsGrabbed) return;
 
-            if (isPushActive && NetworkIsPushing)
+            if (isPullActive && NetworkIsPulling)
             {
-                ApplyPushVelocity();
+                ApplyPullVelocity();
             }
 
-            // Check for sleep conditions when physics is active but not being pushed
-            if (!NetworkIsPushing && NetworkIsPhysicsActive)
+            if (!NetworkIsPulling && NetworkIsPhysicsActive)
             {
-                // Grace period after activation prevents instant-sleep before velocity builds.
-                // Flat-bottomed objects (cubes, crates) hit the velocity threshold within
-                // a tick or two of becoming non-kinematic — give physics time to settle first.
                 bool inGracePeriod = NetworkSettleGraceTimer.IsRunning &&
                                      !NetworkSettleGraceTimer.Expired(Runner);
                 if (inGracePeriod) return;
@@ -239,7 +234,7 @@ namespace U3D
 
                 if (shouldSleep)
                 {
-                    ReturnToPushableSleepState();
+                    ReturnToPullableSleepState();
                 }
             }
         }
@@ -267,10 +262,9 @@ namespace U3D
 
             if (Object.HasStateAuthority)
             {
-                // Authority granted — activate push if we were waiting for it
                 if (isRequestingAuthority)
                 {
-                    ActivatePush();
+                    ActivatePull();
                 }
                 else
                 {
@@ -279,24 +273,23 @@ namespace U3D
             }
             else
             {
-                // Lost authority while pushing — disengage locally
                 isRequestingAuthority = false;
-                if (isPushActive)
+                if (isPullActive)
                 {
-                    isPushActive = false;
-                    OnPushEnd?.Invoke();
+                    isPullActive = false;
+                    OnPullEnd?.Invoke();
                 }
                 SyncLocalPhysicsState();
             }
         }
 
         /// <summary>
-        /// Apply push velocity each tick while push mode is active.
-        /// Direction: camera forward projected horizontal, normalized (consistent with Kickable/Throwable).
+        /// Apply pull velocity each tick while pull mode is active.
+        /// Direction: camera BACKWARD projected horizontal, normalized (inverse of Pushable).
         /// Magnitude: player's current movement speed from GetCurrentSpeed() (walk/sprint/crouch).
         /// PlayerController.Velocity only tracks gravity — use NetworkIsMoving + CurrentSpeed instead.
         /// </summary>
-        private void ApplyPushVelocity()
+        private void ApplyPullVelocity()
         {
             if (playerCamera == null || playerController == null)
             {
@@ -304,46 +297,37 @@ namespace U3D
                 if (playerCamera == null || playerController == null) return;
             }
 
-            // Player standing still = no force applied
             if (!playerController.NetworkIsMoving) return;
 
-            // Use the intended movement speed (walk 4, sprint 8, crouch 2)
             float playerSpeed = playerController.CurrentSpeed;
             if (playerSpeed < 0.1f) return;
 
-            // Camera forward projected onto horizontal plane (same as Kickable/Throwable)
-            Vector3 pushDirection = playerCamera.transform.forward;
-            pushDirection.y = 0f;
-            pushDirection.Normalize();
+            // Camera backward projected onto horizontal plane (inverse of Pushable's direction)
+            Vector3 pullDirection = -playerCamera.transform.forward;
+            pullDirection.y = 0f;
+            pullDirection.Normalize();
 
-            if (pushDirection.sqrMagnitude < 0.01f) return;
+            if (pullDirection.sqrMagnitude < 0.01f) return;
 
-            // Defensive: ensure non-kinematic before velocity assignment.
-            // Normal flow handles this via SetPhysicsState(Active), but this
-            // catches any edge case where push velocity is applied without
-            // a prior state transition.
             if (rb.isKinematic)
             {
                 rb.isKinematic = false;
                 rb.useGravity = true;
             }
 
-            // Apply velocity: camera direction * player movement speed
-            // Rigidbody mass (set by Push Resistance) naturally resists this
-            Vector3 pushVelocity = pushDirection * playerSpeed;
+            Vector3 pullVelocity = pullDirection * playerSpeed;
 
             // Preserve existing Y velocity (gravity, falling off edges)
-            rb.linearVelocity = new Vector3(pushVelocity.x, rb.linearVelocity.y, pushVelocity.z);
+            rb.linearVelocity = new Vector3(pullVelocity.x, rb.linearVelocity.y, pullVelocity.z);
         }
 
-        private void StartPush()
+        private void StartPull()
         {
             if (grabbable != null && grabbable.IsGrabbed) return;
-            if (!isInPushRange) return;
+            if (!isInPullRange) return;
 
             if (isNetworked && !Object.HasStateAuthority)
             {
-                // Defer activation until authority is granted
                 if (!isRequestingAuthority)
                 {
                     isRequestingAuthority = true;
@@ -353,54 +337,49 @@ namespace U3D
                 return;
             }
 
-            ActivatePush();
+            ActivatePull();
         }
 
-        private void ActivatePush()
+        private void ActivatePull()
         {
-            isPushActive = true;
+            isPullActive = true;
             isRequestingAuthority = false;
             SetPhysicsState(PhysicsState.Active);
 
             if (isNetworked && Object.HasStateAuthority)
             {
-                NetworkIsPushing = true;
+                NetworkIsPulling = true;
                 NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
                 NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 1.0f);
             }
 
             if (labelUI != null) labelUI.gameObject.SetActive(false);
-            OnPushStart?.Invoke();
+            OnPullStart?.Invoke();
         }
 
-        private void EndPush()
+        private void EndPull()
         {
-            if (!isPushActive) return;
+            if (!isPullActive) return;
 
-            isPushActive = false;
+            isPullActive = false;
 
             if (isNetworked && Object.HasStateAuthority)
             {
-                NetworkIsPushing = false;
+                NetworkIsPulling = false;
                 NetworkSleepTimer = TickTimer.CreateFromSeconds(Runner, maxActiveTime);
                 NetworkSettleGraceTimer = TickTimer.CreateFromSeconds(Runner, 0.3f);
             }
 
-            OnPushEnd?.Invoke();
-
-            // Object remains in Active physics state — damping decelerates it,
-            // sleep detection in FixedUpdateNetwork will return it to Sleeping.
-            // Label stays hidden during this active-physics tail and is restored
-            // by ReturnToPushableSleepState, so it doesn't fly along with a rolling cube.
+            OnPullEnd?.Invoke();
         }
 
-        private void ReturnToPushableSleepState()
+        private void ReturnToPullableSleepState()
         {
             SetPhysicsState(PhysicsState.Sleeping);
 
             if (isNetworked && Object.HasStateAuthority)
             {
-                NetworkIsPushing = false;
+                NetworkIsPulling = false;
                 NetworkIsPhysicsActive = false;
             }
 
@@ -417,7 +396,7 @@ namespace U3D
             }
 
             float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-            isInPushRange = distanceToPlayer <= maxPushDistance;
+            isInPullRange = distanceToPlayer <= maxPullDistance;
         }
 
         private void FindPlayer()
@@ -490,13 +469,14 @@ namespace U3D
 
         private void CheckForInputConflicts()
         {
-            if (grabbable != null)
-            {
-                if (pushKey == KeyCode.R)
-                {
-                    pushKey = KeyCode.T;
-                }
-            }
+            // Grabbable claims R — shift to T
+            if (GetComponent<U3DGrabbable>() != null && pullKey == KeyCode.R)
+                pullKey = KeyCode.T;
+
+            // Pushable present on same object — avoid whichever key it settled on
+            U3DPushable pushable = GetComponent<U3DPushable>();
+            if (pushable != null && pullKey == pushable.PushKey)
+                pullKey = KeyCode.G;
         }
 
         private void SetPhysicsState(PhysicsState newState)
@@ -597,12 +577,12 @@ namespace U3D
 
                 if (transform.position.y < worldBoundsFloor)
                 {
-                    Debug.LogWarning($"U3DPushable: Object '{name}' fell below world bounds (Y: {transform.position.y})");
+                    Debug.LogWarning($"U3DPullable: Object '{name}' fell below world bounds (Y: {transform.position.y})");
                     needsReset = true;
                 }
                 else if (Vector3.Distance(Vector3.zero, transform.position) > worldBoundsRadius)
                 {
-                    Debug.LogWarning($"U3DPushable: Object '{name}' went beyond world radius ({Vector3.Distance(Vector3.zero, transform.position):F1}m)");
+                    Debug.LogWarning($"U3DPullable: Object '{name}' went beyond world radius ({Vector3.Distance(Vector3.zero, transform.position):F1}m)");
                     needsReset = true;
                 }
 
@@ -614,7 +594,7 @@ namespace U3D
                         if (destroyable != null)
                             destroyable.RequestDestroy();
                         else
-                            Debug.LogWarning($"U3DPushable: '{name}' has Destroy On Out Of Bounds enabled but no U3DDestroyable component.");
+                            Debug.LogWarning($"U3DPullable: '{name}' has Destroy On Out Of Bounds enabled but no U3DDestroyable component.");
                     }
                     else
                     {
@@ -628,9 +608,8 @@ namespace U3D
         {
             if (isNetworked && (Object == null || !Object.HasStateAuthority)) return;
 
-            // End push if active
-            if (isPushActive)
-                EndPush();
+            if (isPullActive)
+                EndPull();
 
             SetPhysicsState(PhysicsState.Resetting);
 
@@ -648,7 +627,7 @@ namespace U3D
 
             if (isNetworked && Object.HasStateAuthority)
             {
-                NetworkIsPushing = false;
+                NetworkIsPulling = false;
                 NetworkIsPhysicsActive = false;
             }
 
@@ -669,29 +648,24 @@ namespace U3D
             }
         }
 
-        /// <summary>
-        /// Apply Push Resistance value to Rigidbody mass.
-        /// Called on Start and whenever the value changes in the Inspector.
-        /// </summary>
-        private void ApplyPushResistanceToMass()
+        private void ApplyPullResistanceToMass()
         {
             if (rb != null)
-                rb.mass = pushResistance;
+                rb.mass = pullResistance;
         }
 
-        // Public method to manually end push
-        public void StopPush()
+        // Public methods
+        public void StopPull()
         {
-            if (isPushActive)
-                EndPush();
+            if (isPullActive)
+                EndPull();
         }
 
-        // Public method to manually put object to sleep
         public void PutToSleep()
         {
-            if (isPushActive)
-                EndPush();
-            ReturnToPushableSleepState();
+            if (isPullActive)
+                EndPull();
+            ReturnToPullableSleepState();
         }
 
         public void ResetToSpawn()
@@ -699,7 +673,6 @@ namespace U3D
             ResetToSpawnPosition();
         }
 
-        // Public method to update spawn position (useful for dynamic spawn points)
         public void UpdateSpawnPosition(Vector3 newPosition, Quaternion newRotation)
         {
             originalPosition = newPosition;
@@ -709,94 +682,77 @@ namespace U3D
         // IU3DInteractable implementation
         public void OnInteract()
         {
-            if (isPushActive)
-            {
-                EndPush();
-            }
-            else if (CanStartPush())
-            {
-                StartPush();
-            }
+            if (isPullActive)
+                EndPull();
+            else if (CanStartPull())
+                StartPull();
         }
 
-        public void OnPlayerEnterRange()
-        {
-            // Handled by UpdatePlayerProximity
-        }
-
-        public void OnPlayerExitRange()
-        {
-            // Handled by UpdatePlayerProximity
-        }
+        public void OnPlayerEnterRange() { }
+        public void OnPlayerExitRange() { }
 
         public bool CanInteract()
         {
-            // Can always interact if currently pushing (to toggle off)
-            if (isPushActive) return true;
-            return CanStartPush();
+            if (isPullActive) return true;
+            return CanStartPull();
         }
 
         public string GetInteractionPrompt()
         {
             if (grabbable != null && grabbable.IsGrabbed)
-                return "Cannot push while grabbed";
+                return "Cannot pull while grabbed";
             if (isRequestingAuthority) return "Requesting...";
-            if (isPushActive)
-                return $"Stop Pushing ({pushKey})";
-            return $"Push ({pushKey})";
+            if (isPullActive)
+                return $"Stop Pulling ({pullKey})";
+            return $"Pull ({pullKey})";
         }
 
-        private bool CanStartPush()
+        private bool CanStartPull()
         {
             if (grabbable != null && grabbable.IsGrabbed)
                 return false;
 
-            if (!isInPushRange)
+            if (!isInPullRange)
                 return false;
 
             if (isNetworked)
             {
                 if (Object == null) return false;
-
-                if (!Object.HasStateAuthority)
-                {
-                    // Allow — we'll request authority in StartPush
-                    return true;
-                }
+                // Allow — authority requested in StartPull if needed
             }
 
             return true;
         }
 
         // Public properties
-        public bool IsPushActive => isPushActive;
-        public bool IsInPushRange => isInPushRange;
+        public bool IsPullActive => isPullActive;
+        public bool IsInPullRange => isInPullRange;
         public bool IsNetworked => isNetworked;
         public PhysicsState CurrentPhysicsState => currentPhysicsState;
         public Vector3 OriginalPosition => originalPosition;
         public Quaternion OriginalRotation => originalRotation;
         public bool HasNetworkRigidbody => networkRigidbody != null;
         public bool IsPhysicsActive => isNetworked ? NetworkIsPhysicsActive : (currentPhysicsState == PhysicsState.Active);
-        public KeyCode PushKey { get => pushKey; set => pushKey = value; }
+        public KeyCode PullKey { get => pullKey; set => pullKey = value; }
 
         private void OnDestroy()
         {
             if (boundsCheckCoroutine != null)
                 StopCoroutine(boundsCheckCoroutine);
 
-            if (isPushActive && cachedNetworkedAnimator != null)
-                cachedNetworkedAnimator.SetAnimationBool("IsPushing", false);
+            if (isPullActive && cachedNetworkedAnimator != null)
+                cachedNetworkedAnimator.SetAnimationBool("IsPulling", false);
         }
 
         private void OnValidate()
         {
-            if (pushResistance <= 0f)
-                Debug.LogWarning("U3DPushable: Push Resistance should be greater than 0");
+            if (pullResistance <= 0f)
+                Debug.LogWarning("U3DPullable: Pull Resistance should be greater than 0");
 
-            if (maxPushDistance <= 0f)
-                Debug.LogWarning("U3DPushable: Max push distance should be positive");
+            if (maxPullDistance <= 0f)
+                Debug.LogWarning("U3DPullable: Max pull distance should be positive");
 
-            ApplyPushResistanceToMass();
+            ApplyPullResistanceToMass();
         }
     }
 }

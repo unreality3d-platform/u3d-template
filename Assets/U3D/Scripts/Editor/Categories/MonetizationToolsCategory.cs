@@ -13,17 +13,22 @@ namespace U3D.Editor
         public string CategoryName => "Monetization";
         public System.Action<int> OnRequestTabSwitch { get; set; }
 
-        private List<CreatorTool> tools;
+        private List<CreatorTool> communityTools;
+        private List<CreatorTool> commerceTools;
 
         private bool paypalConfigurationChecked = false;
         private bool paypalConfigured = true;
 
         public MonetizationToolsCategory()
         {
-            tools = new List<CreatorTool>
+            communityTools = new List<CreatorTool>
+            {
+                new CreatorTool("🟢 Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false)
+            };
+
+            commerceTools = new List<CreatorTool>
             {
                 new CreatorTool("🟢 Add Purchase Button", "Single item PayPal purchase with dual transaction (95% to creator)", CreatePurchaseButton, false),
-                new CreatorTool("🟢 Add Tip Jar", "Accept variable donations with dual transaction splitting", CreateTipJar, false),
                 new CreatorTool("🟢 Add Scene Gate", "Scene entry payment gate with PayPal dual transaction", CreateSceneGate, false),
                 new CreatorTool("🟢 Add Shop Object", "3D world PayPal shop with multiple items and dual transactions", CreateShopObject, false),
                 new CreatorTool("🟢 Add Event Gate", "Timed event access with PayPal dual transaction", CreateEventGate, false),
@@ -31,7 +36,12 @@ namespace U3D.Editor
             };
         }
 
-        public List<CreatorTool> GetTools() => tools;
+        public List<CreatorTool> GetTools()
+        {
+            var all = new List<CreatorTool>(communityTools);
+            all.AddRange(commerceTools);
+            return all;
+        }
 
         public void DrawCategory()
         {
@@ -53,7 +63,42 @@ namespace U3D.Editor
 
             EditorGUILayout.Space(10);
 
-            foreach (var tool in tools)
+            EditorGUILayout.LabelField("Community Support", EditorStyles.boldLabel);
+            EditorGUILayout.Space(4);
+
+            foreach (var tool in communityTools)
+            {
+                if (!paypalConfigured)
+                {
+                    EditorGUI.BeginDisabledGroup(true);
+                }
+
+                ProjectToolsTab.DrawCategoryTool(tool);
+
+                if (!paypalConfigured)
+                {
+                    EditorGUI.EndDisabledGroup();
+                }
+            }
+
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("In-Scene Commerce", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "These tools work in any Unity WebGL project deployed outside of Unreality3D — " +
+                "itch.io, self-hosted builds, or any other WebGL host. In-scene commerce within " +
+                "Unreality3D-deployed experiences is planned for a future platform update when " +
+                "creator demand justifies the hosting work.",
+                MessageType.Warning);
+
+            if (GUILayout.Button("Open U3D Market Packager →", EditorStyles.linkLabel))
+            {
+                EditorPrefs.SetBool("U3D_NavigateToMarketPackager", true);
+                OnRequestTabSwitch?.Invoke(3);
+            }
+
+            EditorGUILayout.Space(4);
+
+            foreach (var tool in commerceTools)
             {
                 if (!paypalConfigured)
                 {
@@ -192,7 +237,6 @@ namespace U3D.Editor
             inputRect.offsetMin = Vector2.zero;
             inputRect.offsetMax = Vector2.zero;
 
-            // Apply U3D flat input field style: flat square sprite, slightly off-white background.
             U3DUIStyle.ApplyInputFieldStyle(inputField);
 
             var inputComponent = inputField.GetComponent<TMP_InputField>();
@@ -253,11 +297,6 @@ namespace U3D.Editor
             var tmpResources = new TMP_DefaultControls.Resources();
             var uiResources = new DefaultControls.Resources();
 
-            // Full-screen container acts as a modal backdrop: covers the viewport,
-            // blocks input from falling through to the game world, and tints the
-            // scene so the inner content panel has focus. The explicit alpha matches
-            // Unity's default panel alpha; this is intentional so the tint reads the
-            // same as every other U3D panel rather than the old dim-black look.
             var containerRect = container.GetComponent<RectTransform>();
             containerRect.anchorMin = Vector2.zero;
             containerRect.anchorMax = Vector2.one;
@@ -315,12 +354,6 @@ namespace U3D.Editor
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
 
-            // Strip the button sprite per the standard rule, but route the label
-            // through ApplyBodyStyle (18pt) rather than ApplyButtonStyle (14pt).
-            // This is the "higher-emphasis" tier for a prominent CTA — if BodyFontSize
-            // changes in U3DUIStyle, this button's label tracks it automatically.
-            // raycastTarget is left at Unity's button-label default (true) so clicks
-            // register through the label on the Button parent.
             U3DUIStyle.StripSprite(button);
             var buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
             if (buttonText != null)

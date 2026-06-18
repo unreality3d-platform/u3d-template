@@ -165,6 +165,20 @@ public class U3DNetworkedAnimator : NetworkBehaviour
         networkAnimator.SetTrigger(triggerName);
     }
 
+    /// <summary>
+    /// Sets a Bool parameter on the Animator and syncs it to all clients via
+    /// NetworkMecanimAnimator. Only valid on the local player (State Authority).
+    /// Use this for sustained states like pushing and pulling that remain active
+    /// across multiple frames. The parameter name must exist as a Bool parameter
+    /// in U3DAnimatorController.
+    /// </summary>
+    public void SetAnimationBool(string paramName, bool value)
+    {
+        if (!IsInitialized) return;
+        if (!Object.HasStateAuthority) return;
+        networkAnimator.Animator.SetBool(paramName, value);
+    }
+
     public void SetAvatarAnimator(Animator avatarAnimator)
     {
         if (avatarAnimator == null) return;
