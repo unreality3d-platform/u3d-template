@@ -26,7 +26,7 @@ namespace U3D
         [SerializeField] private KeyCode pullKey = KeyCode.R;
 
         [Tooltip("Maximum distance to pull from. Player walking beyond this auto-disengages pull mode.")]
-        [SerializeField] private float maxPullDistance = 2f;
+        [SerializeField] private float maxPullDistance = 5f;
 
         [Header("Starting State")]
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming pullable. Use this for objects spawned above ground level.")]

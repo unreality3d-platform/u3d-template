@@ -26,7 +26,7 @@ namespace U3D
         [SerializeField] private KeyCode pushKey = KeyCode.R;
 
         [Tooltip("Maximum distance to push from. Player walking beyond this auto-disengages push mode.")]
-        [SerializeField] private float maxPushDistance = 2f;
+        [SerializeField] private float maxPushDistance = 5f;
 
         [Header("Starting State")]
         [Tooltip("When enabled, object spawns with gravity active and falls to the ground before becoming pushable. Use this for objects spawned above ground level.")]
