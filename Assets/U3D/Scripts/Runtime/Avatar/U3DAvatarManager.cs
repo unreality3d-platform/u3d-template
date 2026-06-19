@@ -93,6 +93,10 @@ public class U3DAvatarManager : NetworkBehaviour
                 avatarAnimator = avatarInstance.AddComponent<Animator>();
             }
 
+            // Root motion must always be off — the player controller owns all positional movement.
+            // Any avatar prefab with Apply Root Motion enabled will otherwise drift away from the capsule.
+            avatarAnimator.applyRootMotion = false;
+
             // CLEAN: Connect to animation system
             ConnectToAnimationSystem();
 

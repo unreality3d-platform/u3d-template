@@ -332,6 +332,7 @@ MonoBehaviour:
   _NetworkIsSwimming: 0
   _NetworkIsClimbing: 0
   _NetworkIsSeated: 0
+  _NetworkSuppressLocomotion: 0
   _NetworkIsInVR: 0
   _NetworkHeadPosition: {x: 0, y: 0, z: 0}
   _NetworkHeadRotation: {x: 0, y: 0, z: 0, w: 0}
@@ -388,7 +389,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b0f663e9b5f00654cb404aa7201f430e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  avatarFBX: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
+  avatarFBX: {fileID: 6886179080392750566, guid: 47c1c5a55ff73dd4aa559c614e0c596a, type: 3}
   autoConfigureHumanoid: 0
   avatarScaleMultiplier: 1
   avatarOffset: {x: 0, y: 0, z: 0}
