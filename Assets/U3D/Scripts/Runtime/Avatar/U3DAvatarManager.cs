@@ -40,6 +40,8 @@ public class U3DAvatarManager : NetworkBehaviour
     // swim, climb), Animator speed is restored to 1 so those animations play normally.
     private bool vrIdleSuppressionActive = false;
     private float freezeScheduledTime = -1f;
+    private bool _prevSeated;
+    private bool _prevSuppressLocomotion;
 
     public override void Spawned()
     {
@@ -166,13 +168,17 @@ public class U3DAvatarManager : NetworkBehaviour
 
         vrIdleSuppressionActive = enabled;
 
-        if (!enabled)
+        if (enabled)
+        {
+            _prevSeated = playerController != null && playerController.NetworkIsSeated;
+            _prevSuppressLocomotion = playerController != null && playerController.NetworkSuppressLocomotion;
+        }
+        else
         {
             avatarAnimator.speed = 1f;
             freezeScheduledTime = -1f;
         }
     }
-
     /// <summary>
     /// While VR idle suppression is active, drives the avatar Animator's speed based
     /// on the player controller's movement state. Unfreezing is instant; freezing is
@@ -186,6 +192,22 @@ public class U3DAvatarManager : NetworkBehaviour
         if (!vrIdleSuppressionActive) return;
         if (avatarAnimator == null || playerController == null) return;
 
+        bool seated = playerController.NetworkIsSeated;
+        bool suppressLocomotion = playerController.NetworkSuppressLocomotion;
+
+        // When a pose-defining flag changes (sitting down/up, entering/leaving a standing
+        // hold), unfreeze briefly so the transition into the new pose plays, then let the
+        // delayed-freeze path below re-freeze on the new static pose. Runs before the
+        // early-outs so it works even when the animator is already frozen at speed 0 —
+        // which is the case when you sit from a standstill.
+        if (seated != _prevSeated || suppressLocomotion != _prevSuppressLocomotion)
+        {
+            avatarAnimator.speed = 1f;
+            freezeScheduledTime = Time.time + 0.3f;
+            _prevSeated = seated;
+            _prevSuppressLocomotion = suppressLocomotion;
+        }
+
         bool movementFlagsClear = !playerController.NetworkIsMoving
                                && !playerController.NetworkIsCrouching
                                && !playerController.NetworkIsFlying
@@ -195,16 +217,12 @@ public class U3DAvatarManager : NetworkBehaviour
 
         if (!movementFlagsClear)
         {
-            // Player is moving in some way: unfreeze immediately, cancel any pending freeze.
             if (avatarAnimator.speed != 1f) avatarAnimator.speed = 1f;
             freezeScheduledTime = -1f;
             return;
         }
 
-        // Player is idle. If the freeze isn't already scheduled and we're not already
-        // frozen, schedule one to fire after enough time for any current animation
-        // transition to complete (transitions in U3DAnimatorController are 0.25s).
-        if (avatarAnimator.speed == 0f) return; // already frozen, nothing to do
+        if (avatarAnimator.speed == 0f) return;
 
         if (freezeScheduledTime < 0f)
         {
@@ -212,7 +230,6 @@ public class U3DAvatarManager : NetworkBehaviour
             return;
         }
 
-        // Freeze when the scheduled time arrives.
         if (Time.time >= freezeScheduledTime)
         {
             avatarAnimator.speed = 0f;

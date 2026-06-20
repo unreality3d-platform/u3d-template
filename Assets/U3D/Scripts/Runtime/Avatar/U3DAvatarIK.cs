@@ -718,13 +718,14 @@ namespace U3D
                 return true;
             }
 
-            // Local VR player: show the body, head will be chopped separately.
-            if (inVR) return true;
-
             // Hide humanoid when the local player is steering in HiddenAvatar mode.
+            // Checked before the VR early-out so it applies in VR too, not just desktop.
             if (U3D.U3DSteerable.CurrentlySteering != null
                 && U3D.U3DSteerable.CurrentlySteering.AvatarMode == U3D.SteerableAvatarMode.HiddenAvatar)
                 return false;
+
+            // Local VR player: show the body, head will be chopped separately.
+            if (inVR) return true;
 
             // Local desktop player: respect the creator's hideInFirstPerson preference.
             if (hideInFirstPersonPref && isFirstPerson && !_playerController.IsCameraTransitioning) return false;
