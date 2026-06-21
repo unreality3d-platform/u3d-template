@@ -342,11 +342,10 @@ namespace U3D
             }
             if (grabberController == null) return null;
 
-            // Walk the grabber's children to find their hand bone by name. Same matching
-            // logic as FindHandBone() — same handBoneName field, same exclusions —
-            // applied to a different player's transform.
             if (string.IsNullOrEmpty(handBoneName)) return null;
 
+            // Same resolution order as FindHandBone, applied to the grabber's transform:
+            // exact name match first, then their avatar's Humanoid hand by role.
             Transform[] allTransforms = grabberController.transform.GetComponentsInChildren<Transform>();
             for (int i = 0; i < allTransforms.Length; i++)
             {
@@ -354,6 +353,17 @@ namespace U3D
                 if (t.name == handBoneName && !t.name.Contains("Camera"))
                 {
                     cachedGrabberHand = t;
+                    return cachedGrabberHand;
+                }
+            }
+
+            U3DAvatarManager grabberAvatar = grabberController.GetComponent<U3DAvatarManager>();
+            if (grabberAvatar != null)
+            {
+                Transform humanoidHand = ResolveHumanoidHand(grabberAvatar.GetAvatarAnimator());
+                if (humanoidHand != null)
+                {
+                    cachedGrabberHand = humanoidHand;
                     return cachedGrabberHand;
                 }
             }
@@ -701,6 +711,8 @@ namespace U3D
 
             handTransform = null;
 
+            // 1) Exact name match first — preserves the shipped Skip rig (bone is
+            // literally "RightHand") and any custom socket a creator typed in.
             if (!string.IsNullOrEmpty(handBoneName))
             {
                 Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
@@ -714,6 +726,15 @@ namespace U3D
                 }
             }
 
+            // 2) No exact match: ask the equipped avatar for its hand by Humanoid
+            // role, so any humanoid rig works regardless of bone naming (Mixamo's
+            // "mixamorig:" prefix, etc.) with no per-rig field editing.
+            if (handTransform == null)
+            {
+                handTransform = FindHumanoidHandBone();
+            }
+
+            // 3) Last resort for non-humanoid avatars with no matching bone.
             if (handTransform == null)
             {
                 GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
@@ -726,6 +747,39 @@ namespace U3D
                 }
                 handTransform = handAnchor.transform;
             }
+        }
+
+        /// <summary>
+        /// Resolves the local player's equipped avatar hand bone by its Humanoid role,
+        /// independent of bone name. Returns null when no avatar is equipped, the avatar
+        /// isn't Humanoid, or the bone-name field is empty (empty = no hand attachment).
+        /// Handedness comes from handBoneName: contains "Left" targets the left hand,
+        /// otherwise the right.
+        /// </summary>
+        private Transform FindHumanoidHandBone()
+        {
+            if (playerController == null) return null;
+
+            U3DAvatarManager avatarManager = playerController.GetComponent<U3DAvatarManager>();
+            if (avatarManager == null) return null;
+
+            return ResolveHumanoidHand(avatarManager.GetAvatarAnimator());
+        }
+
+        /// <summary>
+        /// Maps the bone-name field to a Humanoid hand transform on the given Animator.
+        /// Shared by the local holder path and the remote-viewer path so handedness
+        /// resolution stays identical on both. Returns null if the animator is missing,
+        /// not Humanoid, the field is empty, or the rig has no mapped hand bone.
+        /// </summary>
+        private Transform ResolveHumanoidHand(Animator animator)
+        {
+            if (animator == null || !animator.isHuman) return null;
+            if (string.IsNullOrEmpty(handBoneName)) return null;
+
+            bool wantsLeft = handBoneName.IndexOf("Left", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            HumanBodyBones boneId = wantsLeft ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand;
+            return animator.GetBoneTransform(boneId);
         }
 
         private void UpdatePlayerProximity()

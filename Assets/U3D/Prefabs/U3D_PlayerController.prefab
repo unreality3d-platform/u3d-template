@@ -389,7 +389,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b0f663e9b5f00654cb404aa7201f430e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  avatarFBX: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
+  avatarFBX: {fileID: 919132149155446097, guid: 20b908b9cc2079842a5a272d85b03441, type: 3}
   autoConfigureHumanoid: 0
   avatarScaleMultiplier: 1
   avatarOffset: {x: 0, y: 0, z: 0}
