@@ -47,16 +47,15 @@ namespace U3D
     {
         // ==================== Inspector fields ====================
 
-        [Header("Steerable Configuration")]
-        [Tooltip("The visual that appears on the player when they enter — a vehicle shell, wheel, particle effect, and so on. Its position, rotation, and scale come straight from the prefab, so place it by editing the prefab. If it has an Animator on its root using IsMoving, MoveSpeed, MoveX, MoveY, those are driven from the player's movement so it can react (spin wheels, walk, etc.) — it can share the humanoid's animator controller. Optional — leave empty for an invisible steerable.")]
+        [Tooltip("What the player rides — a vehicle, board, or mount (even a creature) that appears with them while steering. With the Steerable selected, Add Seat places a driver seat inside this prefab to pose the avatar on it. Optional; leave empty for an invisible steerable. Placed exactly as built in the prefab; an Animator using IsMoving/MoveSpeed/MoveX/MoveY is driven by the player's movement, e.g. to spin wheels.")]
         [FormerlySerializedAs("vehicleMeshPrefab")]
         [SerializeField] private GameObject vehicleVisualPrefab;
 
-        [Tooltip("An optional replacement visual instantiated on the player alongside or instead of the humanoid. If it has an Animator, the same movement values that drive the humanoid (IsMoving, MoveSpeed, MoveX, MoveY) drive it too, so it can share the humanoid's animator controller. Its position, rotation, and scale come from the prefab.")]
+        [Tooltip("What the player looks like instead of their own avatar. Assign this and set Avatar Mode to Hidden Avatar to appear as something else, like a creature or character. Combine with a Vehicle Visual for a custom rider on a mount. Optional; placed as built in the prefab and movement-animated the same way as the Vehicle Visual.")]
         [FormerlySerializedAs("replacementMeshPrefab")]
         [SerializeField] private GameObject replacementVisualPrefab;
 
-        [Tooltip("How the driver avatar appears while steering. If the visual prefab has a driver seat (U3DDriverPose), the avatar anchors to it — hips when Seated, feet when Standing — so use Seated or Standing, not Hidden.")]
+        [Tooltip("How the driver avatar appears while steering. If the Vehicle Visual prefab has a driver seat (U3DDriverPose), the avatar anchors to it — hips when Seated, feet when Standing — so use Seated or Standing, not Hidden.")]
         [SerializeField] private SteerableAvatarMode avatarMode = SteerableAvatarMode.HiddenAvatar;
 
         // ==================== Static direct-route ====================

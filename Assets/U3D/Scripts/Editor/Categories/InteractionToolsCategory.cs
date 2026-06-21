@@ -620,6 +620,22 @@ namespace U3D.Editor
                 return;
             }
 
+            // Guard: catch Add Seat invoked directly on a costume prefab — a prefab used as
+            // some Steerable's Vehicle or Replacement Visual — whether by editing it in a
+            // Prefab Stage or selecting the asset in the Project. The ordinary path below would
+            // bury a networked U3DSeat inside the non-networked costume. Redirect to selecting
+            // the Steerable, which routes to AddDriverSeatToSteerable.
+            if (IsSteerableCostumePrefabContext(selected))
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Seat",
+                    "This prefab is used as a Steerable's visual (a costume). Adding an ordinary seat here would bury a networked seat inside the costume, which won't work.\n\n" +
+                    "To add a driver seat: close this prefab, select the Steerable in your scene, and click Add Seat. It installs the seat into the Vehicle Visual for you.\n\n" +
+                    "(Driver seats only work on the Vehicle Visual, not the Replacement Visual.)",
+                    "OK");
+                return;
+            }
+
             // Ensure the parent has a NetworkObject in its ancestor chain.
             // U3DSeat is a NetworkBehaviour and Fusion requires a NetworkObject
             // somewhere above it. We add to the selected object itself if missing.
@@ -660,6 +676,45 @@ namespace U3D.Editor
             EditorUtility.SetDirty(selected);
             Selection.activeGameObject = seatGO;
             EditorGUIUtility.PingObject(seatGO);
+        }
+
+        /// <summary>
+        /// True when 'selected' is (or is part of) a prefab asset that a U3DSteerable in any
+        /// open scene references as its Vehicle or Replacement Visual. Covers both editing the
+        /// costume in a Prefab Stage and selecting the costume asset in the Project window.
+        /// Used to block the ordinary U3DSeat path from dropping a networked seat inside a
+        /// non-networked costume. Steerables in unopened scenes can't be scanned, so this is a
+        /// best-effort guard against the common workflow, not a guarantee.
+        /// </summary>
+        private static bool IsSteerableCostumePrefabContext(GameObject selected)
+        {
+            string prefabPath = null;
+
+            var prefabStage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null)
+                prefabPath = prefabStage.assetPath;
+            else if (PrefabUtility.IsPartOfPrefabAsset(selected))
+                prefabPath = AssetDatabase.GetAssetPath(selected);
+
+            if (string.IsNullOrEmpty(prefabPath)) return false;
+
+            var steerables = Object.FindObjectsByType<U3D.U3DSteerable>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            foreach (var s in steerables)
+            {
+                if (s == null) continue;
+
+                if (s.VehicleVisualPrefab != null
+                    && AssetDatabase.GetAssetPath(s.VehicleVisualPrefab) == prefabPath)
+                    return true;
+
+                if (s.ReplacementVisualPrefab != null
+                    && AssetDatabase.GetAssetPath(s.ReplacementVisualPrefab) == prefabPath)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
