@@ -28,6 +28,11 @@ public class U3DAvatarManager : NetworkBehaviour
     private SkinnedMeshRenderer[] avatarRenderers;
     private U3DAvatarIK avatarIK;
 
+    // Renderers of cosmetic attachments riding this avatar's bones, registered by
+    // U3DPlayerAttachments. Toggled alongside the body in UpdateAvatarVisibility so attachments
+    // follow the avatar's own first-person / VR / third-person visibility with no special rules.
+    private readonly List<Renderer> _attachmentRenderers = new List<Renderer>();
+
     // Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
     private bool isInitialized = false;
@@ -261,9 +266,9 @@ public class U3DAvatarManager : NetworkBehaviour
     {
         if (avatarRenderers == null) return;
 
-        // Resolve the steerable this player is currently controlling so ShouldRender
-        // can check its avatar mode. Done here because UpdateAvatarVisibility runs on
-        // a NetworkBehaviour (has Runner access); U3DAvatarIK does not.
+        // Resolve the steerable this player is currently controlling so ShouldRender can check its
+        // avatar mode. Done here because UpdateAvatarVisibility runs on a NetworkBehaviour (has
+        // Runner access); U3DAvatarIK does not.
         // Local player: CurrentlySteering is authoritative, no Runner lookup needed.
         // Remote player: resolve from NetworkSteerableRef via Runner.
         if (avatarIK != null)
@@ -290,6 +295,17 @@ public class U3DAvatarManager : NetworkBehaviour
         {
             if (renderer != null && renderer.enabled != shouldShow)
                 renderer.enabled = shouldShow;
+        }
+
+        // Cosmetic attachments follow the avatar's own visibility — registered by
+        // U3DPlayerAttachments when each accessory is built, toggled here in lockstep with the body
+        // so a worn hat hides in first-person desktop and shows in VR and third-person exactly as
+        // the avatar does.
+        for (int i = 0; i < _attachmentRenderers.Count; i++)
+        {
+            Renderer r = _attachmentRenderers[i];
+            if (r != null && r.enabled != shouldShow)
+                r.enabled = shouldShow;
         }
     }
 
@@ -323,6 +339,31 @@ public class U3DAvatarManager : NetworkBehaviour
         if (inVR) return true;
         if (hideInFirstPerson && isFirstPerson) return false;
         return true;
+    }
+
+    /// <summary>
+    /// Registers a cosmetic attachment's renderers so they follow this avatar's visibility.
+    /// Called by U3DPlayerAttachments when an accessory is built. Skips nulls and duplicates.
+    /// </summary>
+    public void RegisterAttachmentRenderers(Renderer[] renderers)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null && !_attachmentRenderers.Contains(renderers[i]))
+                _attachmentRenderers.Add(renderers[i]);
+        }
+    }
+
+    /// <summary>
+    /// Removes a cosmetic attachment's renderers from visibility tracking. Called by
+    /// U3DPlayerAttachments before the accessory instance is destroyed.
+    /// </summary>
+    public void UnregisterAttachmentRenderers(Renderer[] renderers)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+            _attachmentRenderers.Remove(renderers[i]);
     }
 
     // Utility properties (unchanged)

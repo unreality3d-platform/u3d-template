@@ -28,7 +28,10 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
                 new CreatorTool("🟢 Make On Interact Collectable", "Players press the Interact key nearby to pick this up into their Inventory. Stays solid, so it can still block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyInteractCollectable, true),
-                new CreatorTool("🟢 Make On Enter Collectable", "Players pick this up by walking into it — for pass-through items like coins or gems. Becomes a trigger, so it won't block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyEnterCollectable, true),new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
+                new CreatorTool("🟢 Make On Enter Collectable", "Players pick this up by walking into it — for pass-through items like coins or gems. Becomes a trigger, so it won't block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyEnterCollectable, true),
+                new CreatorTool("🟢 Make Attachment", "Lets players wear an accessory — or a whole set — on chosen parts of their avatar. Place this on a persistent scene object as the visual indicator, then assign your accessory prefab in the Inspector. Use Add Attachment Point to mark where each piece sits on the body. Pieces without an attachment point won't attach.", ApplyMakeAttachment, true),
+                new CreatorTool("🟢 Add Attachment Point", "Marks where an accessory piece sits on the avatar. Select your attachment source for a single accessory worn as one piece, or open your accessory prefab and select each piece for a set, then click to add an attachment point and pick its bone.", ApplyAddAttachmentPoint, true),
+                new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
                 new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
                 // ── Movement ──
                 new CreatorTool("🟢 Add Seat", "Adds a sit point to this object. Position and rotate the Seat child to match your visuals. Players exit by resuming movement from stationary seats, and via the interact key from seats on Steerables.", ApplyAddSeat, true),
@@ -804,6 +807,164 @@ namespace U3D.Editor
             }
         }
 
+        /// <summary>
+        /// Places an attachment-point marker, mirroring Add Seat. Behavior follows the selection:
+        ///  • A piece selected inside an open Prefab Stage → adds a marker straight to that piece, so
+        ///    a creator building a costume marks each child by selecting it and clicking.
+        ///  • The scene attachment source selected → reaches into its assigned prefab. If the prefab
+        ///    has no markers yet, offers to mark the whole accessory as one piece (a helmet) or to
+        ///    defer to per-piece editing for a costume. If it already has markers, reports and defers.
+        ///  • Anything else → explains where markers belong.
+        /// Each piece is whatever a marker is parented to, so a marker on the prefab root makes the
+        /// whole prefab one piece, and a marker inside a child makes that child a piece.
+        /// </summary>
+        private static void ApplyAddAttachmentPoint()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // Case 1 — a piece selected inside an open Prefab Stage. Mark it directly.
+            var prefabStage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null && prefabStage.IsPartOfPrefabContents(selected))
+            {
+                if (SelectedHasDirectMarker(selected))
+                {
+                    EditorUtility.DisplayDialog(
+                        "Add Attachment Point",
+                        $"'{selected.name}' already has an attachment point. Position that one, or select a different piece.",
+                        "OK");
+                    return;
+                }
+
+                AddMarkerChild(selected.transform);
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(prefabStage.scene);
+
+                EditorUtility.DisplayDialog(
+                    "Add Attachment Point",
+                    $"Added an attachment point to '{selected.name}'. Move it to where this piece's bone sits inside the piece, pick its Target Bone, then save the prefab. Select another piece and click again to mark it too.",
+                    "OK");
+                return;
+            }
+
+            // Case 2 — the scene attachment source. Reach into its assigned prefab.
+            var source = selected.GetComponent<U3DAttachmentSource>();
+            if (source != null)
+            {
+                GameObject prefab = source.AccessoryPrefab;
+                if (prefab == null)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Add Attachment Point",
+                        "Assign your accessory prefab to this source's 'Accessory Prefab' field first, then click Add Attachment Point.",
+                        "OK");
+                    return;
+                }
+
+                string path = AssetDatabase.GetAssetPath(prefab);
+                if (string.IsNullOrEmpty(path) || prefab.scene.IsValid())
+                {
+                    EditorUtility.DisplayDialog(
+                        "Add Attachment Point",
+                        $"'{prefab.name}' is a scene object, not a Project prefab asset. Assign a prefab from your Project to 'Accessory Prefab', then click Add Attachment Point.",
+                        "OK");
+                    return;
+                }
+
+                if (prefab.GetComponentInChildren<U3DAttachmentPoint>(true) != null)
+                {
+                    EditorUtility.DisplayDialog(
+                        "Add Attachment Point",
+                        $"'{prefab.name}' already has at least one attachment point.\n\n" +
+                        "For a single accessory, you're set — open the prefab to position the point and pick its bone.\n\n" +
+                        "For a costume with pieces on different bones, open the prefab, select each piece, and click Add Attachment Point on each.",
+                        "OK");
+                    return;
+                }
+
+                bool wholeThing = EditorUtility.DisplayDialog(
+                    "Add Attachment Point",
+                    $"Add an attachment point to '{prefab.name}'?\n\n" +
+                    "Whole accessory — a single item (a helmet, a hat) worn on one bone. The point goes on the prefab root and the whole thing attaches as one piece.\n\n" +
+                    "Per piece — a costume with parts on different bones. Open the prefab, select each piece, and click Add Attachment Point on each.",
+                    "Whole accessory", "Per piece (I'll open the prefab)");
+
+                if (!wholeThing) return;
+
+                AddMarkerToPrefabRoot(path, out string prefabName);
+
+                EditorUtility.DisplayDialog(
+                    "Add Attachment Point",
+                    $"Added an attachment point to '{prefabName}'. Open the prefab, move the 'Attachment Point' to where the bone sits inside the accessory (for a helmet, the base of the skull), and pick its Target Bone.",
+                    "OK");
+                return;
+            }
+
+            // Case 3 — a plain scene object that isn't a source.
+            EditorUtility.DisplayDialog(
+                "Add Attachment Point",
+                "Attachment points live inside your accessory prefab, not on a loose scene object.\n\n" +
+                "Either select your attachment source (the scene object with the Attachment Source) for a single accessory, or open your accessory prefab and select the piece you want to attach, then click Add Attachment Point.",
+                "OK");
+        }
+
+        /// <summary>
+        /// True when the given object has an attachment-point marker parented directly to it — i.e.
+        /// this object is already set up as a piece. A marker deeper in its hierarchy belongs to a
+        /// nested piece, not this one, so it doesn't count.
+        /// </summary>
+        private static bool SelectedHasDirectMarker(GameObject piece)
+        {
+            var markers = piece.GetComponentsInChildren<U3DAttachmentPoint>(true);
+            for (int i = 0; i < markers.Length; i++)
+                if (markers[i].transform.parent == piece.transform)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Adds an "Attachment Point" child to the given transform with a U3DAttachmentPoint on it.
+        /// Used for marking a piece selected in an open Prefab Stage.
+        /// </summary>
+        private static void AddMarkerChild(Transform parent)
+        {
+            GameObject markerGO = new GameObject("Attachment Point");
+            Undo.RegisterCreatedObjectUndo(markerGO, "Add Attachment Point");
+            markerGO.transform.SetParent(parent, false);
+            markerGO.transform.localPosition = Vector3.zero;
+            markerGO.transform.localRotation = Quaternion.identity;
+            markerGO.AddComponent<U3DAttachmentPoint>();
+        }
+
+        /// <summary>
+        /// Adds an "Attachment Point" child to the root of the prefab at the given path, using the
+        /// LoadPrefabContents pattern, then saves. A marker on the root makes the whole prefab one
+        /// piece — the single-accessory case.
+        /// </summary>
+        private static void AddMarkerToPrefabRoot(string path, out string prefabName)
+        {
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                prefabName = prefabRoot.name;
+
+                GameObject markerGO = new GameObject("Attachment Point");
+                markerGO.transform.SetParent(prefabRoot.transform, false);
+                markerGO.transform.localPosition = Vector3.zero;
+                markerGO.transform.localRotation = Quaternion.identity;
+                markerGO.AddComponent<U3DAttachmentPoint>();
+
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, path);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
         private static void ApplyMakeSteerable()
         {
             GameObject selected = Selection.activeGameObject;
@@ -841,6 +1002,78 @@ namespace U3D.Editor
                 selected.AddComponent<U3DSteerable>();
 
             EditorUtility.SetDirty(selected);
+        }
+
+        /// <summary>
+        /// Installs an attachment source on a scene object: a trigger collider the interaction system
+        /// can detect (its OverlapSphere uses QueryTriggerInteraction.Collide and ignores solid
+        /// colliders), plus a NetworkObject so every client can resolve this source by a stable id
+        /// when rebuilding the worn accessory. The accessory itself is a separate prefab the creator
+        /// assigns in the Inspector; markers are placed with Add Attachment Point. Guards against being
+        /// run on the accessory prefab instead of a scene object.
+        /// </summary>
+        private static void ApplyMakeAttachment()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            // The source belongs on a scene object, not on the accessory prefab. Catch a creator who
+            // selected the prefab (in the Project or open in a Prefab Stage) and redirect.
+            bool isPrefabContext =
+                PrefabUtility.IsPartOfPrefabAsset(selected)
+                || UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage() != null;
+
+            if (isPrefabContext)
+            {
+                EditorUtility.DisplayDialog(
+                    "Make Attachment",
+                    "This looks like an accessory prefab, not a scene object.\n\n" +
+                    "The attachment source goes on an object in your scene — the visual indicator players walk up to. You don't run Make Attachment on the accessory prefab itself.\n\n" +
+                    "To set up the accessory: select your scene object, click Make Attachment, assign your accessory prefab, then use Add Attachment Point.",
+                    "OK");
+                return;
+            }
+
+            if (selected.GetComponent<U3DAttachmentSource>() != null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Make Attachment",
+                    $"'{selected.name}' is already an attachment source.\n\n" +
+                    "Assign your accessory prefab to its 'Accessory Prefab' field in the Inspector, then use Add Attachment Point to mark where each piece sits on the avatar.",
+                    "OK");
+                return;
+            }
+
+            Collider existingCollider = selected.GetComponent<Collider>();
+            if (existingCollider == null)
+            {
+                var box = selected.AddComponent<BoxCollider>();
+                box.isTrigger = true;
+            }
+            else if (!existingCollider.isTrigger)
+            {
+                existingCollider.isTrigger = true;
+                Debug.Log($"'{selected.name}': existing {existingCollider.GetType().Name} was solid — set to trigger so the interaction system can detect it. Add a solid collider on a child object if you need a physics body.");
+            }
+
+            if (!selected.GetComponent<NetworkObject>())
+            {
+                var networkObject = selected.AddComponent<NetworkObject>();
+                ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            selected.AddComponent<U3DAttachmentSource>();
+            EditorUtility.SetDirty(selected);
+
+            EditorUtility.DisplayDialog(
+                "Make Attachment",
+                "Added an attachment source to this object.\n\n" +
+                "Next: in the Inspector, assign your accessory prefab to the 'Accessory Prefab' field. Then use Add Attachment Point — select this source for a single accessory worn as one piece, or open the prefab and select each piece for a set.",
+                "OK");
         }
 
         private static void ApplyMakeRideable()

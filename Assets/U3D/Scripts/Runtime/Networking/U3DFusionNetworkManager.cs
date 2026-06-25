@@ -53,6 +53,7 @@ namespace U3D.Networking
         private InputAction _crouchAction;
         private InputAction _flyAction;
         private InputAction _interactAction;
+        private InputAction _removeAttachmentAction;
         private InputAction _zoomAction;
         private InputAction _teleportAction;
         private InputAction _perspectiveSwitchAction;
@@ -66,6 +67,7 @@ namespace U3D.Networking
         private bool _crouchPressed;
         private bool _flyPressed;
         private bool _interactPressed;
+        private bool _removeAttachmentPressed;
         private bool _zoomPressed;
         private bool _teleportPressed;
         private float _perspectiveScrollValue;
@@ -234,6 +236,7 @@ namespace U3D.Networking
             _turnLeftAction = actionMap.FindAction("TurnLeft");
             _turnRightAction = actionMap.FindAction("TurnRight");
             _autoRunToggleAction = actionMap.FindAction("AutoRunToggle");
+            _removeAttachmentAction = actionMap.FindAction("RemoveAttachment");
 
             actionMap.Enable();
         }
@@ -308,6 +311,9 @@ namespace U3D.Networking
 
                 if (_interactAction != null && _interactAction.WasPressedThisFrame())
                     _interactPressed = true;
+
+                if (_removeAttachmentAction != null && _removeAttachmentAction.WasPressedThisFrame())
+                    _removeAttachmentPressed = true;
 
                 if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
                 {
@@ -419,6 +425,7 @@ namespace U3D.Networking
             _crouchPressed = false;
             _flyPressed = false;
             _interactPressed = false;
+            _removeAttachmentPressed = false;
             _zoomPressed = false;
             _perspectiveScrollValue = 0f;
         }
@@ -835,6 +842,8 @@ namespace U3D.Networking
                 data.Buttons.Set(U3DInputButtons.Zoom, true);
             if (_teleportPressed)
                 data.Buttons.Set(U3DInputButtons.Teleport, true);
+            if (_removeAttachmentPressed)
+                data.Buttons.Set(U3DInputButtons.RemoveAttachment, true);
 
             data.LeftMouseHeld = _leftMouseHeld;
             data.RightMouseHeld = _rightMouseHeld;
@@ -861,6 +870,7 @@ namespace U3D.Networking
             _flyPressed = false;
             _interactPressed = false;
             _teleportPressed = false;
+            _removeAttachmentPressed = false;
             _perspectiveScrollValue = 0f;
 
             // Do NOT clear _cachedMovementInput or _cachedLookInput here. These are

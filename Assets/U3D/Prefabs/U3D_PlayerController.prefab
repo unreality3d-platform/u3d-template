@@ -215,6 +215,7 @@ GameObject:
   - component: {fileID: 227767514918744194}
   - component: {fileID: 3303798439634689199}
   - component: {fileID: 4392417217393934379}
+  - component: {fileID: 6982974576526441331}
   - component: {fileID: 8590291952775574450}
   - component: {fileID: 6674612337431982079}
   - component: {fileID: 3563563381108832062}
@@ -374,6 +375,7 @@ MonoBehaviour:
   NetworkedBehaviours:
   - {fileID: 227767514918744194}
   - {fileID: 4392417217393934379}
+  - {fileID: 6982974576526441331}
   - {fileID: 8590291952775574450}
   - {fileID: 6674612337431982079}
   ForceRemoteRenderTimeframe: 0
@@ -389,13 +391,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b0f663e9b5f00654cb404aa7201f430e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  avatarFBX: {fileID: 919132149155446097, guid: 20b908b9cc2079842a5a272d85b03441, type: 3}
+  avatarFBX: {fileID: 6106952473140074178, guid: e50507ab5986a6d4a9b4dbb1b6530658, type: 3}
   autoConfigureHumanoid: 0
   avatarScaleMultiplier: 1
   avatarOffset: {x: 0, y: 0, z: 0}
   followPlayerRotation: 1
   hideInFirstPerson: 1
   xrInputActions: {fileID: -944628639613478452, guid: 2c5afa15a6a23904d88dba1f712a6104, type: 3}
+--- !u!114 &6982974576526441331
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8488662624428376917}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c2d04ee4fd22264e84645d6ec1edcf1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: U3D.Runtime::U3D.U3DPlayerAttachments
 --- !u!114 &8590291952775574450
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -425,8 +439,8 @@ MonoBehaviour:
   Animator: {fileID: 2927287290641100187}
   ApplyTiming: 2
   SyncSettings: 79
-  StateHashes: 000000006dacfe3e773dc4d4f57f984db6d1ab4e2b1a167c794069552638cb43a21b1dacf3b09ce077934a0f2445ff7f3ed4c5958b7cfd670f5f2b88f38ddc86184e547b8e493de8cde70eeb
-  TriggerHashes: 0000000087a0c606
+  StateHashes: 000000006dacfe3e773dc4d4f57f984db6d1ab4e2b1a167c794069552638cb43a21b1dacf3b09ce077934a0f2445ff7f3ed4c5958b7cfd670f5f2b88f38ddc86184e547b7f410b27fb62ddc88d9f80a909bc5646d9b6d9c8c327e32235ad18cab18ece25313acaa7b5191c48
+  TriggerHashes: 0000000087a0c606cee8c91387baf631
   TotalWords: 5
 --- !u!114 &3563563381108832062
 MonoBehaviour:

@@ -47,5 +47,6 @@ public enum U3DInputButtons
     StrafeRight = 12,
     TurnLeft = 13,
     TurnRight = 14,
-    AutoRunToggle = 15  // NumLock toggle
+    AutoRunToggle = 15,  // NumLock toggle
+    RemoveAttachment = 16  // X — take off most recently worn attachment
 }

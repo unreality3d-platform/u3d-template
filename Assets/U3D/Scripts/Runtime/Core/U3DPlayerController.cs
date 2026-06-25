@@ -1595,6 +1595,13 @@ public class U3DPlayerController : NetworkBehaviour
                 Debug.LogWarning("No interaction manager found - interaction ignored");
         }
 
+        if (pressed.IsSet(U3DInputButtons.RemoveAttachment))
+        {
+            U3DPlayerAttachments attachments = GetComponent<U3DPlayerAttachments>();
+            if (attachments != null)
+                attachments.RemoveLast();
+        }
+
         isZooming = input.Buttons.IsSet(U3DInputButtons.Zoom);
         targetFOV = isZooming ? zoomFOV : defaultFOV;
 
