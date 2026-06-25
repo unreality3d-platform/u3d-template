@@ -952,9 +952,26 @@ public class U3DPlayerController : NetworkBehaviour
             }
         }
 
-        // Position the camera at the avatar's eye position. Runs every frame because
-        // the avatar head bone is animated by the Animator and moves between frames.
-        playerCamera.transform.position = _avatarHeadBone.position + transform.TransformVector(vrEyeOffset);
+        // Camera position. First person sits at the avatar's animated eye position so the
+        // view is locked inside the head — runs every frame because the head bone is
+        // animated and moves between frames. Third person snaps to a fixed point behind
+        // and above the body root: instantly, never interpolated, because a smooth camera
+        // dolly in VR is unrequested translational motion and a known sickness trigger,
+        // whereas an instant cut is comfortable. The body root is the anchor (not the
+        // animated head bone), so the third-person camera does not jitter with head-bob.
+        // HMD rotation still drives the view via TPD, so the player looks around freely
+        // from the fixed vantage, and the camera swings around the body as the body yaws.
+        if (isFirstPerson)
+        {
+            playerCamera.transform.position = _avatarHeadBone.position + transform.TransformVector(vrEyeOffset);
+        }
+        else
+        {
+            playerCamera.transform.position =
+                transform.position
+                + Vector3.up * thirdPersonCameraHeight
+                - transform.forward * thirdPersonCameraDistance;
+        }
 
         // Body-follow-head with deadzone. The HMD's yaw relative to the body is the
         // camera's LOCAL yaw — because the camera is parented to the body and TPD

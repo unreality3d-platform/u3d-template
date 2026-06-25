@@ -69,6 +69,13 @@ namespace U3D.Input
         [Tooltip("Drag distance (pixels) past which an action-zone touch converts to a stick touch.")]
         [SerializeField] private float actionConvertDistance = 30f;
 
+        [Header("Perspective Pinch")]
+        [Tooltip("Pixels the gap between the two center-zone pinch fingers must change before the perspective flips. Larger = fingers must travel farther, fewer accidental switches. Smaller = more sensitive.")]
+        [SerializeField] private float pinchTriggerDistance = 40f;
+
+        [Tooltip("How diagonal a center two-finger pinch may be and still count: the largest allowed horizontal-to-vertical ratio of the gap between the two fingers. 1 = up to 45 degrees off vertical. Raise toward 2 to accept more diagonal pinches (more forgiving); lower toward 0 to require a near-vertical pinch. Keeps the gesture distinct from the side-by-side motion of the move and look thumbs.")]
+        [SerializeField] private float pinchMaxDiagonalRatio = 1.0f;
+
         private Dictionary<int, TouchData> activeTouches = new Dictionary<int, TouchData>();
         private TouchData movementTouch;
         private TouchData lookTouch;
@@ -78,6 +85,10 @@ namespace U3D.Input
         // converted to a stick touch (dragged or held).
         private TouchData pendingInteractTouch;
         private TouchData pendingJumpTouch;
+        private TouchData _pinchTouchA;
+        private TouchData _pinchTouchB;
+        private float _pinchStartSeparation;
+        private bool _pinchFired;
 
         private float lastInteractTapTime;
         private Vector2 lastInteractTapPosition;
@@ -100,10 +111,11 @@ namespace U3D.Input
         public bool FlyRequested { get; private set; }
         public float ZoomInput { get; private set; }
         public bool PerspectiveSwitchRequested { get; private set; }
+        public float PerspectiveScrollInput { get; private set; }
 
         public static U3DSimpleTouchZones Instance { get; private set; }
 
-        private enum TouchRole { Unassigned, Move, Look, PendingInteract, PendingJump }
+        private enum TouchRole { Unassigned, Move, Look, PendingInteract, PendingJump, Pinch }
 
         private class TouchData
         {
@@ -181,6 +193,7 @@ namespace U3D.Input
             CrouchRequested = false;
             FlyRequested = false;
             PerspectiveSwitchRequested = false;
+            PerspectiveScrollInput = 0f;
         }
 
         void ProcessTouches()
@@ -191,12 +204,11 @@ namespace U3D.Input
 
             var touches = ETouch.activeTouches;
 
-            // Pinch is intentionally disabled. The previous implementation flipped
-            // isPinching on any two-finger contact, which zeroed Movement and Look
-            // — breaking the move-and-look-at-the-same-time pattern this controller
-            // is designed for. Nothing in the project currently consumes ZoomInput
-            // or PerspectiveSwitchRequested from touch, so neutralizing pinch is a
-            // no-op for features and a fix for the move/look bug.
+            // Pinch is handled by UpdatePinch below, scoped to two fingers inside the
+            // center action zone arranged more vertically than horizontally. It never
+            // touches the global Movement/Look values and only reclaims center-zone
+            // fingers, which are never the move/look thumbs — so it cannot regress the
+            // move-and-look-at-the-same-time pattern the way the old blanket pinch did.
 
             for (int i = 0; i < touches.Count; i++)
             {
@@ -223,6 +235,11 @@ namespace U3D.Input
             // becomes look" work without the player thinking about it.
             ResolvePendingTouch(pendingInteractTouch);
             ResolvePendingTouch(pendingJumpTouch);
+
+            // Runs after pending resolution and before the sticks are driven, so it can
+            // reclaim any center-zone finger that briefly grabbed a stick this frame
+            // before that stick produces input.
+            UpdatePinch();
 
             // Drive the move stick.
             if (movementTouch != null)
@@ -312,6 +329,85 @@ namespace U3D.Input
 
             if (pending == pendingInteractTouch) pendingInteractTouch = null;
             if (pending == pendingJumpTouch) pendingJumpTouch = null;
+        }
+
+        /// <summary>
+        /// Detects a vertical two-finger pinch inside the center action zone and emits a
+        /// one-shot signed PerspectiveScrollInput that mirrors the desktop scroll wheel:
+        /// spread (gap grows) = positive = first person, squeeze = negative = third person.
+        /// Requires exactly two center-zone fingers stacked more vertically than side by
+        /// side, which is what separates a deliberate pinch from the horizontally separated
+        /// move/look thumbs. Reclaims both fingers from any stick or tap role every frame
+        /// so the pinch never drives movement, look, or interact.
+        /// </summary>
+        void UpdatePinch()
+        {
+            TouchData first = null;
+            TouchData second = null;
+            int centerCount = 0;
+
+            foreach (var kvp in activeTouches)
+            {
+                TouchData t = kvp.Value;
+                if (!IsInZone(t.currentPosition, middleZoneX, middleZoneY)) continue;
+                centerCount++;
+                if (first == null) first = t;
+                else if (second == null) second = t;
+            }
+
+            bool valid = centerCount == 2 && first != null && second != null;
+
+            if (valid)
+            {
+                Vector2 sep = second.currentPosition - first.currentPosition;
+                if (Mathf.Abs(sep.x) > Mathf.Abs(sep.y) * pinchMaxDiagonalRatio)
+                    valid = false;
+            }
+
+            if (!valid)
+            {
+                _pinchTouchA = null;
+                _pinchTouchB = null;
+                _pinchFired = false;
+                return;
+            }
+
+            if (movementTouch == first || movementTouch == second)
+            {
+                movementTouch = null;
+                isLongPressing = false;
+            }
+            if (lookTouch == first || lookTouch == second)
+                lookTouch = null;
+            if (pendingInteractTouch == first || pendingInteractTouch == second)
+            {
+                pendingInteractTouch = null;
+                lastInteractTapTime = 0f;
+            }
+            if (pendingJumpTouch == first || pendingJumpTouch == second)
+                pendingJumpTouch = null;
+
+            first.role = TouchRole.Pinch;
+            second.role = TouchRole.Pinch;
+
+            if (_pinchTouchA == null)
+            {
+                _pinchTouchA = first;
+                _pinchTouchB = second;
+                _pinchStartSeparation = (second.currentPosition - first.currentPosition).magnitude;
+                _pinchFired = false;
+            }
+
+            if (_pinchFired) return;
+
+            float currentSeparation = (second.currentPosition - first.currentPosition).magnitude;
+            float change = currentSeparation - _pinchStartSeparation;
+
+            if (Mathf.Abs(change) > pinchTriggerDistance)
+            {
+                PerspectiveScrollInput = change > 0f ? 10f : -10f;
+                _pinchFired = true;
+            }
         }
 
         void HandleTouchBegan(ETouch touch)

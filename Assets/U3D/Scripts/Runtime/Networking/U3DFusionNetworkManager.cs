@@ -283,6 +283,11 @@ namespace U3D.Networking
                 if (touchZones.InteractRequested)
                     _interactPressed = true;
 
+                // Center-zone vertical pinch feeds the same one-shot scroll value the mouse
+                // wheel uses; the controller already gates it on SmoothScroll perspective mode.
+                if (Mathf.Abs(touchZones.PerspectiveScrollInput) > 0.1f)
+                    _perspectiveScrollValue = touchZones.PerspectiveScrollInput;
+
                 // Tell the touch zones we've consumed its one-frame flags this frame.
                 // The previous ClearOneFrameInputs-inside-touch-Update pattern cleared
                 // them on the same frame they were set, racing the network manager's
