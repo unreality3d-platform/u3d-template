@@ -31,8 +31,9 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make On Enter Collectable", "Players pick this up by walking into it — for pass-through items like coins or gems. Becomes a trigger, so it won't block the player. Pairs with the Inventory in Game Systems.", U3DInventoryTools.ApplyEnterCollectable, true),
                 new CreatorTool("🟢 Make Attachment", "Lets players wear an accessory — or a whole set — on chosen parts of their avatar. Place this on a persistent scene object as the visual indicator, then assign your accessory prefab in the Inspector. Use Add Attachment Point to mark where each piece sits on the body. Pieces without an attachment point won't attach.", ApplyMakeAttachment, true),
                 new CreatorTool("🟢 Add Attachment Point", "Marks where an accessory piece sits on the avatar. Select your attachment source for a single accessory worn as one piece, or open your accessory prefab and select each piece for a set, then click to add an attachment point and pick its bone.", ApplyAddAttachmentPoint, true),
-                new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),
+                new CreatorTool("🟢 Make Trigger Zone", "Fire events when zone goes from empty to occupied, and when it clears", ApplyTriggerZone, true),                
                 new CreatorTool("🟢 Make Delayed Trigger Activation", "Disables a trigger's collider briefly at scene start so OnTriggerEnter only fires on real entries, not on scene-load overlap. Use on triggers that start with an animated object already inside.", ApplyDelayedTriggerActivation, true),
+                new CreatorTool("🟢 Add Blend Shape Control", "Animates a blend shape on this object's model — a smooth shape change like a face morph or an object transforming. Wire Morph In and Morph Out to any trigger's events (a Trigger Zone's occupied and cleared, an Enter or Exit Trigger, an Interact Trigger's Toggle), or to a thrown object's impact. The change plays for the player who sets it off.", ApplyBlendShapeControl, true),
                 // ── Movement ──
                 new CreatorTool("🟢 Add Seat", "Adds a sit point to this object. Position and rotate the Seat child to match your visuals. Players exit by resuming movement from stationary seats, and via the interact key from seats on Steerables.", ApplyAddSeat, true),
                 new CreatorTool("🟢 Make Rideable", "Players can get on top and will be moved with the object", ApplyMakeRideable, true),
@@ -1074,6 +1075,43 @@ namespace U3D.Editor
                 "Added an attachment source to this object.\n\n" +
                 "Next: in the Inspector, assign your accessory prefab to the 'Accessory Prefab' field. Then use Add Attachment Point — select this source for a single accessory worn as one piece, or open the prefab and select each piece for a set.",
                 "OK");
+        }
+
+        private static void ApplyBlendShapeControl()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            SkinnedMeshRenderer smr = selected.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (smr == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Blend Shape Control",
+                    "This object has no Skinned Mesh Renderer on it or its children.\n\n" +
+                    "Blend shapes live on a skinned mesh — the kind Unity creates when you import a model that has shape keys (Blender) or blend shapes (Maya, 3ds Max). A plain mesh can't have them.\n\n" +
+                    "Select the model (or the object holding its skinned mesh), then click Add Blend Shape Control.",
+                    "OK");
+                return;
+            }
+
+            if (smr.sharedMesh != null && smr.sharedMesh.blendShapeCount == 0)
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Blend Shape Control",
+                    $"'{smr.name}' is a skinned mesh, but its model has no blend shapes.\n\n" +
+                    "Add shape keys to the model in your 3D tool (in Blender, the Shape Keys list) and re-export, then click Add Blend Shape Control.",
+                    "OK");
+                return;
+            }
+
+            if (selected.GetComponent<U3DBlendShape>() == null)
+                selected.AddComponent<U3DBlendShape>();
+
+            EditorUtility.SetDirty(selected);
         }
 
         private static void ApplyMakeRideable()
