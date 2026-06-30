@@ -1,4 +1,4 @@
-# Unreality3D Creator Template
+# Unreality3D Template
 
 Free Unity 6 template project with built-in multiplayer, one-click interactivity tools, and automated publishing that belongs to you.
 
@@ -38,4 +38,4 @@ To get notified automatically, click **Watch** at the top of this repo and selec
 
 ## License
 
-This free template is provided for creating content to be shared via the Unreality3D platform. By using this template, you agree to the [Unreality3D Creator Terms](https://unreality3d.com/legal/terms.html).
+This template is free to use, modify, and build with. Full terms are in the [LICENSE](LICENSE.md), including how it works alongside the Unreality3D [Terms of Service](https://unreality3d.com/legal/terms.html).
