@@ -19,6 +19,7 @@ namespace U3D.Editor
 
         private const string MIXER_PATH = "Assets/U3D/Prefabs/U3D_AudioMixer.mixer";
         private const string SETTINGS_UI_PREFAB_PATH = "Assets/U3D/Prefabs/Settings UI Canvas.prefab";
+        private const string LASER_POINTER_PREFAB_PATH = "Assets/U3D/Prefabs/U3D_LaserPointer.prefab";
 
         public MediaToolsCategory()
         {
@@ -35,6 +36,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Instructions", "Worldspace UI showing default movement and control patterns with all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
                 new CreatorTool("🟢 Add Screenspace UI", "Screen overlay canvas with title and body text. Good for HUDs, menus, or info overlays. Add your own buttons and content.", CreateScreenspaceUI),
+                new CreatorTool("🟢 Add Laser Pointer", "Adds a laser pointer that fires a visible beam onto the first surface it hits, with a dot where it lands. Other players see it too. It starts off — wire a button or an Interact Trigger to its Activate, Toggle, or Pulse to control it.", ApplyAddLaserPointer),
                 new CreatorTool("🚧 Add Slide Presentation", "Display and cycle through image collections in a sequence, in one UI element", () => { }),
                 new CreatorTool("🚧 Add Guestbook", "Visitors can leave a note that appears in your world", () => { }),
             };
@@ -1099,6 +1101,71 @@ namespace U3D.Editor
             Selection.activeGameObject = canvasObj;
             EditorGUIUtility.PingObject(canvasObj);
             EditorUtility.SetDirty(canvasObj);
+        }
+
+        // ───────────────────────────────────────────
+        // Laser Pointer
+        // ───────────────────────────────────────────
+
+        private static void ApplyAddLaserPointer()
+        {
+            GameObject prefab = LoadLaserPointerPrefab();
+            if (prefab == null)
+            {
+                EditorUtility.DisplayDialog("Laser Pointer Not Found",
+                    "Could not find the Laser Pointer prefab at:\n" + LASER_POINTER_PREFAB_PATH +
+                    "\n\nIf it isn't in your project yet, the Laser Pointer hasn't been added. " +
+                    "If you moved it, putting it back under Assets/U3D/Prefabs will let this tool find it.",
+                    "OK");
+                return;
+            }
+
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            if (instance == null)
+            {
+                Debug.LogWarning("Add Laser Pointer: could not instantiate the Laser Pointer prefab.");
+                return;
+            }
+
+            Undo.RegisterCreatedObjectUndo(instance, "Add Laser Pointer");
+
+            // Detach from the source prefab so the NetworkObject and adapter added below are
+            // plain components, not prefab-instance overrides a future template update could collide with.
+            PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+
+            instance.name = "Laser Pointer";
+            PositionInScene(instance);
+
+            if (instance.GetComponent<NetworkObject>() == null)
+            {
+                var networkObject = instance.AddComponent<NetworkObject>();
+                InteractionToolsCategory.ConfigureNetworkObjectForSharedMode(networkObject);
+            }
+
+            if (instance.GetComponent<U3DLaserPointerNetworkAdapter>() == null)
+                instance.AddComponent<U3DLaserPointerNetworkAdapter>();
+
+            EditorUtility.SetDirty(instance);
+            Selection.activeGameObject = instance;
+            EditorGUIUtility.PingObject(instance);
+        }
+
+        private static GameObject LoadLaserPointerPrefab()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(LASER_POINTER_PREFAB_PATH);
+            if (prefab != null && prefab.GetComponent<U3DLaserPointer>() != null)
+                return prefab;
+
+            // Fallback: locate by name anywhere in the project, in case it was moved.
+            foreach (string guid in AssetDatabase.FindAssets("U3D_LaserPointer t:Prefab"))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var candidate = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (candidate != null && candidate.GetComponent<U3DLaserPointer>() != null)
+                    return candidate;
+            }
+
+            return null;
         }
 
         // ───────────────────────────────────────────
