@@ -84,14 +84,7 @@ namespace U3D
                     pulseMul = Mathf.Lerp(1f, pulseScale, Mathf.Sin((_pulseT / pulseDuration) * Mathf.PI));
             }
 
-            if (!_active && _growT <= 0f)
-            {
-                SetVisualsVisible(false);
-                return;
-            }
-
-            SetVisualsVisible(true);
-
+            // Always aim so the resting dot can sit on whatever the pointer faces.
             float distance = maxRange;
             bool landed = false;
             Vector3 landPoint = tip.position + tip.forward * maxRange;
@@ -103,18 +96,23 @@ namespace U3D
                 landed = true;
             }
 
-            float visibleLength = distance * _growT;
-
+            // Beam shows only while active/growing, and retracts to nothing at rest.
+            bool beamVisible = _growT > 0f;
             if (beam != null)
             {
-                beam.SetPositionAndRotation(tip.position, Quaternion.LookRotation(tip.forward));
-                beam.localScale = new Vector3(beamRadius, beamRadius, visibleLength / Mathf.Max(beamNativeLength, 0.0001f));
+                if (beam.gameObject.activeSelf != beamVisible) beam.gameObject.SetActive(beamVisible);
+                if (beamVisible)
+                {
+                    float visibleLength = distance * _growT;
+                    beam.SetPositionAndRotation(tip.position, Quaternion.LookRotation(tip.forward));
+                    beam.localScale = new Vector3(beamRadius, beamRadius, visibleLength / Mathf.Max(beamNativeLength, 0.0001f));
+                }
             }
 
-            bool showDot = landed && _growT >= 1f;
+            // Dot shows whenever the pointer lands on something, active or at rest.
             if (dot != null)
             {
-                if (showDot)
+                if (landed)
                 {
                     if (!dot.gameObject.activeSelf) dot.gameObject.SetActive(true);
                     dot.position = landPoint;
