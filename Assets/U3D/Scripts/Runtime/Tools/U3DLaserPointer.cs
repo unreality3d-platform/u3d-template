@@ -84,17 +84,17 @@ namespace U3D
                     pulseMul = Mathf.Lerp(1f, pulseScale, Mathf.Sin((_pulseT / pulseDuration) * Mathf.PI));
             }
 
-            // Always aim so the resting dot can sit on whatever the pointer faces.
             float distance = maxRange;
             bool landed = false;
-            Vector3 landPoint = tip.position + tip.forward * maxRange;
 
             if (TryGetBeamTarget(out RaycastHit hit))
             {
                 distance = hit.distance;
-                landPoint = hit.point;
                 landed = true;
             }
+
+            // How far the beam currently reaches. At rest this is 0 (fully retracted).
+            float visibleLength = distance * _growT;
 
             // Beam shows only while active/growing, and retracts to nothing at rest.
             bool beamVisible = _growT > 0f;
@@ -103,19 +103,21 @@ namespace U3D
                 if (beam.gameObject.activeSelf != beamVisible) beam.gameObject.SetActive(beamVisible);
                 if (beamVisible)
                 {
-                    float visibleLength = distance * _growT;
                     beam.SetPositionAndRotation(tip.position, Quaternion.LookRotation(tip.forward));
                     beam.localScale = new Vector3(beamRadius, beamRadius, visibleLength / Mathf.Max(beamNativeLength, 0.0001f));
                 }
             }
 
-            // Dot shows whenever the pointer lands on something, active or at rest.
+            // Dot rides the beam's leading end: parked at the tip when at rest, carried
+            // out to the surface as the beam grows. Aimed at nothing, it stays at the tip
+            // and only shows at rest, so it never floats in empty space.
             if (dot != null)
             {
-                if (landed)
+                bool showDot = landed || _growT <= 0f;
+                if (showDot)
                 {
                     if (!dot.gameObject.activeSelf) dot.gameObject.SetActive(true);
-                    dot.position = landPoint;
+                    dot.position = tip.position + tip.forward * (landed ? visibleLength : 0f);
                     dot.localScale = Vector3.one * (dotBaseScale * pulseMul);
                 }
                 else if (dot.gameObject.activeSelf)

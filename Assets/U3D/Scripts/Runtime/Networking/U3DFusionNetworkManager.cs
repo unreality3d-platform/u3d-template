@@ -374,51 +374,33 @@ namespace U3D.Networking
                 }
             }
 
-            if (!_isUIFocused)
+            // Skip the mouse-over-UI check when touch is driving input. Touch has its own
+            // UI avoidance — U3DSimpleTouchZones drops any touch that begins over UI, and
+            // worldspace UI on touch devices is operated by the gaze pointer plus Interact,
+            // not by direct touches on the panel. A move/look finger dragging across the
+            // on-screen projection of a worldspace panel is normal looking-around, not UI
+            // use; consulting the pointer check there froze that valid movement (the mobile
+            // equivalent of the VR gaze-freeze). Explicit UI focus from a registered handler
+            // above still counts on every platform.
+            if (!_isUIFocused && !IsTouchInputActive())
             {
-                _isUIFocused = DetectPlatformSpecificUI();
+                _isUIFocused = IsMousePointerOverUI();
             }
 
             return _isUIFocused;
         }
 
-        private bool DetectPlatformSpecificUI()
+        // Desktop-mouse-only UI check. Runs solely on the non-touch path (see the
+        // IsTouchInputActive guard in CheckUIInteraction), so its only job is "is the mouse
+        // over UI." Pointer id -1 is the mouse; querying it specifically excludes the gaze
+        // pointer's synthetic pointer (id -10), which would otherwise report over-UI whenever
+        // the player looks at worldspace UI and freeze movement.
+        private bool IsMousePointerOverUI()
         {
             var eventSystem = UnityEngine.EventSystems.EventSystem.current;
             if (eventSystem == null) return false;
 
-            // Explicit check against real input pointer IDs only. The parameterless
-            // IsPointerOverGameObject() returns true if ANY registered pointer is over
-            // UI — including the gaze pointer's synthetic pointer (id -10), which fires
-            // hover events whenever the player looks at worldspace UI in VR. That made
-            // movement input freeze any time the gaze ray crossed a UI element.
-            //
-            // Mouse pointer id is -1 in the new Input System's UI module. Touch pointers
-            // start at 0 and use the touch fingerId. Anything outside those is not a
-            // real user-driven pointer and shouldn't gate movement.
-            switch (Application.platform)
-            {
-                case RuntimePlatform.WebGLPlayer:
-                    if (eventSystem.IsPointerOverGameObject(-1)) return true;
-                    for (int i = 0; i < UnityEngine.Input.touchCount; i++)
-                    {
-                        if (eventSystem.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId))
-                            return true;
-                    }
-                    return false;
-
-                case RuntimePlatform.Android:
-                case RuntimePlatform.IPhonePlayer:
-                    for (int i = 0; i < UnityEngine.Input.touchCount; i++)
-                    {
-                        if (eventSystem.IsPointerOverGameObject(UnityEngine.Input.GetTouch(i).fingerId))
-                            return true;
-                    }
-                    return false;
-
-                default:
-                    return eventSystem.IsPointerOverGameObject(-1);
-            }
+            return eventSystem.IsPointerOverGameObject(-1);
         }
 
         private void ClearInputCache()
