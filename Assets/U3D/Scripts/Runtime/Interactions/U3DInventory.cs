@@ -145,7 +145,6 @@ namespace U3D
             if (playerController == null) return false;
 
             playerTransform = playerController.transform;
-            FindHandBone();
             return true;
         }
 
@@ -155,21 +154,15 @@ namespace U3D
 
             if (playerTransform == null) return;
 
-            if (!string.IsNullOrEmpty(handBoneName))
-            {
-                Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
-                foreach (Transform t in allTransforms)
-                {
-                    if (t.name == handBoneName && !t.name.Contains("Camera"))
-                    {
-                        handTransform = t;
-                        return;
-                    }
-                }
-            }
+            U3DAvatarManager avatarManager = playerController != null
+                ? playerController.GetComponent<U3DAvatarManager>()
+                : null;
 
-            Debug.LogWarning($"U3DInventory on '{name}': Hand bone '{handBoneName}' not found on local player. Items will spawn at player position instead.", this);
-            handTransform = playerTransform;
+            if (avatarManager != null)
+                handTransform = avatarManager.ResolveHandBone(handBoneName, true);
+
+            if (handTransform == null)
+                handTransform = playerTransform;
         }
 
         private void CheckHotkeyConflicts()
@@ -304,6 +297,11 @@ namespace U3D
                 Debug.LogWarning("U3DInventory: Cannot use slot, local player not found.", this);
                 return;
             }
+
+            // Resolve the hand fresh at use time (not cached at player-found time) so a
+            // humanoid avatar that finished loading after the player was first located
+            // still resolves to the real hand bone rather than a stale fallback.
+            FindHandBone();
 
             // Spawn at the hand bone position. Inventory has no opinion on item
             // rotation — we use identity so the prefab's authored orientation isn't

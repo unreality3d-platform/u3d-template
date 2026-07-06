@@ -342,33 +342,14 @@ namespace U3D
             }
             if (grabberController == null) return null;
 
-            if (string.IsNullOrEmpty(handBoneName)) return null;
-
-            // Same resolution order as FindHandBone, applied to the grabber's transform:
-            // exact name match first, then their avatar's Humanoid hand by role.
-            Transform[] allTransforms = grabberController.transform.GetComponentsInChildren<Transform>();
-            for (int i = 0; i < allTransforms.Length; i++)
-            {
-                Transform t = allTransforms[i];
-                if (t.name == handBoneName && !t.name.Contains("Camera"))
-                {
-                    cachedGrabberHand = t;
-                    return cachedGrabberHand;
-                }
-            }
-
             U3DAvatarManager grabberAvatar = grabberController.GetComponent<U3DAvatarManager>();
-            if (grabberAvatar != null)
-            {
-                Transform humanoidHand = ResolveHumanoidHand(grabberAvatar.GetAvatarAnimator());
-                if (humanoidHand != null)
-                {
-                    cachedGrabberHand = humanoidHand;
-                    return cachedGrabberHand;
-                }
-            }
+            if (grabberAvatar == null) return null;
 
-            return null;
+            // Best-effort remote resolution: name match then Humanoid role, no synthetic
+            // anchor (createAnchorIfMissing: false) so a non-resolvable grabber simply
+            // skips interpolation rather than spawning an anchor on a remote player.
+            cachedGrabberHand = grabberAvatar.ResolveHandBone(handBoneName, false);
+            return cachedGrabberHand;
         }
 
         /// <summary>
@@ -711,42 +692,12 @@ namespace U3D
 
             handTransform = null;
 
-            // 1) Exact name match first — preserves the shipped Skip rig (bone is
-            // literally "RightHand") and any custom socket a creator typed in.
-            if (!string.IsNullOrEmpty(handBoneName))
-            {
-                Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
-                foreach (Transform t in allTransforms)
-                {
-                    if (t.name == handBoneName && !t.name.Contains("Camera") && t != playerCamera?.transform)
-                    {
-                        handTransform = t;
-                        break;
-                    }
-                }
-            }
+            U3DAvatarManager avatarManager = playerController != null
+                ? playerController.GetComponent<U3DAvatarManager>()
+                : null;
 
-            // 2) No exact match: ask the equipped avatar for its hand by Humanoid
-            // role, so any humanoid rig works regardless of bone naming (Mixamo's
-            // "mixamorig:" prefix, etc.) with no per-rig field editing.
-            if (handTransform == null)
-            {
-                handTransform = FindHumanoidHandBone();
-            }
-
-            // 3) Last resort for non-humanoid avatars with no matching bone.
-            if (handTransform == null)
-            {
-                GameObject handAnchor = GameObject.Find($"{playerTransform.name}_HandAnchor");
-                if (handAnchor == null)
-                {
-                    handAnchor = new GameObject($"{playerTransform.name}_HandAnchor");
-                    handAnchor.transform.SetParent(playerTransform);
-                    handAnchor.transform.localPosition = Vector3.forward * 0.5f + Vector3.up * 1.2f;
-                    handAnchor.transform.localRotation = Quaternion.identity;
-                }
-                handTransform = handAnchor.transform;
-            }
+            if (avatarManager != null)
+                handTransform = avatarManager.ResolveHandBone(handBoneName, true);
         }
 
         /// <summary>

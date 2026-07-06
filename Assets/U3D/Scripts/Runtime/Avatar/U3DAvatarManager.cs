@@ -27,6 +27,7 @@ public class U3DAvatarManager : NetworkBehaviour
     private Avatar avatarAsset;
     private SkinnedMeshRenderer[] avatarRenderers;
     private U3DAvatarIK avatarIK;
+    private Transform _handAnchor;
 
     // Renderers of cosmetic attachments riding this avatar's bones, registered by
     // U3DPlayerAttachments. Toggled alongside the body in UpdateAvatarVisibility so attachments
@@ -364,6 +365,71 @@ public class U3DAvatarManager : NetworkBehaviour
         if (renderers == null) return;
         for (int i = 0; i < renderers.Length; i++)
             _attachmentRenderers.Remove(renderers[i]);
+    }
+
+    /// <summary>
+    /// Resolves the hand Transform for attaching held or summoned objects, using this
+    /// player's equipped avatar. Both U3DGrabbable and U3DInventory call this so hand
+    /// resolution lives in one place and can't drift between them. Resolution order:
+    ///   1. Exact transform name match anywhere under the player — preserves the shipped
+    ///      rig (bone literally named "RightHand") and any custom socket a creator typed
+    ///      into the hand bone name field.
+    ///   2. Humanoid hand bone by role via the avatar's Animator, so any humanoid rig
+    ///      resolves regardless of bone naming (e.g. Mixamo's "mixamorig:" prefix) with
+    ///      no per-rig field editing.
+    ///   3. Last resort, only when createAnchorIfMissing is true: a persistent synthetic
+    ///      anchor in front of and above the player, for non-humanoid avatars with no
+    ///      matching bone. When false, returns null so best-effort callers (like remote-
+    ///      viewer interpolation) can skip cleanly instead of spawning an anchor.
+    /// Handedness comes from handBoneName: containing "Left" targets the left hand,
+    /// otherwise the right. An empty handBoneName means no hand attachment — tiers 1 and
+    /// 2 are skipped and the result depends solely on createAnchorIfMissing.
+    /// </summary>
+    public Transform ResolveHandBone(string handBoneName, bool createAnchorIfMissing)
+    {
+        Transform playerTransform = transform;
+
+        if (!string.IsNullOrEmpty(handBoneName))
+        {
+            Transform[] allTransforms = playerTransform.GetComponentsInChildren<Transform>();
+            foreach (Transform t in allTransforms)
+            {
+                if (t.name == handBoneName && !t.name.Contains("Camera"))
+                    return t;
+            }
+
+            Transform humanoidHand = ResolveHumanoidHand(handBoneName);
+            if (humanoidHand != null)
+                return humanoidHand;
+        }
+
+        if (!createAnchorIfMissing)
+            return null;
+
+        if (_handAnchor == null)
+        {
+            GameObject anchor = new GameObject($"{playerTransform.name}_HandAnchor");
+            anchor.transform.SetParent(playerTransform);
+            anchor.transform.localPosition = Vector3.forward * 0.5f + Vector3.up * 1.2f;
+            anchor.transform.localRotation = Quaternion.identity;
+            _handAnchor = anchor.transform;
+        }
+        return _handAnchor;
+    }
+
+    /// <summary>
+    /// Maps handBoneName to a Humanoid hand transform on this avatar's Animator. Returns
+    /// null if the avatar isn't Humanoid, the name is empty, or the rig has no mapped
+    /// hand bone. Handedness: name contains "Left" → left hand, otherwise right.
+    /// </summary>
+    private Transform ResolveHumanoidHand(string handBoneName)
+    {
+        if (avatarAnimator == null || !avatarAnimator.isHuman) return null;
+        if (string.IsNullOrEmpty(handBoneName)) return null;
+
+        bool wantsLeft = handBoneName.IndexOf("Left", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        HumanBodyBones boneId = wantsLeft ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand;
+        return avatarAnimator.GetBoneTransform(boneId);
     }
 
     // Utility properties (unchanged)
