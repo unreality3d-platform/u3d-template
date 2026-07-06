@@ -554,11 +554,18 @@ namespace U3D
             }
 
             float useForce = customForce > 0f ? customForce : kickForce;
-            Vector3 kickDirection = playerCamera.transform.forward;
-            kickDirection.y += upwardKickBoost / Mathf.Max(0.01f, useForce);
-            kickDirection.Normalize();
 
-            KickInDirection(kickDirection, useForce);
+            Vector3 flatForward = playerCamera.transform.forward;
+            flatForward.y = 0f;
+            if (flatForward.sqrMagnitude < 0.0001f)
+            {
+                flatForward = playerTransform != null ? playerTransform.forward : transform.forward;
+                flatForward.y = 0f;
+            }
+            flatForward.Normalize();
+
+            Vector3 kickVelocity = flatForward * useForce + Vector3.up * upwardKickBoost;
+            KickInDirection(kickVelocity.normalized, kickVelocity.magnitude);
         }
 
         private void RequestKickAuthority(bool useCamera, Vector3 direction, float force)
@@ -633,12 +640,16 @@ namespace U3D
         {
             yield return null;
 
-            float useForce = kickForce;
-            Vector3 kickDirection = playerCamera.transform.forward;
-            kickDirection.y += upwardKickBoost / Mathf.Max(0.01f, useForce);
-            kickDirection.Normalize();
+            Vector3 flatForward = playerCamera.transform.forward;
+            flatForward.y = 0f;
+            if (flatForward.sqrMagnitude < 0.0001f)
+            {
+                flatForward = playerTransform != null ? playerTransform.forward : transform.forward;
+                flatForward.y = 0f;
+            }
+            flatForward.Normalize();
 
-            Vector3 kickVelocity = kickDirection * useForce;
+            Vector3 kickVelocity = flatForward * kickForce + Vector3.up * upwardKickBoost;
             if (kickVelocity.magnitude > maxKickVelocity)
                 kickVelocity = kickVelocity.normalized * maxKickVelocity;
 
