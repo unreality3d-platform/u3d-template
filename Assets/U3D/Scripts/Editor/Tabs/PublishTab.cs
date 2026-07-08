@@ -409,51 +409,6 @@ namespace U3D.Editor
             }
         }
 
-        public void OnFocus()
-        {
-            if (EditorPrefs.GetBool("U3D_NavigateToMarketPackager", false))
-            {
-                EditorPrefs.DeleteKey("U3D_NavigateToMarketPackager");
-                currentMode = PublishMode.PackageForMarket;
-            }
-
-            // Check for external Product Name changes when tab gains focus
-            var currentProductName = Application.productName;
-            if (currentProductName != cachedProductName)
-            {
-                cachedProductName = currentProductName;
-
-                // Reset options so they reload with new name
-                optionsLoaded = false;
-                loadingOptions = false;
-            }
-
-            // CHECK AUTHENTICATION STATE: Reset if user logged out
-            if (!U3DAuthenticator.IsLoggedIn && optionsLoaded)
-            {
-                // Clear loaded options and reset to prerequisites
-                availableOptions.Clear();
-                optionsLoaded = false;
-                loadingOptions = false;
-                selectedOptionIndex = -1;
-
-                // Reset publish state
-                currentStep = PublishStep.Ready;
-                isPublishing = false;
-                projectBuilt = false;
-                deploymentComplete = false;
-                githubActionsComplete = false;
-                githubActionsRunHtmlUrl = "";
-                githubConnected = false;
-                publishUrl = "";
-                currentStatus = "";
-                IsComplete = false;
-            }
-
-            // Refresh scene list in case the creator switched scenes
-            RefreshBuildSceneList();
-        }
-
         private void DrawReadyToPublish()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);

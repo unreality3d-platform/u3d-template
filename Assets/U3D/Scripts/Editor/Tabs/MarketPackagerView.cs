@@ -195,6 +195,7 @@ namespace U3D.Editor
                     if (GUILayout.Button("Reload account", GUILayout.Height(24)))
                     {
                         EnsureMarketProfileLoadedAsync();
+                        GUIUtility.ExitGUI();
                     }
                 }
             }
@@ -227,6 +228,7 @@ namespace U3D.Editor
             if (GUILayout.Button(uploadLabel, GUILayout.Height(34)))
             {
                 UploadToMarketAsync(included);
+                GUIUtility.ExitGUI();
             }
             EditorGUI.EndDisabledGroup();
 
@@ -620,6 +622,7 @@ namespace U3D.Editor
             if (GUILayout.Button("Check Selected Assets", GUILayout.Height(30)))
             {
                 AnalyzeSelection();
+                GUIUtility.ExitGUI();
             }
             EditorGUI.EndDisabledGroup();
 
@@ -628,6 +631,7 @@ namespace U3D.Editor
                 if (GUILayout.Button("Clear", GUILayout.Width(80), GUILayout.Height(30)))
                 {
                     ResetAnalysis();
+                    GUIUtility.ExitGUI();
                 }
             }
             EditorGUILayout.EndHorizontal();
@@ -739,6 +743,7 @@ namespace U3D.Editor
             if (GUILayout.Button($"Export Package ({included.Count} assets)", GUILayout.Height(34)))
             {
                 ExportMarketPackage(included);
+                GUIUtility.ExitGUI();
             }
             EditorGUI.EndDisabledGroup();
 
