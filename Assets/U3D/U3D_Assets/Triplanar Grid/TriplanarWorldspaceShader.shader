@@ -9,6 +9,7 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
         _WorldOffset("World Space Offset", Vector) = (0, 0, 0, 0)
         [Toggle(_USE_WORLD_SPACE)] _UseWorldSpace("Use World Space", Float) = 1
         _TriplanarBlendSharpness("Triplanar Blend Sharpness", Range(1, 20)) = 4
+        [Toggle(_USE_BIPLANAR)] _UseBiplanar("Use Biplanar (2-Sample) Optimization - WebGL Recommended", Float) = 0
 
         [Toggle(_NORMALMAP)] _UseNormalMap("Use Normal Map", Float) = 0
         [Normal] _BumpMap("Normal Map", 2D) = "bump" {}
@@ -76,6 +77,9 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             return xTexture * blendWeights.x + yTexture * blendWeights.y + zTexture * blendWeights.z;
         }
 
+        // Whiteout blend: folds the surface normal into each tangent-space sample
+        // before reorienting it into world space. This is the accurate method
+        // (vs. plain swizzling, which can light subtly wrong at grazing angles).
         half3 SampleTriplanarNormal(TEXTURE2D_PARAM(tex, samplerTex), float3 worldPos, half3 worldNormal, half3 tiling, half3 offset)
         {
             #if defined(_NORMALMAP)
@@ -85,17 +89,127 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
                 float2 uvY = worldPos.xz * tiling.y + offset.y;
                 float2 uvZ = worldPos.xy * tiling.z + offset.z;
                 
-                half3 xNormal = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvX), _BumpScale);
-                half3 yNormal = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvY), _BumpScale);
-                half3 zNormal = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvZ), _BumpScale);
+                half3 tnormalX = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvX), _BumpScale);
+                half3 tnormalY = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvY), _BumpScale);
+                half3 tnormalZ = UnpackNormalScale(SAMPLE_TEXTURE2D(tex, samplerTex, uvZ), _BumpScale);
                 
-                half3 xNormalWS = half3(xNormal.z, xNormal.y, xNormal.x);
-                half3 yNormalWS = half3(yNormal.x, yNormal.z, yNormal.y);
-                half3 zNormalWS = zNormal;
+                tnormalX = half3(tnormalX.xy + worldNormal.zy, abs(tnormalX.z) * worldNormal.x);
+                tnormalY = half3(tnormalY.xy + worldNormal.xz, abs(tnormalY.z) * worldNormal.y);
+                tnormalZ = half3(tnormalZ.xy + worldNormal.xy, abs(tnormalZ.z) * worldNormal.z);
                 
-                return normalize(xNormalWS * blendWeights.x + yNormalWS * blendWeights.y + zNormalWS * blendWeights.z);
+                return normalize(
+                    tnormalX.zyx * blendWeights.x +
+                    tnormalY.xzy * blendWeights.y +
+                    tnormalZ.xyz * blendWeights.z);
             #else
                 return worldNormal;
+            #endif
+        }
+
+        struct BiplanarData
+        {
+            int    skipAxis;      // axis being skipped (smallest |normal| component): 0=X, 1=Y, 2=Z
+            half3  worldNormal;   // raw surface normal, needed for Whiteout reorientation
+            half3  blendWeights;  // renormalized weights; the skipped axis's component is 0
+            float2 dxX, dyX;      // screen-space derivatives for the X-projection UV
+            float2 dxY, dyY;      // screen-space derivatives for the Y-projection UV
+            float2 dxZ, dyZ;      // screen-space derivatives for the Z-projection UV
+        };
+
+        BiplanarData ComputeBiplanarData(float3 worldPos, half3 worldNormal, half3 tiling, half sharpness)
+        {
+            BiplanarData d = (BiplanarData)0;
+
+            half3 absN = abs(worldNormal);
+            half3 blend = pow(absN, sharpness);
+
+            d.skipAxis = 2;
+            if (absN.x <= absN.y && absN.x <= absN.z) d.skipAxis = 0;
+            else if (absN.y <= absN.x && absN.y <= absN.z) d.skipAxis = 1;
+
+            if (d.skipAxis == 0) blend.x = half(0);
+            else if (d.skipAxis == 1) blend.y = half(0);
+            else blend.z = half(0);
+
+            half total = blend.x + blend.y + blend.z;
+            d.blendWeights = blend * rcp(max(total, half(1e-5)));
+            d.worldNormal = worldNormal;
+
+            // Derivatives must be computed here, outside any branch, so the later
+            // per-pixel skipAxis branch can safely use explicit-gradient sampling.
+            float3 dpdx = ddx(worldPos);
+            float3 dpdy = ddy(worldPos);
+
+            d.dxX = dpdx.zy * tiling.x; d.dyX = dpdy.zy * tiling.x;
+            d.dxY = dpdx.xz * tiling.y; d.dyY = dpdy.xz * tiling.y;
+            d.dxZ = dpdx.xy * tiling.z; d.dyZ = dpdy.xy * tiling.z;
+
+            return d;
+        }
+
+        half4 SampleBiplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 worldPos, half3 tiling, half3 offset, BiplanarData d)
+        {
+            float2 uvX = worldPos.zy * tiling.x + offset.x;
+            float2 uvY = worldPos.xz * tiling.y + offset.y;
+            float2 uvZ = worldPos.xy * tiling.z + offset.z;
+
+            if (d.skipAxis == 0)
+            {
+                half4 yTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvY, d.dxY, d.dyY);
+                half4 zTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvZ, d.dxZ, d.dyZ);
+                return yTex * d.blendWeights.y + zTex * d.blendWeights.z;
+            }
+            else if (d.skipAxis == 1)
+            {
+                half4 xTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvX, d.dxX, d.dyX);
+                half4 zTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvZ, d.dxZ, d.dyZ);
+                return xTex * d.blendWeights.x + zTex * d.blendWeights.z;
+            }
+            else
+            {
+                half4 xTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvX, d.dxX, d.dyX);
+                half4 yTex = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvY, d.dxY, d.dyY);
+                return xTex * d.blendWeights.x + yTex * d.blendWeights.y;
+            }
+        }
+
+        // Whiteout blend, restricted to the two sampled axes. Same math as
+        // SampleTriplanarNormal, so switching the biplanar toggle does not
+        // change lighting on its own -- only the sample count changes.
+        half3 SampleBiplanarNormal(TEXTURE2D_PARAM(tex, samplerTex), float3 worldPos, half3 tiling, half3 offset, BiplanarData d)
+        {
+            #if defined(_NORMALMAP)
+                float2 uvX = worldPos.zy * tiling.x + offset.x;
+                float2 uvY = worldPos.xz * tiling.y + offset.y;
+                float2 uvZ = worldPos.xy * tiling.z + offset.z;
+                half3 n = d.worldNormal;
+
+                if (d.skipAxis == 0)
+                {
+                    half3 tnormalY = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvY, d.dxY, d.dyY), _BumpScale);
+                    half3 tnormalZ = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvZ, d.dxZ, d.dyZ), _BumpScale);
+                    tnormalY = half3(tnormalY.xy + n.xz, abs(tnormalY.z) * n.y);
+                    tnormalZ = half3(tnormalZ.xy + n.xy, abs(tnormalZ.z) * n.z);
+                    return normalize(tnormalY.xzy * d.blendWeights.y + tnormalZ.xyz * d.blendWeights.z);
+                }
+                else if (d.skipAxis == 1)
+                {
+                    half3 tnormalX = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvX, d.dxX, d.dyX), _BumpScale);
+                    half3 tnormalZ = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvZ, d.dxZ, d.dyZ), _BumpScale);
+                    tnormalX = half3(tnormalX.xy + n.zy, abs(tnormalX.z) * n.x);
+                    tnormalZ = half3(tnormalZ.xy + n.xy, abs(tnormalZ.z) * n.z);
+                    return normalize(tnormalX.zyx * d.blendWeights.x + tnormalZ.xyz * d.blendWeights.z);
+                }
+                else
+                {
+                    half3 tnormalX = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvX, d.dxX, d.dyX), _BumpScale);
+                    half3 tnormalY = UnpackNormalScale(SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, uvY, d.dxY, d.dyY), _BumpScale);
+                    tnormalX = half3(tnormalX.xy + n.zy, abs(tnormalX.z) * n.x);
+                    tnormalY = half3(tnormalY.xy + n.xz, abs(tnormalY.z) * n.y);
+                    return normalize(tnormalX.zyx * d.blendWeights.x + tnormalY.xzy * d.blendWeights.y);
+                }
+            #else
+                return d.worldNormal;
             #endif
         }
         ENDHLSL
@@ -110,6 +224,7 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             #pragma fragment frag
             
             #pragma shader_feature_local _USE_WORLD_SPACE
+            #pragma shader_feature_local _USE_BIPLANAR
             #pragma shader_feature_local_fragment _NORMALMAP
             #pragma shader_feature_local_fragment _METALLICGLOSSMAP
             #pragma shader_feature_local_fragment _EMISSION
@@ -188,21 +303,41 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
                     half3 worldTiling = half3(_WorldTiling.xyz);
                     half3 worldOffset = half3(_WorldOffset.xyz);
                     
-                    albedoAlpha = SampleTriplanar(_BaseMap, sampler_BaseMap, input.positionWS, input.normalWS, worldTiling, worldOffset) * _BaseColor;
-                    
-                    #if defined(_METALLICGLOSSMAP)
-                        metallicGloss = SampleTriplanar(_MetallicGlossMap, sampler_MetallicGlossMap, input.positionWS, input.normalWS, worldTiling, worldOffset);
+                    #if defined(_USE_BIPLANAR)
+                        BiplanarData biData = ComputeBiplanarData(input.positionWS, input.normalWS, worldTiling, _TriplanarBlendSharpness);
+                        
+                        albedoAlpha = SampleBiplanar(_BaseMap, sampler_BaseMap, input.positionWS, worldTiling, worldOffset, biData) * _BaseColor;
+                        
+                        #if defined(_METALLICGLOSSMAP)
+                            metallicGloss = SampleBiplanar(_MetallicGlossMap, sampler_MetallicGlossMap, input.positionWS, worldTiling, worldOffset, biData);
+                        #else
+                            metallicGloss = half4(_Metallic, half(0), half(0), _Smoothness);
+                        #endif
+                        
+                        #if defined(_EMISSION)
+                            emission = SampleBiplanar(_EmissionMap, sampler_EmissionMap, input.positionWS, worldTiling, worldOffset, biData).rgb * _EmissionColor.rgb;
+                        #else
+                            emission = _EmissionColor.rgb;
+                        #endif
+                        
+                        normalWS = SampleBiplanarNormal(_BumpMap, sampler_BumpMap, input.positionWS, worldTiling, worldOffset, biData);
                     #else
-                        metallicGloss = half4(_Metallic, half(0), half(0), _Smoothness);
+                        albedoAlpha = SampleTriplanar(_BaseMap, sampler_BaseMap, input.positionWS, input.normalWS, worldTiling, worldOffset) * _BaseColor;
+                        
+                        #if defined(_METALLICGLOSSMAP)
+                            metallicGloss = SampleTriplanar(_MetallicGlossMap, sampler_MetallicGlossMap, input.positionWS, input.normalWS, worldTiling, worldOffset);
+                        #else
+                            metallicGloss = half4(_Metallic, half(0), half(0), _Smoothness);
+                        #endif
+                        
+                        #if defined(_EMISSION)
+                            emission = SampleTriplanar(_EmissionMap, sampler_EmissionMap, input.positionWS, input.normalWS, worldTiling, worldOffset).rgb * _EmissionColor.rgb;
+                        #else
+                            emission = _EmissionColor.rgb;
+                        #endif
+                        
+                        normalWS = SampleTriplanarNormal(_BumpMap, sampler_BumpMap, input.positionWS, input.normalWS, worldTiling, worldOffset);
                     #endif
-                    
-                    #if defined(_EMISSION)
-                        emission = SampleTriplanar(_EmissionMap, sampler_EmissionMap, input.positionWS, input.normalWS, worldTiling, worldOffset).rgb * _EmissionColor.rgb;
-                    #else
-                        emission = _EmissionColor.rgb;
-                    #endif
-                    
-                    normalWS = SampleTriplanarNormal(_BumpMap, sampler_BumpMap, input.positionWS, input.normalWS, worldTiling, worldOffset);
                 #else
                     albedoAlpha = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor;
                     
