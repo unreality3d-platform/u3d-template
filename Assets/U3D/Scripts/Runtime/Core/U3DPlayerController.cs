@@ -178,11 +178,14 @@ public class U3DPlayerController : NetworkBehaviour
     private bool _vrLocomotionSuppressed;
     private U3DGazePointer _gazePointer;
 
-    private UnityEngine.SpatialTracking.TrackedPoseDriver _headTrackedPoseDriver;
-    private UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType _headOriginalTrackingType;
+    private UnityEngine.InputSystem.XR.TrackedPoseDriver _headInputSystemPoseDriver;
     private Transform _avatarHeadBone;
     private Transform _rawHmdReference;
     private U3DAvatarManager _avatarManager;
+
+    [Header("VR Head Tracking")]
+    [Tooltip("Use the Input System Tracked Pose Driver for head rotation. Verified working with De-Panther WebXR Export 0.24.0 and up. Turn this off to fall back to the legacy driver, which is kept on the Player Camera as a rollback path. Falls back automatically if the Input System driver is missing.")]
+    [SerializeField] private bool useInputSystemHeadTracking = true;
 
     [Header("VR Eye Offset")]
     [Tooltip("Camera position relative to the avatar's head bone in player-local space. Increase Y if the camera sits too low (pointing at the neck). Increase Z to move the camera forward inside the head. Adjust until the camera lands at eye level when you look at the avatar in a mirror.")]
@@ -428,9 +431,11 @@ public class U3DPlayerController : NetworkBehaviour
         targetFOV = defaultFOV;
         playerCamera.fieldOfView = defaultFOV;
 
-        _headTrackedPoseDriver = playerCamera.GetComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
-        if (_headTrackedPoseDriver != null)
-            _headOriginalTrackingType = _headTrackedPoseDriver.trackingType;
+        _headInputSystemPoseDriver = playerCamera.GetComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+        if (_headInputSystemPoseDriver != null)
+            _headInputSystemPoseDriver.enabled = false;
+        else
+            Debug.LogError("U3DPlayerController: No Tracked Pose Driver (Input System) found on the Player Camera. VR head tracking will not work.");
 
         _avatarManager = GetComponent<U3DAvatarManager>();
 
@@ -802,10 +807,10 @@ public class U3DPlayerController : NetworkBehaviour
         _vrRecenterTargetYaw = transform.eulerAngles.y;
         _vrRecenterPending = true;
 
-        if (_headTrackedPoseDriver != null)
+        if (_headInputSystemPoseDriver != null)
         {
-            _headTrackedPoseDriver.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.RotationOnly;
-            _headTrackedPoseDriver.enabled = true;
+            _headInputSystemPoseDriver.trackingType = UnityEngine.InputSystem.XR.TrackedPoseDriver.TrackingType.RotationOnly;
+            _headInputSystemPoseDriver.enabled = true;
         }
 
         TryResolveHeadBone();
@@ -843,28 +848,36 @@ public class U3DPlayerController : NetworkBehaviour
         if (_rawHmdReference != null) return;
 
         GameObject hmdRefGO = new GameObject("U3D_RawHmdReference");
+        hmdRefGO.SetActive(false);
         hmdRefGO.transform.SetParent(transform, false);
         hmdRefGO.transform.localPosition = Vector3.zero;
         hmdRefGO.transform.localRotation = Quaternion.identity;
 
-        var tpd = hmdRefGO.AddComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
-        tpd.SetPoseSource(
-            UnityEngine.SpatialTracking.TrackedPoseDriver.DeviceType.GenericXRDevice,
-            UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Center);
-        tpd.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.PositionOnly;
-        tpd.updateType = UnityEngine.SpatialTracking.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
-        tpd.UseRelativeTransform = false;
+        var tpd = hmdRefGO.AddComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+        tpd.trackingType = UnityEngine.InputSystem.XR.TrackedPoseDriver.TrackingType.PositionOnly;
+        tpd.updateType = UnityEngine.InputSystem.XR.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
+
+        tpd.positionInput = new InputActionProperty(new InputAction(
+            "U3D_RawHmdPosition",
+            InputActionType.Value,
+            "<XRHMD>/centerEyePosition",
+            expectedControlType: "Vector3"));
+
+        tpd.trackingStateInput = new InputActionProperty(new InputAction(
+            "U3D_RawHmdTrackingState",
+            InputActionType.Value,
+            "<XRHMD>/trackingState",
+            expectedControlType: "Integer"));
+
+        hmdRefGO.SetActive(true);
 
         _rawHmdReference = hmdRefGO.transform;
     }
 
     private void ExitVRMode()
     {
-        if (_headTrackedPoseDriver != null)
-        {
-            _headTrackedPoseDriver.trackingType = _headOriginalTrackingType;
-            _headTrackedPoseDriver.enabled = false;
-        }
+        if (_headInputSystemPoseDriver != null)
+            _headInputSystemPoseDriver.enabled = false;
 
         _avatarHeadBone = null;
         _vrRecenterPending = false;
