@@ -169,7 +169,6 @@ public class U3DPlayerController : NetworkBehaviour
     private bool _justTeleported = false;
 
     private U3DWebGLCursorManager _cursorManager;
-    private NetworkButtons _buttonsPrevious;
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
 
     private bool _isInVRMode = false;
@@ -573,54 +572,55 @@ public class U3DPlayerController : NetworkBehaviour
 
         _spawnFrameCount++;
 
-        if (GetInput<U3DNetworkInputData>(out var input))
+        if (_networkManager == null)
+            _networkManager = U3D.Networking.U3DFusionNetworkManager.Instance;
+
+        if (_networkManager == null) return;
+
+        // One consume per tick. The returned struct is a local copy, so every handler
+        // below reads consistent values for this tick regardless of call order — the
+        // job _buttonsPrevious used to do, without the second edge derivation.
+        var input = _networkManager.ConsumeInput();
+
+        _jumpPressedThisFrame = input.JumpPressed;
+        if (_jumpPressedThisFrame)
+            _jumpPressedPending = true;
+
+        HandleGroundCheck();
+
+        if (_isInVRMode)
         {
-            // Compute pressed/released once and update _buttonsPrevious immediately
-            // so all handlers read consistent edge state regardless of call order.
-            var pressedThisFrame = input.Buttons.GetPressed(_buttonsPrevious);
-            var releasedThisFrame = input.Buttons.GetReleased(_buttonsPrevious);
-            _buttonsPrevious = input.Buttons;
-
-            _jumpPressedThisFrame = pressedThisFrame.IsSet(U3DInputButtons.Jump);
-            if (_jumpPressedThisFrame)
-                _jumpPressedPending = true;
-
-            HandleGroundCheck();
-
-            if (_isInVRMode)
+            HandleVRMovement(input);
+            HandleVRPoseSync();
+        }
+        else
+        {
+            if (_currentRideable != null)
             {
-                HandleVRMovement(input, pressedThisFrame);
-                HandleVRPoseSync();
+                bool wantsDismount = input.MovementInput.magnitude > 0.1f
+                    || input.BothMouseHeld
+                    || input.FlyPressed
+                    || input.AutoRunTogglePressed;
+
+                if (wantsDismount)
+                    DismountRideable(_currentRideable);
             }
-            else
-            {
-                if (_currentRideable != null)
-                {
-                    bool wantsDismount = input.MovementInput.magnitude > 0.1f
-                        || input.BothMouseHeld
-                        || pressedThisFrame.IsSet(U3DInputButtons.Fly)
-                        || pressedThisFrame.IsSet(U3DInputButtons.AutoRunToggle);
-
-                    if (wantsDismount)
-                        DismountRideable(_currentRideable);
-                }
-
-                if (_currentRideable == null)
-                    HandleMovementFusion(input);
-
-                if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
-                    HandleLookFusionFixed(input);
-            }
-
-            HandleButtonInputsFusion(input, pressedThisFrame, releasedThisFrame);
-            HandleTeleportFusion(input, pressedThisFrame);
-            HandleCameraPositioning();
 
             if (_currentRideable == null)
-                ApplyGravityFixed();
-            else
-                NetworkPosition = transform.position;
+                HandleMovementFusion(input);
+
+            if (_spawnFrameCount > SPAWN_PROTECTION_FRAMES)
+                HandleLookFusionFixed(input);
         }
+
+        HandleButtonInputsFusion(input);
+        HandleTeleportFusion(input);
+        HandleCameraPositioning();
+
+        if (_currentRideable == null)
+            ApplyGravityFixed();
+        else
+            NetworkPosition = transform.position;
     }
 
     public override void Render()
@@ -1118,7 +1118,7 @@ public class U3DPlayerController : NetworkBehaviour
 
     private void CreateHandVisuals() { }
 
-    private void HandleVRMovement(U3DNetworkInputData input, NetworkButtons pressedThisFrame)
+    private void HandleVRMovement(U3DPlayerInputState input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
 
@@ -1146,7 +1146,7 @@ public class U3DPlayerController : NetworkBehaviour
         // release fires.
         if (enableTeleport && _vrTeleporter != null)
         {
-            if (pressedThisFrame.IsSet(U3DInputButtons.Teleport))
+            if (input.TeleportPressed)
                 _vrTeleporter.OnTeleportButtonPressed();
 
             bool suppressLocomotion = _vrTeleporter.Tick(vrMoveInput.y);
@@ -1176,7 +1176,7 @@ public class U3DPlayerController : NetworkBehaviour
         if (_currentRideable != null)
         {
             bool wantsDismount = vrMoveInput.magnitude > 0.1f
-                || pressedThisFrame.IsSet(U3DInputButtons.Fly);
+                || input.FlyPressed;
 
             if (wantsDismount)
                 DismountRideable(_currentRideable);
@@ -1205,8 +1205,8 @@ public class U3DPlayerController : NetworkBehaviour
         float currentSpeed = GetCurrentSpeed() * VR_MOVEMENT_SPEED_MULTIPLIER;
 
         // Read the toggle state set by HandleButtonInputsFusion, not the held button state.
-        // Reading IsSet directly would make VR sprint a hold (one-frame-only) while the
-        // desktop path is a toggle, and the two would fight over isSprinting / NetworkIsSprinting.
+        // Reading the press edge directly would make VR sprint a one-tick-only burst while
+        // the desktop path is a toggle, and the two would fight over isSprinting / NetworkIsSprinting.
         if (isSprinting)
             currentSpeed = runSpeed * VR_MOVEMENT_SPEED_MULTIPLIER;
 
@@ -1214,9 +1214,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (freeMovement)
         {
+            // Level state, not the press edge: ascend/descend continues for as long as the
+            // button is held.
             Vector3 flyDirection = moveDirection;
-            if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
-            if (input.Buttons.IsSet(U3DInputButtons.Crouch)) flyDirection += Vector3.down;
+            if (input.JumpHeld) flyDirection += Vector3.up;
+            if (input.CrouchHeld) flyDirection += Vector3.down;
             characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
         else
@@ -1260,7 +1262,7 @@ public class U3DPlayerController : NetworkBehaviour
             NetworkIsJumping = false;
     }
 
-    void HandleMovementFusion(U3DNetworkInputData input)
+    void HandleMovementFusion(U3DPlayerInputState input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
         if (!IsLocalLookMoveInputAuthoritative()) return;
@@ -1322,9 +1324,11 @@ public class U3DPlayerController : NetworkBehaviour
 
         if (freeMovement)
         {
+            // Level state, not the press edge: ascend/descend continues for as long as the
+            // key is held.
             Vector3 flyDirection = moveDirection;
-            if (input.Buttons.IsSet(U3DInputButtons.Jump)) flyDirection += Vector3.up;
-            if (input.Buttons.IsSet(U3DInputButtons.Crouch)) flyDirection += Vector3.down;
+            if (input.JumpHeld) flyDirection += Vector3.up;
+            if (input.CrouchHeld) flyDirection += Vector3.down;
             characterController.Move(flyDirection * currentSpeed * Runner.DeltaTime);
         }
         else
@@ -1337,7 +1341,7 @@ public class U3DPlayerController : NetworkBehaviour
         NetworkIsMoving = moveVelocity.magnitude > 0.1f;
     }
 
-    Vector2 HandleAdvancedKeyboardMovement(U3DNetworkInputData input)
+    Vector2 HandleAdvancedKeyboardMovement(U3DPlayerInputState input)
     {
         Vector2 advancedMovement = Vector2.zero;
 
@@ -1375,7 +1379,7 @@ public class U3DPlayerController : NetworkBehaviour
         return advancedMovement;
     }
 
-    void HandleLookFusionFixed(U3DNetworkInputData input)
+    void HandleLookFusionFixed(U3DPlayerInputState input)
     {
         if (!enableMovement || !_isLocalPlayer) return;
         if (!IsLocalLookMoveInputAuthoritative()) return;
@@ -1502,7 +1506,7 @@ public class U3DPlayerController : NetworkBehaviour
         return IsCursorLocked();
     }
 
-    void HandleAdvancedMouseControls(U3DNetworkInputData input)
+    void HandleAdvancedMouseControls(U3DPlayerInputState input)
     {
         if (!enableAdvancedCamera || cameraPivot == null) return;
 
@@ -1568,20 +1572,20 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    void HandleButtonInputsFusion(U3DNetworkInputData input, NetworkButtons pressed, NetworkButtons released)
+    void HandleButtonInputsFusion(U3DPlayerInputState input)
     {
         if (!_isLocalPlayer) return;
 
-        if (enableJumping && pressed.IsSet(U3DInputButtons.Jump))
+        if (enableJumping && input.JumpPressed)
             HandleJumpFusionFixed();
 
-        if (enableSprintToggle && pressed.IsSet(U3DInputButtons.Sprint))
+        if (enableSprintToggle && input.SprintPressed)
         {
             isSprinting = !isSprinting;
             NetworkIsSprinting = isSprinting;
         }
 
-        if (enableCrouchToggle && pressed.IsSet(U3DInputButtons.Crouch))
+        if (enableCrouchToggle && input.CrouchPressed)
         {
             isCrouching = !isCrouching;
             NetworkIsCrouching = isCrouching;
@@ -1606,17 +1610,17 @@ public class U3DPlayerController : NetworkBehaviour
             characterController.center = new Vector3(0, 1f, 0);
         }
 
-        if (enableFlying && pressed.IsSet(U3DInputButtons.Fly))
+        if (enableFlying && input.FlyPressed)
         {
             isFlying = !isFlying;
             NetworkIsFlying = isFlying;
             velocity = Vector3.zero;
         }
 
-        if (pressed.IsSet(U3DInputButtons.AutoRunToggle))
+        if (input.AutoRunTogglePressed)
             isAutoRunning = !isAutoRunning;
 
-        if (pressed.IsSet(U3DInputButtons.Interact))
+        if (input.InteractPressed)
         {
             NetworkIsInteracting = true;
             if (_interactionManager != null)
@@ -1625,14 +1629,14 @@ public class U3DPlayerController : NetworkBehaviour
                 Debug.LogWarning("No interaction manager found - interaction ignored");
         }
 
-        if (pressed.IsSet(U3DInputButtons.RemoveAttachment))
+        if (input.RemoveAttachmentPressed)
         {
             U3DPlayerAttachments attachments = GetComponent<U3DPlayerAttachments>();
             if (attachments != null)
                 attachments.RemoveLast();
         }
 
-        isZooming = input.Buttons.IsSet(U3DInputButtons.Zoom);
+        isZooming = input.ZoomHeld;
         targetFOV = isZooming ? zoomFOV : defaultFOV;
 
         if (perspectiveMode == PerspectiveMode.SmoothScroll && Mathf.Abs(input.PerspectiveScroll) > 0.1f)
@@ -1668,10 +1672,10 @@ public class U3DPlayerController : NetworkBehaviour
         }
     }
 
-    void HandleTeleportFusion(U3DNetworkInputData input, NetworkButtons pressed)
+    void HandleTeleportFusion(U3DPlayerInputState input)
     {
         if (!enableTeleport || !_isLocalPlayer || _isInVRMode) return;
-        if (pressed.IsSet(U3DInputButtons.Teleport))
+        if (input.TeleportPressed)
             PerformTeleport();
     }
 

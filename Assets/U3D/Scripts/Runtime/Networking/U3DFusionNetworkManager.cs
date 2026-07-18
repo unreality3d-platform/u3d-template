@@ -24,12 +24,6 @@ namespace U3D.Networking
         [SerializeField] private bool randomizeSpawnPoints = true;
         [SerializeField] private float spawnRadius = 2f;
 
-        [Header("WebGL Optimization")]
-        [SerializeField] private bool useClientPrediction = true;
-        [SerializeField] private bool enableLagCompensation = true;
-        [SerializeField] private int sendRate = 20;
-        [SerializeField] private int simulationTickRate = 60;
-
         [Header("Input System Integration")]
         [SerializeField] private InputActionAsset inputActionAsset;
 
@@ -68,7 +62,9 @@ namespace U3D.Networking
         private bool _flyPressed;
         private bool _interactPressed;
         private bool _removeAttachmentPressed;
-        private bool _zoomPressed;
+        private bool _zoomHeld;
+        private bool _jumpHeld;
+        private bool _crouchHeld;
         private bool _teleportPressed;
         private float _perspectiveScrollValue;
         private float _lastTeleportClickTime = 0f;
@@ -283,6 +279,11 @@ namespace U3D.Networking
                 if (touchZones.InteractRequested)
                     _interactPressed = true;
 
+                // Touch exposes one-shot requests only, so there is no level state to read
+                // for fly ascend/descend. Held stays false; touch fly-vertical is a known gap.
+                _jumpHeld = false;
+                _crouchHeld = false;
+
                 // Center-zone vertical pinch feeds the same one-shot scroll value the mouse
                 // wheel uses; the controller already gates it on SmoothScroll perspective mode.
                 if (Mathf.Abs(touchZones.PerspectiveScrollInput) > 0.1f)
@@ -302,14 +303,22 @@ namespace U3D.Networking
                 if (_lookAction != null)
                     _cachedLookInput = _lookAction.ReadValue<Vector2>();
 
-                if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
-                    _jumpPressed = true;
+                if (_jumpAction != null)
+                {
+                    if (_jumpAction.WasPressedThisFrame())
+                        _jumpPressed = true;
+                    _jumpHeld = _jumpAction.IsPressed();
+                }
 
                 if (_sprintAction != null && _sprintAction.WasPressedThisFrame())
                     _sprintPressed = true;
 
-                if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
-                    _crouchPressed = true;
+                if (_crouchAction != null)
+                {
+                    if (_crouchAction.WasPressedThisFrame())
+                        _crouchPressed = true;
+                    _crouchHeld = _crouchAction.IsPressed();
+                }
 
                 if (_flyAction != null && _flyAction.WasPressedThisFrame())
                     _flyPressed = true;
@@ -331,7 +340,7 @@ namespace U3D.Networking
                 }
 
                 if (_zoomAction != null)
-                    _zoomPressed = _zoomAction.IsPressed();
+                    _zoomHeld = _zoomAction.IsPressed();
 
                 if (_perspectiveSwitchAction != null)
                 {
@@ -408,92 +417,15 @@ namespace U3D.Networking
             _cachedMovementInput = Vector2.zero;
             _cachedLookInput = Vector2.zero;
             _jumpPressed = false;
+            _jumpHeld = false;
             _sprintPressed = false;
             _crouchPressed = false;
+            _crouchHeld = false;
             _flyPressed = false;
             _interactPressed = false;
             _removeAttachmentPressed = false;
-            _zoomPressed = false;
+            _zoomHeld = false;
             _perspectiveScrollValue = 0f;
-        }
-
-        private void PollVRInput()
-        {
-            Vector2 moveValue = Vector2.zero;
-            Vector2 lookValue = Vector2.zero;
-
-            if (_moveAction != null)
-                moveValue = _moveAction.ReadValue<Vector2>();
-
-            if (_lookAction != null)
-                lookValue = _lookAction.ReadValue<Vector2>();
-
-            // Read raw stick values directly. The previous lerp-toward-zero smoothing
-            // caused phantom release events when input frames were briefly missed,
-            // which broke the teleport gesture's release-to-fire detection. Walking
-            // already feels fine without smoothing — the stick is held continuously
-            // and reads stable per-frame values.
-            _cachedMovementInput = moveValue;
-            _cachedLookInput = lookValue;
-
-            if (_jumpAction != null && _jumpAction.WasPressedThisFrame())
-                _jumpPressed = true;
-
-            if (_sprintAction != null)
-            {
-                float triggerValue = _sprintAction.ReadValue<float>();
-                bool triggerDown = triggerValue > 0.5f;
-                if (triggerDown && !_vrSprintTriggerWasDown)
-                    _sprintPressed = true;
-                _vrSprintTriggerWasDown = triggerDown;
-            }
-
-            if (_crouchAction != null && _crouchAction.WasPressedThisFrame())
-                _crouchPressed = true;
-
-            if (_flyAction != null && _flyAction.WasPressedThisFrame())
-                _flyPressed = true;
-
-            if (_interactAction != null && _interactAction.WasPressedThisFrame())
-                _interactPressed = true;
-
-            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
-                _teleportPressed = true;
-
-            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
-                _autoRunTogglePressed = true;
-
-            // Zoom is a hold in VR, mirroring the non-VR middle-mouse Hold behavior.
-            // Unconditional level read each poll: held B button = bit set every tick
-            // = isZooming true downstream; release = bit absent = un-zoomed. The
-            // unconditional assignment self-clears, exactly like the non-VR else
-            // branch, so it needs no entry in OnInput's edge-clear block.
-            if (_zoomAction != null)
-                _zoomPressed = _zoomAction.IsPressed();
-
-            // Perspective switch translator. The VR binding is the right-stick CLICK
-            // (Primary2DAxisClick), which can only ever read +1 — it can never produce
-            // the negative the directional consumer needs to return to third person.
-            // So we treat each discrete click as a stateless toggle, exactly like the
-            // left-stick teleport click: WasPressedThisFrame gives one press edge per
-            // physical click (correct even on a Value action), and we alternate the
-            // signed one-shot we feed into the existing PerspectiveScroll consumer.
-            // false = send negative = go to third person; true = send positive = back
-            // to first. OnInput clears _perspectiveScrollValue to 0 every tick, so
-            // this is a one-shot delta with the same lifetime as the non-VR scroll.
-            if (_perspectiveSwitchAction != null && _perspectiveSwitchAction.WasPressedThisFrame())
-            {
-                _vrPerspectiveToggleState = !_vrPerspectiveToggleState;
-                _perspectiveScrollValue = _vrPerspectiveToggleState ? 10f : -10f;
-            }
-
-            _leftMouseHeld = false;
-            _rightMouseHeld = false;
-            _bothMouseHeld = false;
-            _strafeLeftPressed = false;
-            _strafeRightPressed = false;
-            _turnLeftPressed = false;
-            _turnRightPressed = false;
         }
 
         public void RegisterUIInputHandler(IUIInputHandler handler)
@@ -536,7 +468,12 @@ namespace U3D.Networking
                 var runnerObject = new GameObject($"NetworkRunner_{sessionName}");
 
                 _runner = runnerObject.AddComponent<NetworkRunner>();
-                _runner.ProvideInput = true;
+
+                // Shared Mode gives the local client state authority over its own player, so
+                // local input is simulated on the machine that produced it. Fusion's input
+                // pipeline exists to ship input to a remote authority and has no consumer
+                // here; the controller reads ConsumeInput() directly instead.
+                _runner.ProvideInput = false;
 
                 var physicsSimulator = runnerObject.AddComponent<RunnerSimulatePhysics3D>();
                 ConfigurePhysicsSimulatorForSharedMode(physicsSimulator);
@@ -692,6 +629,92 @@ namespace U3D.Networking
             }
         }
 
+        private void PollVRInput()
+        {
+            Vector2 moveValue = Vector2.zero;
+            Vector2 lookValue = Vector2.zero;
+
+            if (_moveAction != null)
+                moveValue = _moveAction.ReadValue<Vector2>();
+
+            if (_lookAction != null)
+                lookValue = _lookAction.ReadValue<Vector2>();
+
+            // Read raw stick values directly. The previous lerp-toward-zero smoothing
+            // caused phantom release events when input frames were briefly missed,
+            // which broke the teleport gesture's release-to-fire detection. Walking
+            // already feels fine without smoothing — the stick is held continuously
+            // and reads stable per-frame values.
+            _cachedMovementInput = moveValue;
+            _cachedLookInput = lookValue;
+
+            if (_jumpAction != null)
+            {
+                if (_jumpAction.WasPressedThisFrame())
+                    _jumpPressed = true;
+                _jumpHeld = _jumpAction.IsPressed();
+            }
+
+            if (_sprintAction != null)
+            {
+                float triggerValue = _sprintAction.ReadValue<float>();
+                bool triggerDown = triggerValue > 0.5f;
+                if (triggerDown && !_vrSprintTriggerWasDown)
+                    _sprintPressed = true;
+                _vrSprintTriggerWasDown = triggerDown;
+            }
+
+            if (_crouchAction != null)
+            {
+                if (_crouchAction.WasPressedThisFrame())
+                    _crouchPressed = true;
+                _crouchHeld = _crouchAction.IsPressed();
+            }
+
+            if (_flyAction != null && _flyAction.WasPressedThisFrame())
+                _flyPressed = true;
+
+            if (_interactAction != null && _interactAction.WasPressedThisFrame())
+                _interactPressed = true;
+
+            if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
+                _teleportPressed = true;
+
+            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
+                _autoRunTogglePressed = true;
+
+            // Zoom is a hold in VR, mirroring the non-VR middle-mouse Hold behavior.
+            // Unconditional level read each poll: held B button = true every tick =
+            // isZooming true downstream; release = false = un-zoomed. The unconditional
+            // assignment self-clears, so it needs no entry in ConsumeInput's clear block.
+            if (_zoomAction != null)
+                _zoomHeld = _zoomAction.IsPressed();
+
+            // Perspective switch translator. The VR binding is the right-stick CLICK
+            // (Primary2DAxisClick), which can only ever read +1 — it can never produce
+            // the negative the directional consumer needs to return to third person.
+            // So we treat each discrete click as a stateless toggle, exactly like the
+            // left-stick teleport click: WasPressedThisFrame gives one press edge per
+            // physical click (correct even on a Value action), and we alternate the
+            // signed one-shot we feed into the existing PerspectiveScroll consumer.
+            // false = send negative = go to third person; true = send positive = back
+            // to first. ConsumeInput clears _perspectiveScrollValue every tick, so
+            // this is a one-shot delta with the same lifetime as the non-VR scroll.
+            if (_perspectiveSwitchAction != null && _perspectiveSwitchAction.WasPressedThisFrame())
+            {
+                _vrPerspectiveToggleState = !_vrPerspectiveToggleState;
+                _perspectiveScrollValue = _vrPerspectiveToggleState ? 10f : -10f;
+            }
+
+            _leftMouseHeld = false;
+            _rightMouseHeld = false;
+            _bothMouseHeld = false;
+            _strafeLeftPressed = false;
+            _strafeRightPressed = false;
+            _turnLeftPressed = false;
+            _turnRightPressed = false;
+        }
+
         private System.Collections.IEnumerator ForceSpawnPosition(U3DPlayerController controller, Vector3 pos, Quaternion rot)
         {
             // Wait two frames for Fusion state sync to settle, then force position
@@ -807,66 +830,7 @@ namespace U3D.Networking
             OnPlayerCountChanged?.Invoke(0);
         }
 
-        public void OnInput(NetworkRunner runner, NetworkInput input)
-        {
-            var data = new U3DNetworkInputData();
-
-            data.MovementInput = _cachedMovementInput;
-            data.LookInput = _cachedLookInput;
-            data.PerspectiveScroll = _perspectiveScrollValue;
-
-            if (_jumpPressed)
-                data.Buttons.Set(U3DInputButtons.Jump, true);
-            if (_sprintPressed)
-                data.Buttons.Set(U3DInputButtons.Sprint, true);
-            if (_crouchPressed)
-                data.Buttons.Set(U3DInputButtons.Crouch, true);
-            if (_flyPressed)
-                data.Buttons.Set(U3DInputButtons.Fly, true);
-            if (_interactPressed)
-                data.Buttons.Set(U3DInputButtons.Interact, true);
-            if (_zoomPressed)
-                data.Buttons.Set(U3DInputButtons.Zoom, true);
-            if (_teleportPressed)
-                data.Buttons.Set(U3DInputButtons.Teleport, true);
-            if (_removeAttachmentPressed)
-                data.Buttons.Set(U3DInputButtons.RemoveAttachment, true);
-
-            data.LeftMouseHeld = _leftMouseHeld;
-            data.RightMouseHeld = _rightMouseHeld;
-            data.BothMouseHeld = _bothMouseHeld;
-
-            data.StrafeLeft = _strafeLeftPressed;
-            data.StrafeRight = _strafeRightPressed;
-            data.TurnLeft = _turnLeftPressed;
-            data.TurnRight = _turnRightPressed;
-
-            if (_autoRunTogglePressed)
-                data.Buttons.Set(U3DInputButtons.AutoRunToggle, true);
-
-            _autoRunTogglePressed = false;
-
-            input.Set(data);
-
-            // Clear edge-triggered button presses so they fire once per press, not on
-            // every tick OnInput is called (Fusion may invoke OnInput multiple times
-            // per Unity frame during resimulation/prediction).
-            _jumpPressed = false;
-            _sprintPressed = false;
-            _crouchPressed = false;
-            _flyPressed = false;
-            _interactPressed = false;
-            _teleportPressed = false;
-            _removeAttachmentPressed = false;
-            _perspectiveScrollValue = 0f;
-
-            // Do NOT clear _cachedMovementInput or _cachedLookInput here. These are
-            // continuous axis values that should persist across multiple OnInput calls
-            // within the same Unity frame. PollVRInput / Update will overwrite them
-            // with current values on the next Unity frame. Clearing them caused
-            // phantom zero readings between Update cycles, which broke the VR teleport
-            // gesture's release-to-fire detection (false-fire on every other tick).
-        }
+        public void OnInput(NetworkRunner runner, NetworkInput input) { }
 
         public InputAction GetMoveAction() => _moveAction;
         public InputAction GetLookAction() => _lookAction;
@@ -880,6 +844,56 @@ namespace U3D.Networking
         public InputAction GetPerspectiveSwitchAction() => _perspectiveSwitchAction;
         public InputAction GetPauseAction() => _pauseAction;
         public InputAction GetEscapeAction() => _escapeAction;
+
+        /// <summary>
+        /// Returns the current local input snapshot and clears one-shot presses.
+        /// Called once per tick from U3DPlayerController.FixedUpdateNetwork.
+        /// Same lifecycle the touch zones already use: set in Update, read and clear
+        /// in one place. Axes and Held fields are not cleared — Update overwrites them
+        /// every frame, and clearing them here would blank continuous state between
+        /// Update cycles.
+        /// </summary>
+        public U3DPlayerInputState ConsumeInput()
+        {
+            var data = new U3DPlayerInputState();
+
+            data.MovementInput = _cachedMovementInput;
+            data.LookInput = _cachedLookInput;
+            data.PerspectiveScroll = _perspectiveScrollValue;
+
+            data.JumpPressed = _jumpPressed;
+            data.JumpHeld = _jumpHeld;
+            data.SprintPressed = _sprintPressed;
+            data.CrouchPressed = _crouchPressed;
+            data.CrouchHeld = _crouchHeld;
+            data.FlyPressed = _flyPressed;
+            data.InteractPressed = _interactPressed;
+            data.TeleportPressed = _teleportPressed;
+            data.AutoRunTogglePressed = _autoRunTogglePressed;
+            data.RemoveAttachmentPressed = _removeAttachmentPressed;
+            data.ZoomHeld = _zoomHeld;
+
+            data.LeftMouseHeld = _leftMouseHeld;
+            data.RightMouseHeld = _rightMouseHeld;
+            data.BothMouseHeld = _bothMouseHeld;
+
+            data.StrafeLeft = _strafeLeftPressed;
+            data.StrafeRight = _strafeRightPressed;
+            data.TurnLeft = _turnLeftPressed;
+            data.TurnRight = _turnRightPressed;
+
+            _jumpPressed = false;
+            _sprintPressed = false;
+            _crouchPressed = false;
+            _flyPressed = false;
+            _interactPressed = false;
+            _teleportPressed = false;
+            _autoRunTogglePressed = false;
+            _removeAttachmentPressed = false;
+            _perspectiveScrollValue = 0f;
+
+            return data;
+        }
 
         public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
         public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
