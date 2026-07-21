@@ -41,6 +41,11 @@ namespace U3D
 
         public GameObject AccessoryPrefab => accessoryPrefab;
 
+        [Tooltip("Optional. Stations sharing the same slot name replace each other: wearing this removes anything worn from another station with the same slot (e.g. two different heads both marked \"Head\"). Leave empty to stack freely with everything, like a hat over glasses. Case and surrounding spaces are ignored.")]
+        [SerializeField] private string slot = "";
+
+        public string Slot => slot;
+
         private U3DPlayerController _localPlayer;
 
         public override void Spawned()

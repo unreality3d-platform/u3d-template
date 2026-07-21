@@ -24,8 +24,10 @@ namespace U3D
     /// list, so its pieces share one on/off state and can't drift apart.
     ///
     /// Toggle is driven from U3DAttachmentSource.OnInteract on the local player: interacting once
-    /// adds the source to the list (worn), interacting again removes it (taken off). Only the local
-    /// player writes its own list, so there is no authority contention.
+    /// adds the source to the list (worn), interacting again removes it (taken off). A source with
+    /// a non-empty Slot replaces anything worn from another source sharing that slot; unslotted
+    /// sources stack freely. Only the local player writes its own list, so there is no authority
+    /// contention.
     ///
     /// Visibility follows the avatar's own rules: each built instance's renderers are registered with
     /// U3DAvatarManager, which toggles them in lockstep with the body — no special-casing.
@@ -44,12 +46,15 @@ namespace U3D
         // Per-source record. One source carries one prefab whose markers define its pieces, so a
         // source builds N local piece instances but stays ONE entry in the networked worn list.
         // Renderers are aggregated across the pieces so the whole costume registers with the avatar's
-        // visibility rules as a single unit.
+        // visibility rules as a single unit. HeadRenderers is the subset riding the head bone (or a
+        // socket under it); the avatar manager renders those shadow-only for the wearer in VR first
+        // person so a face-covering piece can't blind them.
         private struct Built
         {
             public NetworkBehaviourId Id;
             public GameObject[] Instances;
             public Renderer[] Renderers;
+            public Renderer[] HeadRenderers;
         }
 
         private readonly List<Built> _built = new List<Built>();
@@ -61,11 +66,14 @@ namespace U3D
         }
 
         /// <summary>
-        /// Puts the given source on this player. Wearing only ever adds — interacting with a
-        /// source for something already worn does nothing (re-wear is a no-op), which keeps the
-        /// worn list in pure wear order so RemoveLast can take items off newest-first. Call only on
-        /// the local player (it has state authority over its own object); a stray remote call is
-        /// ignored. At capacity, further additions are ignored.
+        /// Toggles the given source on this player. Interacting with a station whose item is
+        /// already worn takes it off (firing its On Remove); otherwise the item goes on (firing
+        /// its On Wear). If the source has a non-empty Slot, anything worn from another station
+        /// with the same slot is removed first — same-role items replace each other, while
+        /// unslotted items stack freely. Removals preserve the order of what remains, so
+        /// RemoveLast still takes items off newest-first. Call only on the local player (it has
+        /// state authority over its own object); a stray remote call is ignored. At capacity,
+        /// additions are refused silently and no event fires.
         /// </summary>
         public void Wear(U3DAttachmentSource source)
         {
@@ -75,17 +83,50 @@ namespace U3D
             NetworkBehaviourId id = source.Id;
             var list = ActiveAttachments;
 
-            if (list.Contains(id)) return;
+            // Toggle off: the wardrobe-stand behavior. Interacting again with something
+            // you're wearing takes it off.
+            if (list.Contains(id))
+            {
+                list.Remove(id);
+                source.InvokeOnRemove();
+                return;
+            }
+
+            // Slot replacement: remove anything worn that shares this source's non-empty
+            // slot. Walked by index from the end so removals don't disturb unvisited
+            // entries; removes every match, which also converges any duplicates worn
+            // before slot rules existed. A worn entry whose station can't be resolved is
+            // left alone.
+            string slot = NormalizeSlot(source.Slot);
+            if (slot != null && Runner != null)
+            {
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    NetworkBehaviourId wornId = list[i];
+                    if (wornId == default) continue;
+                    if (!Runner.TryFindBehaviour(wornId, out U3DAttachmentSource worn) || worn == null) continue;
+
+                    if (NormalizeSlot(worn.Slot) == slot)
+                    {
+                        list.Remove(wornId);
+                        worn.InvokeOnRemove();
+                    }
+                }
+            }
 
             if (list.Count < MAX_ATTACHMENTS)
+            {
                 list.Add(id);
+                source.InvokeOnWear();
+            }
         }
 
         /// <summary>
         /// Takes off the most recently worn source. Reads the last entry in the worn list (kept in
-        /// wear order, newest last) and removes it; the next call takes off the new last entry, and
-        /// so on, like undo. Local-authority only, like Wear. No-op when nothing is worn. Works from
-        /// anywhere — it does not require returning to a source.
+        /// wear order, newest last) and removes it, firing that source's On Remove; the next call
+        /// takes off the new last entry, and so on, like undo. Local-authority only, like Wear.
+        /// No-op when nothing is worn. Works from anywhere — it does not require returning to a
+        /// source.
         /// </summary>
         public void RemoveLast()
         {
@@ -96,6 +137,20 @@ namespace U3D
 
             NetworkBehaviourId last = list[list.Count - 1];
             list.Remove(last);
+
+            if (Runner != null && Runner.TryFindBehaviour(last, out U3DAttachmentSource source) && source != null)
+                source.InvokeOnRemove();
+        }
+
+        /// <summary>
+        /// Canonical form of a slot name for comparison: null when the slot is empty or
+        /// whitespace (meaning "stacks with everything"), otherwise trimmed and lowercased so
+        /// creator typing differences ("Head" vs "head ") don't split a slot in two.
+        /// </summary>
+        private static string NormalizeSlot(string slot)
+        {
+            if (string.IsNullOrWhiteSpace(slot)) return null;
+            return slot.Trim().ToLowerInvariant();
         }
 
         public override void Render()
@@ -154,6 +209,11 @@ namespace U3D
         /// name) is skipped for good; the pieces that resolve are built and the build is committed so
         /// it never retries forever. A prefab with no markers builds nothing and commits, so an
         /// unconfigured accessory simply doesn't appear rather than looping.
+        ///
+        /// Pieces whose bone is the head bone or anything under it are additionally collected as head
+        /// renderers and registered separately: the avatar manager renders them shadow-only for the
+        /// wearer in VR first person, so a face-covering piece never blocks their own view while
+        /// everyone else still sees it.
         /// </summary>
         private bool TryBuildAttachment(NetworkBehaviourId id, out Built built)
         {
@@ -172,7 +232,7 @@ namespace U3D
             // forever waiting for pieces that will never come.
             if (prefabMarkers.Length == 0)
             {
-                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0] };
+                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0], HeadRenderers = new Renderer[0] };
                 return true;
             }
 
@@ -212,7 +272,7 @@ namespace U3D
             // Every marker failed to resolve — nothing to attach. Commit empty so we don't loop.
             if (!anyResolved)
             {
-                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0] };
+                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0], HeadRenderers = new Renderer[0] };
                 return true;
             }
 
@@ -228,16 +288,23 @@ namespace U3D
             if (instMarkers.Length != prefabMarkers.Length)
             {
                 Destroy(instance);
-                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0] };
+                built = new Built { Id = id, Instances = new GameObject[0], Renderers = new Renderer[0], HeadRenderers = new Renderer[0] };
                 return true;
             }
 
             // The avatar's facing is the same reference for every piece, so read it once.
             Quaternion avatarFacing = avatarInstance.transform.rotation;
 
+            // Reference for the head-piece check below. Null on a non-humanoid rig — override-socket
+            // pieces on such rigs can't be classified, so none count as head pieces there.
+            Transform headBone = (animator != null && animator.isHuman)
+                ? animator.GetBoneTransform(HumanBodyBones.Head)
+                : null;
+
             var handledPieces = new HashSet<Transform>();
             var instances = new List<GameObject>();
             var allRenderers = new List<Renderer>();
+            var headRenderers = new List<Renderer>();
             bool rootIsPiece = false;
 
             for (int i = 0; i < instMarkers.Length; i++)
@@ -275,7 +342,14 @@ namespace U3D
                 piece.position += bone.position - m.position;
 
                 instances.Add(piece.gameObject);
-                allRenderers.AddRange(piece.GetComponentsInChildren<Renderer>(true));
+
+                Renderer[] pieceRenderers = piece.GetComponentsInChildren<Renderer>(true);
+                allRenderers.AddRange(pieceRenderers);
+
+                // IsChildOf is true for the head bone itself and anything nested under it, so this
+                // covers pieces on the head and on custom sockets inside the head.
+                if (headBone != null && bone.IsChildOf(headBone))
+                    headRenderers.AddRange(pieceRenderers);
             }
 
             // If the prefab root was itself a piece (a single accessory, marker on the root), it has
@@ -286,10 +360,15 @@ namespace U3D
                 Destroy(instance);
 
             Renderer[] renderers = allRenderers.ToArray();
+            Renderer[] headRendererArray = headRenderers.ToArray();
             if (_avatarManager != null)
+            {
                 _avatarManager.RegisterAttachmentRenderers(renderers);
+                if (headRendererArray.Length > 0)
+                    _avatarManager.RegisterHeadAttachmentRenderers(headRendererArray);
+            }
 
-            built = new Built { Id = id, Instances = instances.ToArray(), Renderers = renderers };
+            built = new Built { Id = id, Instances = instances.ToArray(), Renderers = renderers, HeadRenderers = headRendererArray };
             return true;
         }
 
@@ -323,8 +402,13 @@ namespace U3D
 
         private void DestroyBuilt(Built built)
         {
-            if (_avatarManager != null && built.Renderers != null)
-                _avatarManager.UnregisterAttachmentRenderers(built.Renderers);
+            if (_avatarManager != null)
+            {
+                if (built.Renderers != null)
+                    _avatarManager.UnregisterAttachmentRenderers(built.Renderers);
+                if (built.HeadRenderers != null && built.HeadRenderers.Length > 0)
+                    _avatarManager.UnregisterHeadAttachmentRenderers(built.HeadRenderers);
+            }
 
             if (built.Instances != null)
             {

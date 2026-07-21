@@ -869,17 +869,6 @@
                 },
                 {
                     "name": "",
-                    "id": "269178b9-2378-4a23-801c-47301c304149",
-                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";XR",
-                    "action": "AutoRunToggle",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
                     "id": "5a7cd8d3-309f-4d3b-a9d1-9cbfd343ed64",
                     "path": "<XRHMD>/centerEyePosition",
                     "interactions": "",
@@ -914,10 +903,10 @@
                 {
                     "name": "",
                     "id": "862c1330-aed6-4dbb-9232-115cdef5eac1",
-                    "path": "",
+                    "path": "<XRController>{LeftHand}/{PrimaryButton}",
                     "interactions": "",
                     "processors": "",
-                    "groups": "",
+                    "groups": ";XR",
                     "action": "RemoveAttachment",
                     "isComposite": false,
                     "isPartOfComposite": false

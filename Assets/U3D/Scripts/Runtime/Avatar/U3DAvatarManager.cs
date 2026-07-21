@@ -34,6 +34,19 @@ public class U3DAvatarManager : NetworkBehaviour
     // follow the avatar's own first-person / VR / third-person visibility with no special rules.
     private readonly List<Renderer> _attachmentRenderers = new List<Renderer>();
 
+    // Subset of attachment renderers riding the head bone, registered separately by
+    // U3DPlayerAttachments. For the local wearer in VR first person these render shadow-only, so a
+    // face-covering piece (a costume head) can't block their own view — other players, VR third
+    // person, and desktop all see it normally, and the wearer keeps its shadow. The authored shadow
+    // mode is captured at registration and restored whenever suppression doesn't apply, so a piece
+    // the creator shipped with shadows off stays that way.
+    private struct HeadAttachmentEntry
+    {
+        public Renderer Renderer;
+        public UnityEngine.Rendering.ShadowCastingMode OriginalMode;
+    }
+    private readonly List<HeadAttachmentEntry> _headAttachmentEntries = new List<HeadAttachmentEntry>();
+
     // Simple animation system
     private U3DNetworkedAnimator networkedAnimator;
     private bool isInitialized = false;
@@ -105,7 +118,7 @@ public class U3DAvatarManager : NetworkBehaviour
             // Any avatar prefab with Apply Root Motion enabled will otherwise drift away from the capsule.
             avatarAnimator.applyRootMotion = false;
 
-            // CLEAN: Connect to animation system
+            // Connect to animation system
             ConnectToAnimationSystem();
 
             // Get all SkinnedMeshRenderers for visibility control
@@ -308,6 +321,30 @@ public class U3DAvatarManager : NetworkBehaviour
             if (r != null && r.enabled != shouldShow)
                 r.enabled = shouldShow;
         }
+
+        // Head-attachment view protection. For the local wearer in VR first person, pieces riding
+        // the head render shadow-only so a face-covering costume head can't blind them — they keep
+        // the piece's shadow as a grounding cue, everyone else sees it normally. In VR third person
+        // the camera is behind the body, so the piece shows in full. Applied per frame against the
+        // current state so entering/exiting VR and perspective switches restore the authored mode
+        // with no separate transition handling.
+        bool suppressHeadPieces = playerController != null
+            && playerController.IsLocalPlayer
+            && playerController.IsInVRMode
+            && playerController.IsFirstPerson;
+
+        for (int i = 0; i < _headAttachmentEntries.Count; i++)
+        {
+            HeadAttachmentEntry entry = _headAttachmentEntries[i];
+            if (entry.Renderer == null) continue;
+
+            UnityEngine.Rendering.ShadowCastingMode desired = suppressHeadPieces
+                ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                : entry.OriginalMode;
+
+            if (entry.Renderer.shadowCastingMode != desired)
+                entry.Renderer.shadowCastingMode = desired;
+        }
     }
 
     /// <summary>
@@ -365,6 +402,59 @@ public class U3DAvatarManager : NetworkBehaviour
         if (renderers == null) return;
         for (int i = 0; i < renderers.Length; i++)
             _attachmentRenderers.Remove(renderers[i]);
+    }
+
+    /// <summary>
+    /// Registers head-riding attachment renderers for VR view protection, in addition to the
+    /// general registration. Called by U3DPlayerAttachments for pieces attached to the head bone
+    /// or a socket under it. Captures each renderer's authored shadow mode so it can be restored
+    /// exactly. Skips nulls and duplicates.
+    /// </summary>
+    public void RegisterHeadAttachmentRenderers(Renderer[] renderers)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null) continue;
+
+            bool exists = false;
+            for (int j = 0; j < _headAttachmentEntries.Count; j++)
+            {
+                if (_headAttachmentEntries[j].Renderer == r) { exists = true; break; }
+            }
+            if (exists) continue;
+
+            _headAttachmentEntries.Add(new HeadAttachmentEntry
+            {
+                Renderer = r,
+                OriginalMode = r.shadowCastingMode
+            });
+        }
+    }
+
+    /// <summary>
+    /// Removes head-riding attachment renderers from VR view protection, restoring each one's
+    /// authored shadow mode. Called by U3DPlayerAttachments before the accessory is destroyed.
+    /// </summary>
+    public void UnregisterHeadAttachmentRenderers(Renderer[] renderers)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null) continue;
+
+            for (int j = _headAttachmentEntries.Count - 1; j >= 0; j--)
+            {
+                if (_headAttachmentEntries[j].Renderer == r)
+                {
+                    if (r != null)
+                        r.shadowCastingMode = _headAttachmentEntries[j].OriginalMode;
+                    _headAttachmentEntries.RemoveAt(j);
+                }
+            }
+        }
     }
 
     /// <summary>

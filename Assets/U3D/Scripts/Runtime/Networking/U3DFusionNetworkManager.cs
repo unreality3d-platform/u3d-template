@@ -680,8 +680,11 @@ namespace U3D.Networking
             if (_teleportAction != null && _teleportAction.WasPressedThisFrame())
                 _teleportPressed = true;
 
-            if (_autoRunToggleAction != null && _autoRunToggleAction.WasPressedThisFrame())
-                _autoRunTogglePressed = true;
+            // X button (left controller primary). Auto-run's former VR binding — auto-run
+            // is desktop-only now; VR forward motion is the stick. Any auto-run state
+            // carried in from desktop is cleared on VR entry by the player controller.
+            if (_removeAttachmentAction != null && _removeAttachmentAction.WasPressedThisFrame())
+                _removeAttachmentPressed = true;
 
             // Zoom is a hold in VR, mirroring the non-VR middle-mouse Hold behavior.
             // Unconditional level read each poll: held B button = true every tick =
@@ -844,6 +847,7 @@ namespace U3D.Networking
         public InputAction GetPerspectiveSwitchAction() => _perspectiveSwitchAction;
         public InputAction GetPauseAction() => _pauseAction;
         public InputAction GetEscapeAction() => _escapeAction;
+        public InputActionAsset GetInputActionAsset() => inputActionAsset;
 
         /// <summary>
         /// Returns the current local input snapshot and clears one-shot presses.

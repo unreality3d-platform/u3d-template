@@ -799,6 +799,11 @@ public class U3DPlayerController : NetworkBehaviour
         cameraPitch = 0f;
         cameraPitchAdvanced = 0f;
 
+        // Auto-run has no VR binding (the X button belongs to attachment removal), so a
+        // toggle carried in from desktop would be stuck on with no way to turn it off.
+        // VR forward motion is the stick; clear the state on entry.
+        isAutoRunning = false;
+
         // Capture the player root's current yaw before TPD starts overriding the
         // camera rotation. This is the spawn-rotation direction we want the user
         // to face when VR initializes. The recenter logic in LateUpdate will rotate
