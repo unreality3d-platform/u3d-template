@@ -24,6 +24,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Pullable", "Objects can be dragged along surfaces in the direction behind the player. Activates with the interaction key — toggle on to start pulling, toggle off or walk out of range to stop.", ApplyPullable, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
                 new CreatorTool("🟢 Make Swimmable", "Players swim through this trigger volume — full 3D movement, no gravity. Add a Box, Sphere, or Mesh collider sized to your water.", ApplySwimmable, true),
+                new CreatorTool("🟢 Make Trampoline", "Players who jump or fall onto this object bounce upward. Tune the bounce height in the Inspector, or turn on Randomize Height for a random bounce between min and max each landing.", ApplyTrampoline, true),
                 new CreatorTool("🟢 Make Enter Trigger", "Execute actions when player enters trigger area", ApplyEnterTrigger, true),
                 new CreatorTool("🟢 Make Exit Trigger", "Execute actions when player exits trigger area", ApplyExitTrigger, true),
                 new CreatorTool("🟢 Make Interact Trigger", "Execute actions when player interacts with this object (Interact key or mouse click)", ApplyInteractTrigger, true),
@@ -602,6 +603,32 @@ namespace U3D.Editor
                     $"and search for 'U3D Swimmable'. Each swimmable can have its own Required Tag and Events."
                 );
             }
+
+            EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyTrampoline()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            Collider existingCollider = selected.GetComponent<Collider>();
+            if (existingCollider == null)
+            {
+                selected.AddComponent<BoxCollider>();
+            }
+            else if (existingCollider.isTrigger)
+            {
+                existingCollider.isTrigger = false;
+                Debug.Log($"'{selected.name}': existing {existingCollider.GetType().Name} was a trigger — set to solid so players can land on it. Trampolines need a solid surface.");
+            }
+
+            if (selected.GetComponent<U3DTrampoline>() == null)
+                selected.AddComponent<U3DTrampoline>();
 
             EditorUtility.SetDirty(selected);
         }

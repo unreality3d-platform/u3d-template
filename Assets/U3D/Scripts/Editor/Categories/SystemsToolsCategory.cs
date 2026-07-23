@@ -29,6 +29,8 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Make Destroyable", "Marks this object as destroyable. Required for Destroy On Out Of Bounds on Kickable, Throwable, and Pushable, and for clean networked destruction by a Trash Handler zone. Fires OnDestroyed before removal for effects and scoring hooks.", AddDestroyable, true),
                 new CreatorTool("🟢 Add Trash Handler", "Creates a trigger zone that destroys or respawns objects that enter it. Use as a world floor catcher, an out-of-bounds reset zone, or a scored-object collector.", AddTrashHandler),
                 new CreatorTool("🟢 Make Trash Handler", "Turns the selected object's trigger collider into a destroy or respawn zone. Requires a trigger Collider on the object.", MakeTrashHandler, true),
+                new CreatorTool("🟢 Add 1-Way Portal", "Creates a portal trigger and a destination marker. Players who walk into the trigger are teleported to the marker. Reposition both anywhere in the scene.", AddOneWayPortal),
+                new CreatorTool("🟢 Add 2-Way Portal", "Creates two linked portals. Players who walk into either portal are teleported to the other. Reposition each portal anywhere in the scene.", AddTwoWayPortal),
                 new CreatorTool("🚧 Add Dialogue System", "Critical for storytelling, NPCs, and guided experiences", () => { }),
                 new CreatorTool("🚧 Add Quiz System", "Interactive questions and knowledge tests", () => { }),
                 new CreatorTool("🚧 Add Checkpoint System", "Save progress and restart points for complex experiences", () => { }),
@@ -140,6 +142,70 @@ namespace U3D.Editor
                     $"'{selected.name}' already has a U3DTrashHandler component.", "OK");
 
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void AddOneWayPortal()
+        {
+            GameObject parent = new GameObject("1-Way Portal");
+
+            GameObject trigger = new GameObject("Portal Trigger");
+            trigger.transform.SetParent(parent.transform, false);
+            BoxCollider col = trigger.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(2f, 2f, 1f);
+            col.center = new Vector3(0f, 1f, 0f);
+            U3DPortal portal = trigger.AddComponent<U3DPortal>();
+
+            GameObject destGO = new GameObject("Portal Destination");
+            destGO.transform.SetParent(parent.transform, false);
+            destGO.transform.localPosition = new Vector3(0f, 0f, 4f);
+            U3DPortalDestination dest = destGO.AddComponent<U3DPortalDestination>();
+
+            WireDestination(portal, dest);
+
+            Undo.RegisterCreatedObjectUndo(parent, "Add 1-Way Portal");
+            Selection.activeGameObject = parent;
+            EditorGUIUtility.PingObject(parent);
+        }
+
+        private static void AddTwoWayPortal()
+        {
+            GameObject parent = new GameObject("2-Way Portal");
+
+            GameObject portalA = CreatePortalNode("Portal A", parent.transform, Vector3.zero);
+            GameObject portalB = CreatePortalNode("Portal B", parent.transform, new Vector3(0f, 0f, 6f));
+
+            WireDestination(portalA.GetComponent<U3DPortal>(), portalB.GetComponent<U3DPortalDestination>());
+            WireDestination(portalB.GetComponent<U3DPortal>(), portalA.GetComponent<U3DPortalDestination>());
+
+            Undo.RegisterCreatedObjectUndo(parent, "Add 2-Way Portal");
+            Selection.activeGameObject = parent;
+            EditorGUIUtility.PingObject(parent);
+        }
+
+        private static GameObject CreatePortalNode(string name, Transform parent, Vector3 localPosition)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPosition;
+
+            BoxCollider col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(2f, 2f, 1f);
+            col.center = new Vector3(0f, 1f, 0f);
+
+            go.AddComponent<U3DPortal>();
+            U3DPortalDestination dest = go.AddComponent<U3DPortalDestination>();
+            dest.useRotation = false;
+
+            return go;
+        }
+
+        private static void WireDestination(U3DPortal portal, U3DPortalDestination destination)
+        {
+            SerializedObject so = new SerializedObject(portal);
+            so.FindProperty("destination").objectReferenceValue = destination;
+            so.ApplyModifiedProperties();
         }
 
         private static void AddGazeReticle()

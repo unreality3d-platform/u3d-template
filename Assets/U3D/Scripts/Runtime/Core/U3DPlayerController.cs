@@ -167,6 +167,9 @@ public class U3DPlayerController : NetworkBehaviour
     private bool _jumpPressedThisFrame;
     private bool _jumpPressedPending;
     private bool _justTeleported = false;
+    private U3D.U3DTrampoline _pendingTrampoline;
+    private float _pendingTrampolineHeight;
+    private float _pendingTrampolineLaunchTime;
 
     private U3DWebGLCursorManager _cursorManager;
     private U3D.Networking.U3DFusionNetworkManager _networkManager;
@@ -587,6 +590,7 @@ public class U3DPlayerController : NetworkBehaviour
             _jumpPressedPending = true;
 
         HandleGroundCheck();
+        ProcessPendingTrampolineLaunch();
 
         if (_isInVRMode)
         {
@@ -1675,6 +1679,47 @@ public class U3DPlayerController : NetworkBehaviour
             jumpCount++;
             NetworkIsJumping = true;
         }
+    }
+
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (!_isLocalPlayer) return;
+        if (_pendingTrampoline != null) return;
+        if (isGrounded) return;
+        if (velocity.y > -4f) return;
+        if (hit.normal.y < 0.5f) return;
+
+        var trampoline = hit.collider.GetComponentInParent<U3D.U3DTrampoline>();
+        if (trampoline == null) return;
+
+        trampoline.HandleLanding(this);
+    }
+
+    public void QueueTrampolineLaunch(U3D.U3DTrampoline trampoline, float height, float contactTime)
+    {
+        if (!_isLocalPlayer) return;
+        if (trampoline == null || height <= 0f) return;
+
+        float minimumContact = Runner.DeltaTime * 2f;
+        _pendingTrampoline = trampoline;
+        _pendingTrampolineHeight = height;
+        _pendingTrampolineLaunchTime = (float)Runner.SimulationTime + Mathf.Max(contactTime, minimumContact);
+    }
+
+    void ProcessPendingTrampolineLaunch()
+    {
+        if (_pendingTrampoline == null) return;
+        if ((float)Runner.SimulationTime < _pendingTrampolineLaunchTime) return;
+
+        var trampoline = _pendingTrampoline;
+        _pendingTrampoline = null;
+
+        velocity.y = Mathf.Sqrt(_pendingTrampolineHeight * -2f * gravity);
+        jumpCount = 1;
+        NetworkIsJumping = true;
+
+        if (trampoline != null)
+            trampoline.NotifyLaunched();
     }
 
     void HandleTeleportFusion(U3DPlayerInputState input)
