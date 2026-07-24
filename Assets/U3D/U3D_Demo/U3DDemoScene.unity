@@ -8034,12 +8034,12 @@ MonoBehaviour:
   beam: {fileID: 165295533}
   dot: {fileID: 969764779}
   maxRange: 50
+  stopAtSurfaces: 1
   hitMask:
     serializedVersion: 2
     m_Bits: 4294967295
   ignoreTag: Player
   beamRadius: 0.01
-  beamNativeLength: 1
   growDuration: 0.15
   dotBaseScale: 0.05
   pulseScale: 3
@@ -8866,6 +8866,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: U3D.Runtime::U3D.U3DTrampoline
   launchHeight: 8
+  contactTime: 0.15
   randomizeHeight: 1
   minLaunchHeight: 3
   maxLaunchHeight: 9

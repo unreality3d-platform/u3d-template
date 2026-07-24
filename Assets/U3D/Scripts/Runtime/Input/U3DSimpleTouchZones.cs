@@ -280,9 +280,11 @@ namespace U3D.Input
                     delta /= lookMaxTravel;
                     delta = Vector2.ClampMagnitude(delta, 1f);
 
-                    // Y is inverted: dragging up should look up. Screen Y increases
-                    // upward, world pitch decreases looking up — the negate stays.
-                    LookInput = new Vector2(delta.x, -delta.y) * lookSensitivity * lookSpeedMultiplier;
+                    // Y is passed through positive-up, matching Input System mouse delta.
+                    // U3DPlayerController converts screen-up to pitch-up with its
+                    // "cameraPitch -= lookInput.y" subtraction. Negating here as well
+                    // would apply that conversion twice and invert touch look.
+                    LookInput = new Vector2(delta.x, delta.y) * lookSensitivity * lookSpeedMultiplier;
                 }
             }
         }
