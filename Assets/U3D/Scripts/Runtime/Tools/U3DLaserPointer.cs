@@ -9,25 +9,28 @@ namespace U3D
         [Header("Rig References")]
         [Tooltip("Beam emits from here and fires along its forward (+Z). Falls back to this transform if empty.")]
         [SerializeField] private Transform tip;
-        [Tooltip("Beam mesh child. Length runs along local +Z, pivot at the emitting (near) end.")]
+        [Tooltip("Beam mesh child. Length runs along local +Z, pivot at the emitting (near) end. Its modelled size is measured automatically.")]
         [SerializeField] private Transform beam;
         [Tooltip("Dot mesh child placed where the beam lands. A small sphere reads from every viewpoint.")]
         [SerializeField] private Transform dot;
 
         [Header("Targeting")]
+        [Tooltip("Beam length in metres, and how far it looks for a surface when Stop At Surfaces is on.")]
         [SerializeField] private float maxRange = 50f;
+        [Tooltip("On: beam stops at the first surface and the dot lands there. Off: beam is always full length and passes through everything — rendered geometry hides the far part, so it still reads as landing on the wall. Turn off in scenes with no colliders.")]
+        [SerializeField] private bool stopAtSurfaces = true;
         [Tooltip("Coarse layer filter. Leave at Everything; the rig and tag exclusions below do the real work.")]
         [SerializeField] private LayerMask hitMask = ~0;
         [Tooltip("Beam also passes through anything with this tag and that tag's children (e.g. avatars). Clear to let the beam land on tagged objects.")]
         [SerializeField] private string ignoreTag = "Player";
 
         [Header("Beam Look")]
-        [SerializeField] private float beamRadius = 0.01f;
-        [Tooltip("Length of the beam mesh at scale 1 along +Z. A 1-unit custom mesh = 1.")]
-        [SerializeField] private float beamNativeLength = 1f;
+        [Tooltip("Beam radius in metres. Independent of how the beam mesh was modelled and of any scale on this prefab.")]
+        [SerializeField] private float beamRadius = 0.005f;
         [SerializeField] private float growDuration = 0.15f;
 
         [Header("Dot Look")]
+        [Tooltip("Dot diameter in metres.")]
         [SerializeField] private float dotBaseScale = 0.05f;
         [SerializeField] private float pulseScale = 3f;
         [SerializeField] private float pulseDuration = 0.4f;
@@ -42,11 +45,16 @@ namespace U3D
         private float _pulseT;
         private bool _pulsing;
 
+        private Vector3 _beamMeshSize = Vector3.one;
+        private Vector3 _dotMeshSize = Vector3.one;
+
         public bool IsActive => _active;
 
         private void Awake()
         {
             if (tip == null) tip = transform;
+            _beamMeshSize = MeasureMesh(beam);
+            _dotMeshSize = MeasureMesh(dot);
             SetVisualsVisible(false);
             if (startActive) Activate();
         }
@@ -87,7 +95,7 @@ namespace U3D
             float distance = maxRange;
             bool landed = false;
 
-            if (TryGetBeamTarget(out RaycastHit hit))
+            if (stopAtSurfaces && TryGetBeamTarget(out RaycastHit hit))
             {
                 distance = hit.distance;
                 landed = true;
@@ -103,8 +111,9 @@ namespace U3D
                 if (beam.gameObject.activeSelf != beamVisible) beam.gameObject.SetActive(beamVisible);
                 if (beamVisible)
                 {
+                    float diameter = beamRadius * 2f;
                     beam.SetPositionAndRotation(tip.position, Quaternion.LookRotation(tip.forward));
-                    beam.localScale = new Vector3(beamRadius, beamRadius, visibleLength / Mathf.Max(beamNativeLength, 0.0001f));
+                    beam.localScale = WorldSizeToLocalScale(beam, new Vector3(diameter, diameter, visibleLength), _beamMeshSize);
                 }
             }
 
@@ -117,14 +126,43 @@ namespace U3D
                 if (showDot)
                 {
                     if (!dot.gameObject.activeSelf) dot.gameObject.SetActive(true);
+                    float d = dotBaseScale * pulseMul;
                     dot.position = tip.position + tip.forward * (landed ? visibleLength : 0f);
-                    dot.localScale = Vector3.one * (dotBaseScale * pulseMul);
+                    dot.localScale = WorldSizeToLocalScale(dot, new Vector3(d, d, d), _dotMeshSize);
                 }
                 else if (dot.gameObject.activeSelf)
                 {
                     dot.gameObject.SetActive(false);
                 }
             }
+        }
+
+        /// <summary>Modelled size of a mesh in its own space, before any transform scale.</summary>
+        private static Vector3 MeasureMesh(Transform t)
+        {
+            if (t == null) return Vector3.one;
+            if (t.TryGetComponent(out MeshFilter mf) && mf.sharedMesh != null)
+            {
+                Vector3 s = mf.sharedMesh.bounds.size;
+                return new Vector3(
+                    Mathf.Max(s.x, 0.0001f),
+                    Mathf.Max(s.y, 0.0001f),
+                    Mathf.Max(s.z, 0.0001f));
+            }
+            return Vector3.one;
+        }
+
+        /// <summary>
+        /// Turns a desired world size into a localScale, cancelling both the mesh's modelled
+        /// size and any scale inherited from the parent, so the inspector fields mean metres.
+        /// </summary>
+        private static Vector3 WorldSizeToLocalScale(Transform t, Vector3 worldSize, Vector3 meshSize)
+        {
+            Vector3 p = t.parent != null ? t.parent.lossyScale : Vector3.one;
+            return new Vector3(
+                worldSize.x / (meshSize.x * Mathf.Max(Mathf.Abs(p.x), 0.0001f)),
+                worldSize.y / (meshSize.y * Mathf.Max(Mathf.Abs(p.y), 0.0001f)),
+                worldSize.z / (meshSize.z * Mathf.Max(Mathf.Abs(p.z), 0.0001f)));
         }
 
         private bool TryGetBeamTarget(out RaycastHit best)

@@ -110,5 +110,11 @@ namespace U3D.Editor
 
             return "";
         }
+
+        [System.Obsolete("Renamed to GetSearchTermForGameObject. This wrapper exists so template projects created before the rename continue to compile.")]
+        public static string GetSuggestionForGameObject(string gameObjectName)
+        {
+            return GetSearchTermForGameObject(gameObjectName);
+        }
     }
 }
