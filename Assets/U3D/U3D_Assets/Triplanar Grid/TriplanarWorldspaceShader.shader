@@ -223,27 +223,33 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             #pragma vertex vert
             #pragma fragment frag
             
+            // Required for XR stereo. Without it the UNITY_*_STEREO macros below
+            // compile to nothing and the shader is stereo-blind in a headset.
+            #pragma multi_compile_instancing
+            
             #pragma shader_feature_local _USE_WORLD_SPACE
             #pragma shader_feature_local _USE_BIPLANAR
             #pragma shader_feature_local_fragment _NORMALMAP
             #pragma shader_feature_local_fragment _METALLICGLOSSMAP
             #pragma shader_feature_local_fragment _EMISSION
             
-            // WebGL-optimized multi_compile directives
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
+            // _FORWARD_PLUS is the URP 14-16 name, _CLUSTER_LIGHT_LOOP the URP 17+ name.
+            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fog
             
-            // Strip resource-intensive variants for WebGL
             #pragma skip_variants LIGHTMAP_ON DYNAMICLIGHTMAP_ON LIGHTMAP_SHADOW_MIXING SHADOWS_SHADOWMASK DIRLIGHTMAP_COMBINED
-            #pragma skip_variants _ADDITIONAL_LIGHT_SHADOWS _SHADOWS_SOFT _SCREEN_SPACE_OCCLUSION _CLUSTERED_RENDERING
+            #pragma skip_variants _ADDITIONAL_LIGHT_SHADOWS _SHADOWS_SOFT _SCREEN_SPACE_OCCLUSION
             #pragma skip_variants _REFLECTION_PROBE_BLENDING _REFLECTION_PROBE_BOX_PROJECTION _LIGHT_LAYERS
             
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 half3 normalOS : NORMAL;
-                half4 tangentOS : TANGENT;
+                #if defined(_NORMALMAP) && !defined(_USE_WORLD_SPACE)
+                    half4 tangentOS : TANGENT;
+                #endif
                 float2 texcoord : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -272,14 +278,17 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 
                 VertexPositionInputs vertexInput = GetVertexPositionInputs(input.positionOS.xyz);
-                VertexNormalInputs normalInput = GetVertexNormalInputs(input.normalOS, input.tangentOS);
                 
                 output.positionCS = vertexInput.positionCS;
                 output.positionWS = vertexInput.positionWS;
-                output.normalWS = normalInput.normalWS;
                 
                 #if defined(_NORMALMAP) && !defined(_USE_WORLD_SPACE)
+                    VertexNormalInputs normalInput = GetVertexNormalInputs(input.normalOS, input.tangentOS);
+                    output.normalWS = normalInput.normalWS;
                     output.tangentWS = half4(normalInput.tangentWS, input.tangentOS.w);
+                #else
+                    VertexNormalInputs normalInput = GetVertexNormalInputs(input.normalOS);
+                    output.normalWS = normalInput.normalWS;
                 #endif
                 
                 output.viewDirWS = GetWorldSpaceViewDir(vertexInput.positionWS);
@@ -406,6 +415,7 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             #pragma vertex ShadowPassVertex
             #pragma fragment ShadowPassFragment
             
+            #pragma multi_compile_instancing
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonMaterial.hlsl"
@@ -473,6 +483,8 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             #pragma vertex DepthOnlyVertex
             #pragma fragment DepthOnlyFragment
             
+            #pragma multi_compile_instancing
+            
             struct DepthOnlyAttributes
             {
                 float4 position : POSITION;
@@ -490,6 +502,7 @@ Shader "U3D/TriplanarURP_WebGL_Optimized"
             {
                 DepthOnlyVaryings output = (DepthOnlyVaryings)0;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.positionCS = TransformObjectToHClip(input.position.xyz);
                 return output;
