@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using System.Globalization;
 
 namespace U3D.Editor
 {
@@ -14,6 +15,7 @@ namespace U3D.Editor
         private const string RELEASES_API_URL =
             "https://api.github.com/repos/unreality3d-platform/u3d-template/releases/latest";
 
+        private const string VERSION_FORMAT = "MM-dd-yy-HH-mm-ss";
         private static bool _hasCheckedThisSession;
         private static bool _isCheckingForUpdate;
         private static bool _isDownloading;
@@ -53,13 +55,27 @@ namespace U3D.Editor
 
         public static bool IsNewerVersion(string remote, string local)
         {
-            if (string.IsNullOrEmpty(remote) || string.IsNullOrEmpty(local))
+            if (string.IsNullOrEmpty(remote))
                 return false;
 
-            string normalizedRemote = remote.Replace("u3d-update-", "");
-            string normalizedLocal = local.Replace("u3d-update-", "");
+            if (string.IsNullOrEmpty(local))
+                return true;
 
-            return string.Compare(normalizedRemote, normalizedLocal, StringComparison.Ordinal) > 0;
+            string normalizedRemote = remote.Replace("u3d-update-", "").Trim();
+            string normalizedLocal = local.Replace("u3d-update-", "").Trim();
+
+            bool remoteParsed = DateTime.TryParseExact(
+                normalizedRemote, VERSION_FORMAT, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out DateTime remoteDate);
+
+            bool localParsed = DateTime.TryParseExact(
+                normalizedLocal, VERSION_FORMAT, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out DateTime localDate);
+
+            if (remoteParsed && localParsed)
+                return remoteDate > localDate;
+
+            return !string.Equals(normalizedRemote, normalizedLocal, StringComparison.OrdinalIgnoreCase);
         }
 
         public static void CheckForUpdateIfNeeded()

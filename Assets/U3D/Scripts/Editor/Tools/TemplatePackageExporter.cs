@@ -15,13 +15,14 @@ namespace U3D.Editor.Tools
         private const string EXPORT_PATH = "Build/Updates";
 
         // CORE U3D SYSTEMS - Always include in updates
+        // Only paths under Assets/ can ship. AssetDatabase.ExportPackage ignores
+        // anything outside it, including .github/workflows.
         private static readonly string[] CORE_UPDATE_PATHS = {
             "Assets/U3D",                              // Core U3D SDK and tools
             "Assets/U3D_SDK",                          // Publishing and monetization systems  
             "Assets/Plugins/U3D",                      // U3D-specific plugins
             "Assets/StreamingAssets/U3D",              // U3D streaming assets
             "Assets/Settings",                         // URP/renderer/quality/post-process assets
-            ".github/workflows/reassemble-chunks.yml"  // Critical: Chunking system workflow
         };
 
         // USER CONTENT - NEVER include in updates (preserve user work)
@@ -273,9 +274,19 @@ namespace U3D.Editor.Tools
             return $"{len:0.##} {sizes[order]}";
         }
 
+        [Serializable]
+        private class VersionInfo
+        {
+            public string version;
+            public string timestamp;
+            public string packagePath;
+            public int assetCount;
+            public string type;
+        }
+
         private static void CreateVersionInfoFile(string version, string packagePath, int assetCount)
         {
-            var versionInfo = new
+            var versionInfo = new VersionInfo
             {
                 version = version,
                 timestamp = DateTime.UtcNow.ToString("O"),

@@ -22,8 +22,9 @@ on:
     branches: [main]
     paths:
       - 'Assets/U3D/**'
-      - 'Assets/U3D_SDK/**' 
+      - 'Assets/U3D_SDK/**'
       - 'Assets/Plugins/**'
+      - 'Assets/Settings/**'
       - 'Assets/StreamingAssets/U3D/**'
       - 'ProjectSettings/**'
   
