@@ -261,10 +261,11 @@ namespace U3D
             // Rig is ready. Resolve each marker's bone. A null result now is permanent (a bone the
             // rig lacks, an unset bone, a missing override name) — that piece is skipped silently.
             var resolvedBones = new Transform[prefabMarkers.Length];
+            var resolvedByRole = new bool[prefabMarkers.Length];
             bool anyResolved = false;
             for (int i = 0; i < prefabMarkers.Length; i++)
             {
-                Transform bone = ResolveBone(prefabMarkers[i]);
+                Transform bone = ResolveBone(prefabMarkers[i], out resolvedByRole[i]);
                 resolvedBones[i] = bone;
                 if (bone != null) anyResolved = true;
             }
@@ -292,7 +293,8 @@ namespace U3D
                 return true;
             }
 
-            // The avatar's facing is the same reference for every piece, so read it once.
+            // Fallback reference when no neutral-pose data exists for a bone: the avatar's current
+            // facing, read once (the pre-neutral-capture behavior).
             Quaternion avatarFacing = avatarInstance.transform.rotation;
 
             // Reference for the head-piece check below. Null on a non-humanoid rig — override-socket
@@ -326,16 +328,26 @@ namespace U3D
                 Transform m = marker.transform;
 
                 // Parent with worldPositionStays = false so the piece inherits the bone's scale (a
-                // hat on a scaled-up avatar scales with it). Then align: orientation from the avatar's
-                // facing, position from the bone.
+                // hat on a scaled-up avatar scales with it). Then align: orientation from the
+                // neutral-stance frame, position from the bone.
                 piece.SetParent(bone, false);
 
-                // Orient to the avatar's facing, NOT the bone. Humanoid bone axes — especially the
-                // head — point in arbitrary per-rig directions, so aligning to the bone's own frame
-                // faces the piece unpredictably. The marker's authored forward lines up with the way
-                // the avatar faces. The piece stays parented to the bone, so it follows head and limb
-                // motion from this baked starting orientation.
-                piece.rotation = (avatarFacing * Quaternion.Inverse(m.rotation)) * piece.rotation;
+                // Orient against the bone's NEUTRAL-STANCE frame, not its animated rotation at
+                // this instant. bone.rotation * Inverse(neutralRel) is the world frame in which
+                // the marker's authored forward faces the avatar's forward whenever the bone is
+                // in the neutral pose — so the baked local orientation is a constant, and wearing
+                // the accessory mid-fly, mid-jump, or mid-swing lands identically to wearing it
+                // at idle. Never the bone's own axes, which point in arbitrary per-rig directions.
+                // Falls back to the avatar's current facing when no neutral data exists (override
+                // sockets, non-humanoid rigs, capture failure) — the previous behavior.
+                Quaternion targetMarkerWorld = avatarFacing;
+                if (resolvedByRole[i]
+                    && _avatarManager.TryGetNeutralBoneRotation(prefabMarkers[i].TargetBone, out Quaternion neutralRel))
+                {
+                    targetMarkerWorld = bone.rotation * Quaternion.Inverse(neutralRel);
+                }
+
+                piece.rotation = (targetMarkerWorld * Quaternion.Inverse(m.rotation)) * piece.rotation;
 
                 // Position read after the rotation, because rotating the piece carries its marker
                 // with it.
@@ -376,9 +388,12 @@ namespace U3D
         /// Resolves the target bone on this player's equipped avatar. Honors an optional exact bone-
         /// name override first (for non-humanoid rigs or custom sockets), then the Humanoid role.
         /// Returns null when the avatar isn't ready, isn't humanoid, or the rig has no such bone.
+        /// resolvedByRole reports whether the Humanoid role produced the result — only role-resolved
+        /// bones have neutral-pose data, so override-named sockets keep the pose-dependent alignment.
         /// </summary>
-        private Transform ResolveBone(U3DAttachmentPoint marker)
+        private Transform ResolveBone(U3DAttachmentPoint marker, out bool resolvedByRole)
         {
+            resolvedByRole = false;
             if (_avatarManager == null) return null;
 
             if (!string.IsNullOrEmpty(marker.BoneNameOverride))
@@ -397,7 +412,9 @@ namespace U3D
             if (animator == null || !animator.isHuman) return null;
             if (marker.TargetBone == HumanBodyBones.LastBone) return null;
 
-            return animator.GetBoneTransform(marker.TargetBone);
+            Transform roleBone = animator.GetBoneTransform(marker.TargetBone);
+            resolvedByRole = roleBone != null;
+            return roleBone;
         }
 
         private void DestroyBuilt(Built built)

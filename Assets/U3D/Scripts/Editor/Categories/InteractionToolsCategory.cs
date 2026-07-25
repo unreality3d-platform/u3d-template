@@ -17,9 +17,9 @@ namespace U3D.Editor
             tools = new List<CreatorTool>
             {
                 new CreatorTool("🟢 Make Object Spawner", "Spawns a prefab at this location. Enable 'Networked Spawn' on the component to have all players see the spawned object — your prefab must have a NetworkObject for that to work.", ApplyObjectSpawner, true),
-                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance. Released objects float in place — use Make Throwable with 'Drop On Release' for gravity drop.", ApplyGrabbable, true),
-                new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown", ApplyThrowable, true),
-                new CreatorTool("🟢 Make Kickable", "Objects can be moved with avatar feet", ApplyKickable, true),
+                new CreatorTool("🟢 Make Grabbable", "Objects can be picked up from an adjustable distance. Released objects float in place — use Make Throwable with 'Drop On Release' for gravity drop. Pair with Add Grab Point to control exactly how the object sits in the hand.", ApplyGrabbable, true),
+                new CreatorTool("🟢 Make Throwable", "Objects can be picked up and thrown or dropped. Pair with Add Grab Point to control exactly how the object sits in the hand.", ApplyThrowable, true),
+                new CreatorTool("🟢 Add Grab Point", "Controls how a Grabbable or Throwable sits in the hand. Adds a Grab Point child — move it to where the hand grips the object, and rotate it so its green arrow points away from the player when held. Without one, objects use the Grab Offset field and keep their pickup rotation.", ApplyAddGrabPoint, true),
                 new CreatorTool("🟢 Make Pushable", "Objects can be pushed along surfaces by walking into them. Activates with the interaction key — toggle on to start pushing, toggle off or walk out of range to stop.", ApplyPushable, true),
                 new CreatorTool("🟢 Make Pullable", "Objects can be dragged along surfaces in the direction behind the player. Activates with the interaction key — toggle on to start pulling, toggle off or walk out of range to stop.", ApplyPullable, true),
                 new CreatorTool("🟢 Make Climbable", "Surfaces players can climb (W=up, S=down, A/D=lateral, Space=detach)", ApplyClimbable, true),
@@ -190,6 +190,52 @@ namespace U3D.Editor
                 selected.AddComponent<U3DThrowable>();
 
             EditorUtility.SetDirty(selected);
+        }
+
+        private static void ApplyAddGrabPoint()
+        {
+            GameObject selected = Selection.activeGameObject;
+            if (selected == null)
+            {
+                Debug.LogWarning("Please select an object first");
+                return;
+            }
+
+            if (selected.GetComponent<U3DGrabbable>() == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Add Grab Point",
+                    "This object isn't grabbable yet. Run Make Grabbable or Make Throwable on it first, then click Add Grab Point.",
+                    "OK");
+                return;
+            }
+
+            // Idempotent — reuse an existing marker anywhere under this object.
+            var existing = selected.GetComponentInChildren<U3DGrabPoint>(true);
+            if (existing != null)
+            {
+                Debug.Log($"'{selected.name}' already has a Grab Point. Adjust its position and rotation in the Scene view.");
+                Selection.activeGameObject = existing.gameObject;
+                EditorGUIUtility.PingObject(existing.gameObject);
+                return;
+            }
+
+            GameObject pointGO = new GameObject("Grab Point");
+            Undo.RegisterCreatedObjectUndo(pointGO, "Add Grab Point");
+            pointGO.transform.SetParent(selected.transform, false);
+            pointGO.transform.localPosition = Vector3.zero;
+            pointGO.transform.localRotation = Quaternion.identity;
+            pointGO.AddComponent<U3DGrabPoint>();
+
+            // Works inside an open Prefab Stage too — mark the stage dirty so the
+            // save prompt appears, matching the Add Attachment Point pattern.
+            var prefabStage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null && prefabStage.IsPartOfPrefabContents(selected))
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(prefabStage.scene);
+
+            EditorUtility.SetDirty(selected);
+            Selection.activeGameObject = pointGO;
+            EditorGUIUtility.PingObject(pointGO);
         }
 
         private static void ApplyKickable()

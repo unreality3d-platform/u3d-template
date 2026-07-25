@@ -72,6 +72,14 @@ namespace U3D
         // (wrong for objects with meaningful starting orientation) or have to guess.
         [Networked] public Quaternion NetworkGrabLocalRotation { get; set; }
 
+        // Position of the held object relative to the grabber's hand bone, captured at
+        // grab moment on the state authority — the positional twin of
+        // NetworkGrabLocalRotation. With a Grab Point marker the held local position is
+        // computed at grab time rather than authored in grabOffset, so remote viewers
+        // can't reconstruct it from the serialized field. Without a marker this equals
+        // grabOffset, so legacy behavior is unchanged.
+        [Networked] public Vector3 NetworkGrabLocalPosition { get; set; }
+
         // Components
         private Rigidbody rb;
         private NetworkRigidbody3D networkRb3D;
@@ -83,6 +91,7 @@ namespace U3D
         private Camera playerCamera;
         private NetworkObject networkObject;
         private U3DPlayerController playerController;
+        private U3DGrabPoint grabPoint;
 
         // Remote-viewer cache for tracking the grabber's hand bone. Lets Render()
         // interpolate the held object toward the grabber's hand on every remote
@@ -112,6 +121,7 @@ namespace U3D
         private bool originalWasKinematic;
         private bool originalUsedGravity;
         private bool hasStoredOriginalPhysicsState = false;
+        private bool originalIsTrigger;
         private Coroutine _releaseCollisionCoroutine;
         private Coroutine _startActiveSettleCoroutine;
 
@@ -141,7 +151,9 @@ namespace U3D
             hasNetworkRb3D = networkRb3D != null;
             throwable = GetComponent<U3DThrowable>();
             col = GetComponent<Collider>();
+            originalIsTrigger = col.isTrigger;
             originalParent = transform.parent;
+            grabPoint = GetComponentInChildren<U3DGrabPoint>(true);
 
             networkObject = GetComponent<NetworkObject>();
             isNetworked = networkObject != null;
@@ -275,8 +287,11 @@ namespace U3D
             // grabber's local SetParent + SyncParent=false means no position
             // updates are replicated to us.
             //
-            // Position uses TransformPoint(grabOffset) to match exactly what the
-            // grabber does locally — handles non-unit avatar rig scale correctly.
+            // Position uses TransformPoint(NetworkGrabLocalPosition), the local
+            // position the state authority captured after parenting — matches
+            // exactly what the grabber sees for both the Grab Point path (computed
+            // pose) and the legacy path (where it equals grabOffset), and handles
+            // non-unit avatar rig scale correctly.
             //
             // Rotation uses grabberHand.rotation * NetworkGrabLocalRotation, where
             // NetworkGrabLocalRotation was captured at grab moment by the state
@@ -295,7 +310,7 @@ namespace U3D
 
             transform.position = Vector3.Lerp(
                 transform.position,
-                grabberHand.TransformPoint(grabOffset),
+                grabberHand.TransformPoint(NetworkGrabLocalPosition),
                 0.5f
             );
 
@@ -452,10 +467,59 @@ namespace U3D
                 if (handTransform == null) return;
             }
 
+            Vector3 targetWorldPos;
+            Quaternion targetWorldRot;
+
+            if (grabPoint != null)
+            {
+                // Rigid mapping that moves the whole object so the Grab Point lands on the
+                // hold point with the marker's frame aligned to the hand's NEUTRAL-STANCE
+                // orientation: marker forward points away from the player, marker up points
+                // up, judged as if the avatar were standing in the neutral pose. Because the
+                // reference is the cached neutral frame rather than the animated pose at
+                // this instant, grabbing mid-swing, mid-jump, or mid-fly bakes the identical
+                // in-hand pose as grabbing at idle. The hold point sits a fixed distance out
+                // from the wrist joint along the forearm line — the Humanoid hand bone's
+                // pivot IS the wrist on every rig, so without this offset objects land on
+                // the wrist instead of in the palm.
+                //
+                // Fallback (custom hand socket, non-humanoid avatar, or no neutral data):
+                // the marker lands directly on the resolved transform, aligned to the
+                // player's current facing.
+                Quaternion targetMarkerWorld = playerTransform.rotation;
+                Vector3 holdPointWorld = handTransform.position;
+
+                U3DAvatarManager am = playerController != null
+                    ? playerController.GetComponent<U3DAvatarManager>()
+                    : null;
+                bool wantsLeft = !string.IsNullOrEmpty(handBoneName)
+                    && handBoneName.IndexOf("Left", System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (am != null && am.TryGetHandGrabFrame(handTransform, wantsLeft,
+                        out Quaternion neutralRel, out Vector3 anchorLocalDir))
+                {
+                    targetMarkerWorld = handTransform.rotation * Quaternion.Inverse(neutralRel);
+                    holdPointWorld = handTransform.position
+                        + handTransform.TransformDirection(anchorLocalDir) * grabPoint.AnchorDistance;
+                }
+
+                // Expressed as a delta from the object's current pose, so it's exact for
+                // any marker nesting depth and unaffected by object scale.
+                targetWorldRot = targetMarkerWorld
+                    * (Quaternion.Inverse(grabPoint.transform.rotation) * transform.rotation);
+                Quaternion rigidDelta = targetWorldRot * Quaternion.Inverse(transform.rotation);
+                targetWorldPos = holdPointWorld
+                    + rigidDelta * (transform.position - grabPoint.transform.position);
+            }
+            else
+            {
+                targetWorldPos = handTransform.TransformPoint(grabOffset);
+                targetWorldRot = transform.rotation;
+            }
+
             if (networkRb3D != null)
             {
-                Vector3 targetWorldPos = handTransform.TransformPoint(grabOffset);
-                networkRb3D.Teleport(targetWorldPos, transform.rotation);
+                networkRb3D.Teleport(targetWorldPos, targetWorldRot);
                 networkRb3D.SyncParent = false;
             }
 
@@ -481,16 +545,28 @@ namespace U3D
                 rb.useGravity = false;
             }
 
-            transform.SetParent(handTransform);
-            transform.localPosition = grabOffset;
+            if (grabPoint != null)
+            {
+                // Apply the computed pose explicitly before parenting — Teleport routes
+                // through the physics step, so the transform may not reflect it yet, and
+                // the localPosition/localRotation captured below must be exact.
+                transform.SetPositionAndRotation(targetWorldPos, targetWorldRot);
+                transform.SetParent(handTransform, true);
+            }
+            else
+            {
+                transform.SetParent(handTransform);
+                transform.localPosition = grabOffset;
+            }
 
-            // Capture the object's rotation relative to the hand bone right after
-            // parenting. This is what Render() on remote viewers needs to
-            // reconstruct the same world rotation the grabber sees. Done AFTER
-            // SetParent so localRotation is meaningful relative to the hand bone.
+            // Capture the object's pose relative to the hand bone right after parenting.
+            // This is what Render() on remote viewers needs to reconstruct the same world
+            // pose the grabber sees. Done AFTER SetParent so local values are meaningful
+            // relative to the hand bone.
             if (isNetworked && Object.HasStateAuthority)
             {
                 NetworkGrabLocalRotation = transform.localRotation;
+                NetworkGrabLocalPosition = transform.localPosition;
             }
 
             OnGrabbed?.Invoke();
@@ -537,6 +613,7 @@ namespace U3D
                 NetworkIsGrabbed = false;
                 NetworkGrabbedBy = PlayerRef.None;
                 NetworkGrabLocalRotation = Quaternion.identity;
+                NetworkGrabLocalPosition = Vector3.zero;
             }
 
             // Only re-enable SyncParent if there's no throwable to manage it
@@ -596,32 +673,11 @@ namespace U3D
             OnReleased?.Invoke();
         }
 
-        private void PerformDirectParenting()
-        {
-            if (_releaseCollisionCoroutine != null)
-            {
-                StopCoroutine(_releaseCollisionCoroutine);
-                _releaseCollisionCoroutine = null;
-            }
-
-            col.isTrigger = true;
-            int originalLayer = gameObject.layer;
-            SetLayerRecursively(gameObject, LayerMask.NameToLayer("Ignore Raycast"));
-            PlayerPrefs.SetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", originalLayer);
-
-            transform.SetParent(handTransform);
-            transform.localPosition = grabOffset;
-        }
-
         private void PerformDirectUnparenting()
         {
             transform.SetParent(originalParent);
 
-            int originalLayer = PlayerPrefs.GetInt($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}", 0);
-            SetLayerRecursively(gameObject, originalLayer);
-            PlayerPrefs.DeleteKey($"U3DGrabbable_OriginalLayer_{gameObject.GetInstanceID()}");
-
-            col.isTrigger = false;
+            col.isTrigger = originalIsTrigger;
 
             // When a Throwable is present, Throwable owns the collision-ignore
             // lifecycle via its own penetration-polling coroutine. Two coroutines
@@ -651,13 +707,6 @@ namespace U3D
             if (col != null && cc != null)
                 Physics.IgnoreCollision(col, cc, false);
             _releaseCollisionCoroutine = null;
-        }
-
-        private void SetLayerRecursively(GameObject obj, int layer)
-        {
-            obj.layer = layer;
-            foreach (Transform child in obj.transform)
-                SetLayerRecursively(child.gameObject, layer);
         }
 
         private bool IsCurrentlyGrabbed()
@@ -858,7 +907,7 @@ namespace U3D
                 // a held object entering a Destroy-mode trash zone.
 
                 if (col != null)
-                    col.isTrigger = false;
+                    col.isTrigger = originalIsTrigger;
             }
         }
     }

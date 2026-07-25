@@ -29,6 +29,23 @@ public class U3DAvatarManager : NetworkBehaviour
     private U3DAvatarIK avatarIK;
     private Transform _handAnchor;
 
+    // Neutral-pose reference data, captured once at avatar initialization via
+    // HumanPoseHandler. The avatar is silently posed to Unity's muscle-neutral stance
+    // (the same normalized pose on every humanoid rig, regardless of whether the file
+    // was exported in T-pose or A-pose), each bone's rotation relative to the avatar
+    // root is recorded, and the original pose is restored — all within one frame, never
+    // visible. Attachments and grabs bake their orientation against this fixed frame
+    // instead of the bone's animated rotation at the attach moment, so attaching
+    // mid-fly, mid-jump, or mid-swing produces the identical result as attaching at
+    // idle. Also caches the elbow→wrist direction in each hand bone's local frame,
+    // used to place held objects a fixed distance out from the wrist joint.
+    private Quaternion[] _neutralBoneRotations;
+    private bool[] _neutralBoneValid;
+    private Vector3 _leftHandAnchorDir;
+    private Vector3 _rightHandAnchorDir;
+    private bool _leftHandAnchorValid;
+    private bool _rightHandAnchorValid;
+
     // Renderers of cosmetic attachments riding this avatar's bones, registered by
     // U3DPlayerAttachments. Toggled alongside the body in UpdateAvatarVisibility so attachments
     // follow the avatar's own first-person / VR / third-person visibility with no special rules.
@@ -118,6 +135,8 @@ public class U3DAvatarManager : NetworkBehaviour
             // Any avatar prefab with Apply Root Motion enabled will otherwise drift away from the capsule.
             avatarAnimator.applyRootMotion = false;
 
+            CaptureNeutralPoseData();
+
             // Connect to animation system
             ConnectToAnimationSystem();
 
@@ -137,6 +156,154 @@ public class U3DAvatarManager : NetworkBehaviour
         {
             Debug.LogError($"❌ Failed to initialize avatar: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// Captures the neutral-pose reference frame for every mapped Humanoid bone. Poses the
+    /// avatar to the muscle-neutral stance with HumanPoseHandler, records each bone's
+    /// rotation relative to the avatar root plus the elbow→wrist direction in each hand's
+    /// local frame, then restores the original pose. Fully synchronous — the neutral pose
+    /// is never rendered. No-op on non-humanoid avatars; consumers fall back to
+    /// pose-dependent behavior when no data was captured.
+    /// </summary>
+    private void CaptureNeutralPoseData()
+    {
+        _neutralBoneRotations = null;
+        _neutralBoneValid = null;
+        _leftHandAnchorValid = false;
+        _rightHandAnchorValid = false;
+
+        if (avatarInstance == null || avatarAnimator == null) return;
+        if (!avatarAnimator.isHuman || avatarAnimator.avatar == null) return;
+
+        HumanPoseHandler poseHandler = null;
+        try
+        {
+            poseHandler = new HumanPoseHandler(avatarAnimator.avatar, avatarInstance.transform);
+
+            HumanPose pose = new HumanPose();
+            poseHandler.GetHumanPose(ref pose);
+
+            Vector3 originalBodyPosition = pose.bodyPosition;
+            Quaternion originalBodyRotation = pose.bodyRotation;
+            float[] originalMuscles = (float[])pose.muscles.Clone();
+
+            // Muscle-neutral stance, hips aligned to the avatar root — the same
+            // normalized pose on every humanoid rig.
+            for (int i = 0; i < pose.muscles.Length; i++)
+                pose.muscles[i] = 0f;
+            pose.bodyRotation = Quaternion.identity;
+            poseHandler.SetHumanPose(ref pose);
+
+            Quaternion invRoot = Quaternion.Inverse(avatarInstance.transform.rotation);
+            int boneCount = (int)HumanBodyBones.LastBone;
+            _neutralBoneRotations = new Quaternion[boneCount];
+            _neutralBoneValid = new bool[boneCount];
+
+            for (int i = 0; i < boneCount; i++)
+            {
+                Transform bone = avatarAnimator.GetBoneTransform((HumanBodyBones)i);
+                if (bone == null) continue;
+                _neutralBoneRotations[i] = invRoot * bone.rotation;
+                _neutralBoneValid[i] = true;
+            }
+
+            CaptureHandAnchorDirection(HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand,
+                out _leftHandAnchorDir, out _leftHandAnchorValid);
+            CaptureHandAnchorDirection(HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand,
+                out _rightHandAnchorDir, out _rightHandAnchorValid);
+
+            // Restore the pose exactly as it was.
+            pose.bodyPosition = originalBodyPosition;
+            pose.bodyRotation = originalBodyRotation;
+            System.Array.Copy(originalMuscles, pose.muscles, originalMuscles.Length);
+            poseHandler.SetHumanPose(ref pose);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"U3DAvatarManager: neutral pose capture failed ({e.Message}) — attachments and grabs will use pose-dependent fallback.");
+            _neutralBoneRotations = null;
+            _neutralBoneValid = null;
+            _leftHandAnchorValid = false;
+            _rightHandAnchorValid = false;
+        }
+        finally
+        {
+            poseHandler?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Records the elbow→wrist direction expressed in the hand bone's local frame, read
+    /// while the avatar is posed neutral. Both directions are rotation-only (unaffected by
+    /// scale), so the result is a constant unit direction that rides the hand at runtime.
+    /// </summary>
+    private void CaptureHandAnchorDirection(HumanBodyBones lowerArmBone, HumanBodyBones handBone,
+        out Vector3 handLocalDirection, out bool valid)
+    {
+        handLocalDirection = Vector3.zero;
+        valid = false;
+
+        Transform lowerArm = avatarAnimator.GetBoneTransform(lowerArmBone);
+        Transform hand = avatarAnimator.GetBoneTransform(handBone);
+        if (lowerArm == null || hand == null) return;
+
+        Vector3 worldDir = hand.position - lowerArm.position;
+        if (worldDir.sqrMagnitude < 0.0001f) return;
+
+        handLocalDirection = hand.InverseTransformDirection(worldDir.normalized);
+        valid = true;
+    }
+
+    /// <summary>
+    /// Returns the given Humanoid bone's neutral-pose rotation relative to the avatar
+    /// root, captured at avatar initialization. At runtime,
+    /// bone.rotation * Quaternion.Inverse(result) gives the world frame a marker should
+    /// align to so that its authored forward faces the avatar's forward whenever the bone
+    /// is in the neutral stance — making baked orientations independent of the animated
+    /// pose at the attach moment. False when no data exists (non-humanoid avatar, unmapped
+    /// bone, or capture failure); callers fall back to pose-dependent behavior.
+    /// </summary>
+    public bool TryGetNeutralBoneRotation(HumanBodyBones bone, out Quaternion neutralRelRotation)
+    {
+        neutralRelRotation = Quaternion.identity;
+        if (_neutralBoneRotations == null || _neutralBoneValid == null) return false;
+
+        int index = (int)bone;
+        if (index < 0 || index >= _neutralBoneRotations.Length) return false;
+        if (!_neutralBoneValid[index]) return false;
+
+        neutralRelRotation = _neutralBoneRotations[index];
+        return true;
+    }
+
+    /// <summary>
+    /// Provides the grab frame for a resolved hand: the hand bone's neutral-pose rotation
+    /// (for pose-independent orientation baking) and the elbow→wrist direction in hand-local
+    /// space (for placing held objects a fixed distance out from the wrist joint, along the
+    /// forearm line). Returns false when the resolved transform is not this avatar's actual
+    /// Humanoid hand bone — a creator-typed custom socket is treated as the exact intended
+    /// attach point and gets neither adjustment — or when no neutral data was captured.
+    /// </summary>
+    public bool TryGetHandGrabFrame(Transform resolvedHand, bool leftHand,
+        out Quaternion neutralRelRotation, out Vector3 anchorLocalDirection)
+    {
+        neutralRelRotation = Quaternion.identity;
+        anchorLocalDirection = Vector3.zero;
+
+        if (resolvedHand == null) return false;
+        if (avatarAnimator == null || !avatarAnimator.isHuman) return false;
+
+        HumanBodyBones handBone = leftHand ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand;
+        if (avatarAnimator.GetBoneTransform(handBone) != resolvedHand) return false;
+
+        if (!TryGetNeutralBoneRotation(handBone, out neutralRelRotation)) return false;
+
+        bool anchorValid = leftHand ? _leftHandAnchorValid : _rightHandAnchorValid;
+        if (!anchorValid) return false;
+
+        anchorLocalDirection = leftHand ? _leftHandAnchorDir : _rightHandAnchorDir;
+        return true;
     }
 
     /// <summary>
