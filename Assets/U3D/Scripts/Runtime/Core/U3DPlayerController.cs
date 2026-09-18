@@ -202,7 +202,8 @@ public class U3DPlayerController : NetworkBehaviour
 
     private bool _vrRecenterPending = false;
     private float _vrRecenterTargetYaw = 0f;
-    private bool _vrSnapTurnedThisFrame = false;
+    private Transform _xrTrackingOrigin;
+    private Transform _vrCameraOriginalParent;
 
     [Header("VR Teleport")]
     [Tooltip("Material used for the VR teleport arc and reticle line renderers. Assign any URP/Unlit material in the Inspector. Required — without it the arc will not render in WebGL builds.")]
@@ -808,13 +809,13 @@ public class U3DPlayerController : NetworkBehaviour
         // VR forward motion is the stick; clear the state on entry.
         isAutoRunning = false;
 
-        // Capture the player root's current yaw before TPD starts overriding the
-        // camera rotation. This is the spawn-rotation direction we want the user
-        // to face when VR initializes. The recenter logic in LateUpdate will rotate
-        // the player root once TPD has reported a valid HMD pose, so that
-        // playerRoot.rotation * hmdRotation lands the camera on this target yaw.
+        // The heading the player had before entering VR. The recenter pass in LateUpdate
+        // turns the tracking origin so the camera's world yaw lands here; the body is not
+        // turned at entry.
         _vrRecenterTargetYaw = transform.eulerAngles.y;
         _vrRecenterPending = true;
+
+        EnsureXRTrackingOrigin();
 
         if (_headInputSystemPoseDriver != null)
         {
@@ -824,9 +825,10 @@ public class U3DPlayerController : NetworkBehaviour
 
         TryResolveHeadBone();
 
-        if (cameraPivot != null && playerCamera != null)
+        if (playerCamera != null)
         {
-            playerCamera.transform.SetParent(transform);
+            _vrCameraOriginalParent = playerCamera.transform.parent;
+            playerCamera.transform.SetParent(_xrTrackingOrigin);
             playerCamera.transform.localRotation = Quaternion.identity;
         }
 
@@ -852,13 +854,27 @@ public class U3DPlayerController : NetworkBehaviour
         if (_avatarManager != null) _avatarManager.SetVRMode(true);
     }
 
+    // The XR tracking origin sits between the player root and everything the headset poses
+    // (the camera, the raw HMD reference, and the runtime controller objects). Rotating the
+    // body and counter-rotating the origin lets the body turn without turning the view.
+    private void EnsureXRTrackingOrigin()
+    {
+        if (_xrTrackingOrigin != null) return;
+
+        GameObject originGO = new GameObject("U3D_XRTrackingOrigin");
+        _xrTrackingOrigin = originGO.transform;
+        _xrTrackingOrigin.SetParent(transform, false);
+        _xrTrackingOrigin.localPosition = Vector3.zero;
+        _xrTrackingOrigin.localRotation = Quaternion.identity;
+    }
+
     private void EnsureRawHmdReference()
     {
         if (_rawHmdReference != null) return;
 
         GameObject hmdRefGO = new GameObject("U3D_RawHmdReference");
         hmdRefGO.SetActive(false);
-        hmdRefGO.transform.SetParent(transform, false);
+        hmdRefGO.transform.SetParent(XRTrackingOrigin, false);
         hmdRefGO.transform.localPosition = Vector3.zero;
         hmdRefGO.transform.localRotation = Quaternion.identity;
 
@@ -890,13 +906,6 @@ public class U3DPlayerController : NetworkBehaviour
 
         _avatarHeadBone = null;
         _vrRecenterPending = false;
-        _vrSnapTurnedThisFrame = false;
-
-        if (_rawHmdReference != null)
-        {
-            Destroy(_rawHmdReference.gameObject);
-            _rawHmdReference = null;
-        }
 
         if (_vrTeleporter != null)
         {
@@ -907,10 +916,30 @@ public class U3DPlayerController : NetworkBehaviour
 
         _vrLocomotionSuppressed = false;
 
-        if (cameraPivot != null && playerCamera != null)
+        // The camera must leave the tracking origin before the origin is destroyed,
+        // or it is destroyed with it.
+        if (playerCamera != null)
         {
-            playerCamera.transform.SetParent(cameraPivot);
-            UpdateCameraTransitionPosition();
+            Transform restoreParent = cameraPivot != null
+                ? cameraPivot
+                : (_vrCameraOriginalParent != null ? _vrCameraOriginalParent : transform);
+            playerCamera.transform.SetParent(restoreParent);
+
+            if (cameraPivot != null)
+                UpdateCameraTransitionPosition();
+        }
+        _vrCameraOriginalParent = null;
+
+        if (_rawHmdReference != null)
+        {
+            Destroy(_rawHmdReference.gameObject);
+            _rawHmdReference = null;
+        }
+
+        if (_xrTrackingOrigin != null)
+        {
+            Destroy(_xrTrackingOrigin.gameObject);
+            _xrTrackingOrigin = null;
         }
 
         if (playerCamera != null)
@@ -944,7 +973,7 @@ public class U3DPlayerController : NetworkBehaviour
             return;
         }
 
-        if (!_isInVRMode || playerCamera == null) return;
+        if (!_isInVRMode || playerCamera == null || _xrTrackingOrigin == null) return;
 
         if (_avatarHeadBone == null)
         {
@@ -952,13 +981,11 @@ public class U3DPlayerController : NetworkBehaviour
             if (_avatarHeadBone == null) return;
         }
 
-        // Recenter pass: runs once per VR session entry, on the first frame TPD
-        // has written a non-identity rotation to the camera. The HMD's local-floor
-        // reference space orientation is arbitrary on each session start (Quest 3
-        // browser is especially unpredictable), so we rotate the body so that the
-        // camera's WORLD yaw ends up at the captured target. Because the camera is
-        // parented to the body and TPD writes localRotation, the body's required
-        // rotation is computed in world space, not added to localRotation.
+        // Recenter pass: runs once per VR session entry, on the first frame the Tracked Pose
+        // Driver has written a non-identity rotation to the camera. The headset's reference
+        // space orientation is arbitrary on each session start, so the tracking origin is
+        // turned until the camera's world yaw lands on the heading the player had before
+        // entering. The body is left alone, so the head-body angle starts at zero.
         if (_vrRecenterPending)
         {
             bool hmdHasValidPose = playerCamera.transform.localRotation != Quaternion.identity;
@@ -967,9 +994,7 @@ public class U3DPlayerController : NetworkBehaviour
             {
                 float cameraWorldYaw = playerCamera.transform.eulerAngles.y;
                 float yawCorrection = Mathf.DeltaAngle(cameraWorldYaw, _vrRecenterTargetYaw);
-                transform.Rotate(Vector3.up, yawCorrection);
-                NetworkRotation = transform.rotation;
-                cameraYaw = transform.eulerAngles.y;
+                _xrTrackingOrigin.localRotation = Quaternion.AngleAxis(yawCorrection, Vector3.up) * _xrTrackingOrigin.localRotation;
                 _vrRecenterPending = false;
             }
         }
@@ -995,32 +1020,30 @@ public class U3DPlayerController : NetworkBehaviour
                 - transform.forward * thirdPersonCameraDistance;
         }
 
-        // Body-follow-head with deadzone. The HMD's yaw relative to the body is the
-        // camera's LOCAL yaw — because the camera is parented to the body and TPD
-        // writes localRotation. We must NOT use the camera's world yaw here; that
-        // would create an infinite spin loop, since rotating the body to "catch up"
-        // would carry the camera with it and the world-yaw delta would never close.
-        // Skipped on snap-turn frames so the catch-up doesn't fight intentional turns.
-        if (!_vrRecenterPending && !_vrSnapTurnedThisFrame)
+        // Body-follow-head. The head's angle off the body is the camera's WORLD yaw measured
+        // against the body's yaw. The camera sits under the tracking origin, so turning the
+        // body alone would carry the view with it; instead the body turns and the origin turns
+        // back by the same amount in the body's frame, so the view holds still while the angle
+        // genuinely shrinks. The deadzone is a limit: the body turns only far enough to bring
+        // the head back to its edge, at no more than vrBodyFollowSpeed degrees per second.
+        if (!_vrRecenterPending)
         {
-            // localEulerAngles.y returns 0-360; convert to -180..180 for signed delta.
-            float localYaw = playerCamera.transform.localEulerAngles.y;
-            if (localYaw > 180f) localYaw -= 360f;
-            float absDelta = Mathf.Abs(localYaw);
+            float headOffBody = Mathf.DeltaAngle(transform.eulerAngles.y, playerCamera.transform.eulerAngles.y);
+            float absDelta = Mathf.Abs(headOffBody);
 
             if (absDelta > vrBodyFollowDeadzone)
             {
                 float overshoot = absDelta - vrBodyFollowDeadzone;
                 float catchUpThisFrame = Mathf.Min(overshoot, vrBodyFollowSpeed * Time.deltaTime);
-                float rotateBy = catchUpThisFrame * Mathf.Sign(localYaw);
+                float rotateBy = catchUpThisFrame * Mathf.Sign(headOffBody);
 
-                transform.Rotate(Vector3.up, rotateBy);
+                transform.Rotate(Vector3.up, rotateBy, Space.Self);
+                _xrTrackingOrigin.localRotation = Quaternion.AngleAxis(-rotateBy, Vector3.up) * _xrTrackingOrigin.localRotation;
+
                 NetworkRotation = transform.rotation;
                 cameraYaw = transform.eulerAngles.y;
             }
         }
-
-        _vrSnapTurnedThisFrame = false;
     }
 
     /// <summary>
@@ -1142,12 +1165,6 @@ public class U3DPlayerController : NetworkBehaviour
             transform.Rotate(Vector3.up, turnDelta);
             NetworkRotation = transform.rotation;
             cameraYaw += turnDelta;
-
-            // Tell LateUpdate's body-follow logic to skip this frame. Snap-turn
-            // intentionally moves the body without moving the head; the catch-up
-            // logic would otherwise see the resulting body-head mismatch as
-            // "head outside deadzone" and rotate the body backward.
-            _vrSnapTurnedThisFrame = true;
         }
 
         // Teleport gesture: stick click toggles arm/disarm. While armed, Tick consumes
@@ -2024,6 +2041,7 @@ public class U3DPlayerController : NetworkBehaviour
     public bool EnableViewZoom => enableViewZoom;
     public bool EnableAdvancedCamera => enableAdvancedCamera;
     public Transform RawHmdReference => _rawHmdReference;
+    public Transform XRTrackingOrigin => _xrTrackingOrigin != null ? _xrTrackingOrigin : transform;
 
     public void SetPosition(Vector3 position)
     {

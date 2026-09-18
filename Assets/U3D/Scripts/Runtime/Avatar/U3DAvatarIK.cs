@@ -39,7 +39,8 @@ namespace U3D
     /// property (LEFT/RIGHT/NONE) and its transform is updated every frame with the
     /// controller pose. If the scene doesn't already have WebXRController instances
     /// (the U3D rig doesn't include them by default), this component creates them at
-    /// runtime as children of the player root when VR mode begins.
+    /// runtime as children of the player controller's XR tracking origin when VR mode
+    /// begins, so they share a frame with the camera and the raw HMD reference.
     /// </summary>
     [MovedFrom(false, "U3D", null, "U3DAvatarHandIK")]
     public class U3DAvatarIK : MonoBehaviour
@@ -190,8 +191,9 @@ namespace U3D
         /// <summary>
         /// Locate or create De-Panther WebXRController instances for left and right hands.
         /// First tries to find existing ones in the scene (if a creator placed them);
-        /// if none found, creates them as children of the player root. Once created,
-        /// they're cached and reused.
+        /// if none found, creates them as children of the player controller's XR tracking
+        /// origin. Once created, they're cached and reused. Destroying the origin on VR exit
+        /// destroys them too, and they are recreated on the next VR entry.
         /// </summary>
         void BindXRActions()
         {
@@ -224,11 +226,11 @@ namespace U3D
                 }
             }
 
-            // Create any controllers that weren't found in the scene. They live as
-            // children of the player root, which is the WebXR tracking origin in U3D's
-            // rig (the camera, which De-Panther drives, is also parented to the player
-            // root). De-Panther's WebXRController will write world-space pose to the
-            // GameObject's transform every frame once the WebXR session is active.
+            // Create any controllers that weren't found in the scene. They live under the
+            // player controller's XR tracking origin, the same parent as the camera and the
+            // raw HMD reference. De-Panther's WebXRController writes localPosition and
+            // localRotation, so a controller is posed in its parent's frame; sharing the
+            // origin keeps the hand-minus-headset vector in one frame.
             if (_leftHandController == null && _playerController != null)
             {
                 _leftHandController = CreateRuntimeController(WebXRControllerHand.LEFT);
@@ -249,7 +251,7 @@ namespace U3D
         {
             string label = handAssignment == WebXRControllerHand.LEFT ? "U3D_WebXRController_L" : "U3D_WebXRController_R";
             GameObject go = new GameObject(label);
-            go.transform.SetParent(_playerController.transform, false);
+            go.transform.SetParent(_playerController.XRTrackingOrigin, false);
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
 
