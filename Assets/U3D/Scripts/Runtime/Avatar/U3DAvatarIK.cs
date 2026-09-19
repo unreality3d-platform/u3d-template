@@ -504,8 +504,15 @@ namespace U3D
             // actually is. The raw HMD reference exists specifically as the unmoved
             // De-Panther TPD output for this purpose.
             //
-            // If a controller reference is null this frame, leave its networked slot
-            // untouched so transient dropouts don't cause arm collapse.
+            // A hand is written only while its controller reports isControllerActive.
+            // De-Panther writes the same transform from the wrist joint when the headset
+            // switches to hand tracking, and the wrist joint's rotation convention is not
+            // the target ray's the hand rotation offsets were tuned against, so an idle
+            // controller handing over to hand tracking flipped both avatar hands. A
+            // controller that is inactive for any reason (hand tracking, a tracking
+            // dropout, or created and not yet updated) leaves its networked slots
+            // untouched, so the last good pose holds for the local player and for
+            // remote viewers alike.
             Transform playerRoot = _playerController.transform;
             Transform cam = _playerController.CameraTransform;
             Transform rawHmd = _playerController.RawHmdReference;
@@ -519,7 +526,7 @@ namespace U3D
             Vector3 headBoneWorld = (_head != null) ? _head.position : cam.position;
 
 #if WEBXR_ENABLED
-            if (_leftHandController != null)
+            if (_leftHandController != null && _leftHandController.isControllerActive)
             {
                 Transform t = _leftHandController.transform;
                 Vector3 irlHeadToHand = t.position - irlHmdPos;
@@ -528,7 +535,7 @@ namespace U3D
                 _playerController.NetworkLeftHandRot = Quaternion.Inverse(playerRoot.rotation) * t.rotation;
             }
 
-            if (_rightHandController != null)
+            if (_rightHandController != null && _rightHandController.isControllerActive)
             {
                 Transform t = _rightHandController.transform;
                 Vector3 irlHeadToHand = t.position - irlHmdPos;
