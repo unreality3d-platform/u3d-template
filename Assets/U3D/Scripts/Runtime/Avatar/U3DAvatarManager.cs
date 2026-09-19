@@ -339,53 +339,47 @@ public class U3DAvatarManager : NetworkBehaviour
     }
 
     /// <summary>
-    /// Engages or disengages VR idle suppression. Called by U3DPlayerController when
-    /// the local player enters or exits VR. While engaged, LateUpdate freezes the
-    /// Animator (speed = 0) whenever the player is idle, and resumes it (speed = 1)
-    /// whenever the player is moving in any way. This suppresses idle-clip motion
-    /// across the entire avatar — head, neck, spine, arms, hands, fingers, hips,
-    /// everything — without needing to know which bones the clip animates.
-    /// On disengage, Animator speed is unconditionally restored to 1.
-    /// Safe to call before initialization and from non-local players (no-ops).
+    /// Retained so existing callers compile. VR idle suppression now follows the player
+    /// controller's VR state directly in LateUpdate, so it engages even when VR mode is
+    /// entered before this avatar finishes initializing.
     /// </summary>
     public void SetVRMode(bool enabled)
     {
-        if (!isInitialized || avatarAnimator == null) return;
-
-        vrIdleSuppressionActive = enabled;
-
-        if (enabled)
-        {
-            _prevSeated = playerController != null && playerController.NetworkIsSeated;
-            _prevSuppressLocomotion = playerController != null && playerController.NetworkSuppressLocomotion;
-        }
-        else
-        {
-            avatarAnimator.speed = 1f;
-            freezeScheduledTime = -1f;
-        }
     }
+
     /// <summary>
-    /// While VR idle suppression is active, drives the avatar Animator's speed based
-    /// on the player controller's movement state. Unfreezing is instant; freezing is
-    /// delayed slightly to let any in-progress animation transition complete cleanly,
-    /// preventing the avatar from getting stuck mid-blend when exiting states like
-    /// Flying. If the player starts moving again during the delay, the pending freeze
-    /// is cancelled.
+    /// While the local player is in VR, drives the avatar Animator's speed based on the
+    /// player controller's movement state. Unfreezing is instant; freezing is delayed
+    /// slightly to let any in-progress animation transition complete cleanly. VR state is
+    /// read every frame rather than pushed, so suppression engages regardless of whether
+    /// VR mode was entered before or after avatar initialization.
     /// </summary>
     void LateUpdate()
     {
+        if (!isInitialized || avatarAnimator == null || playerController == null) return;
+
+        bool shouldSuppress = playerController.IsLocalPlayer && playerController.IsInVRMode;
+        if (shouldSuppress != vrIdleSuppressionActive)
+        {
+            vrIdleSuppressionActive = shouldSuppress;
+            freezeScheduledTime = -1f;
+
+            if (shouldSuppress)
+            {
+                _prevSeated = playerController.NetworkIsSeated;
+                _prevSuppressLocomotion = playerController.NetworkSuppressLocomotion;
+            }
+            else
+            {
+                avatarAnimator.speed = 1f;
+            }
+        }
+
         if (!vrIdleSuppressionActive) return;
-        if (avatarAnimator == null || playerController == null) return;
 
         bool seated = playerController.NetworkIsSeated;
         bool suppressLocomotion = playerController.NetworkSuppressLocomotion;
 
-        // When a pose-defining flag changes (sitting down/up, entering/leaving a standing
-        // hold), unfreeze briefly so the transition into the new pose plays, then let the
-        // delayed-freeze path below re-freeze on the new static pose. Runs before the
-        // early-outs so it works even when the animator is already frozen at speed 0 —
-        // which is the case when you sit from a standstill.
         if (seated != _prevSeated || suppressLocomotion != _prevSuppressLocomotion)
         {
             avatarAnimator.speed = 1f;
