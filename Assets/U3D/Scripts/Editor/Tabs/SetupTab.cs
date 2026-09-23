@@ -636,7 +636,7 @@ namespace U3D.Editor
             if (!string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername))
             {
                 EditorGUILayout.LabelField($"Username: {U3DAuthenticator.CreatorUsername}", EditorStyles.miniLabel);
-                EditorGUILayout.LabelField($"URL: https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"URL: {U3DUrlUtility.CreatorUrl(U3DAuthenticator.CreatorUsername)}", EditorStyles.miniLabel);
             }
 
             string savedPayPalEmail = GetSavedPayPalEmail();
@@ -859,12 +859,12 @@ namespace U3D.Editor
                     var shownDisplayName = !string.IsNullOrEmpty(U3DAuthenticator.DisplayName)
                         ? U3DAuthenticator.DisplayName
                         : desiredUsername;
-                    var shownUrlName = !string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername)
+                    var shownUrl = U3DUrlUtility.CreatorUrl(!string.IsNullOrEmpty(U3DAuthenticator.CreatorUsername)
                         ? U3DAuthenticator.CreatorUsername
-                        : desiredUsername;
+                        : desiredUsername);
 
                     EditorUtility.DisplayDialog("Success!",
-                        $"Name '{shownDisplayName}' reserved successfully!\n\nYour professional URL: https://unreality3d.com/{shownUrlName}/",
+                        $"Name '{shownDisplayName}' reserved successfully!\n\nYour professional URL: {shownUrl}",
                         "Awesome!");
                 }
                 else

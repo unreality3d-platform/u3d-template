@@ -466,7 +466,7 @@ namespace U3D.Editor
                             RepositoryName = repo.Name,
                             DisplayName = $"Update \"{repo.Name}\"",
                             Description = "Unreality3D project",
-                            ProfessionalUrl = $"https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/{repo.Name}/",
+                            ProfessionalUrl = U3DUrlUtility.ProfessionalUrl(U3DAuthenticator.CreatorUsername, repo.Name),
                             GitHubPagesUrl = repo.GitHubPagesUrl,
                             LastUpdated = repo.UpdatedAt,
                             IsUnreality3DProject = repo.IsUnreality3DProject
@@ -481,7 +481,7 @@ namespace U3D.Editor
                     RepositoryName = "new-repository",
                     DisplayName = "Create New Repository",
                     Description = "New Unreality3D project",
-                    ProfessionalUrl = $"https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/[product-name]/",
+                    ProfessionalUrl = U3DUrlUtility.CreatorUrl(U3DAuthenticator.CreatorUsername) + "[product-name]/",
                     GitHubPagesUrl = null,
                     LastUpdated = null,
                     IsUnreality3DProject = false
@@ -1292,7 +1292,7 @@ namespace U3D.Editor
 
                 var creatorUsername = U3DAuthenticator.CreatorUsername;
                 var repositoryName = deployResult.RepositoryName ?? deployResult.ProjectName ?? GitHubAPI.SanitizeRepositoryName(cachedProductName);
-                var successUrl = deployResult.ProfessionalUrl ?? $"https://unreality3d.com/{creatorUsername}/{repositoryName}/";
+                var successUrl = deployResult.ProfessionalUrl ?? U3DUrlUtility.ProfessionalUrl(creatorUsername, repositoryName);
 
                 // Step 3: Wait for GitHub Actions to finish so we only show
                 // "Live!" when the URL is actually serving the new build.
@@ -1491,7 +1491,7 @@ namespace U3D.Editor
                         Success = true,
                         RepositoryName = actualRepositoryName,
                         ProjectName = actualRepositoryName,
-                        ProfessionalUrl = $"https://unreality3d.com/{U3DAuthenticator.CreatorUsername}/{actualRepositoryName}/",
+                        ProfessionalUrl = U3DUrlUtility.ProfessionalUrl(U3DAuthenticator.CreatorUsername, actualRepositoryName),
                         Message = "Deployment successful via Firebase Storage",
                         GitHubActionsRunId = result.GitHubActionsRunId,
                         GitHubActionsRunHtmlUrl = result.GitHubActionsRunHtmlUrl
