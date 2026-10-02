@@ -34,6 +34,7 @@ namespace U3D.Editor
                 new CreatorTool("🟢 Add Video Player", "Stream a video from a URL onto a screen in your world. After placing, select the Video Screen child object and paste a direct .mp4 or .webm link into the Video URL field.", CreateVideoPlayer),
                 new CreatorTool("🟢 Add Mirror", "Reflective surface for vanity mirrors, avatar viewing, or scene composition. Each mirror creates its own render texture asset in Assets/U3D/U3D_Assets/Mirrors/.", CreateMirror),
                 new CreatorTool("🟢 Add Instructions", "Worldspace UI showing default movement and control patterns with all current input bindings. Updates automatically if you remap controls.", CreateMovementInstructions),
+                new CreatorTool("🟢 Add Touch Controls", "Move and Look circles in the bottom corners of the screen, shown only on phones and tablets so visitors know where to put their thumbs. Touches pass straight through to the touch controls. Swap in your own circle art on the Move Hint and Look Hint images.", CreateTouchControlHints),
                 new CreatorTool("🟢 Add Settings UI", "Adds the U3D Settings UI prefab. Players use this to adjust audio, graphics, and controls at runtime.", AddSettingsUI),
                 new CreatorTool("🟢 Add Screenspace UI", "Screen overlay canvas with title and body text. Good for HUDs, menus, or info overlays. Add your own buttons and content.", CreateScreenspaceUI),
                 new CreatorTool("🟢 Add Laser Pointer", "Adds a laser pointer that fires a visible beam onto the first surface it hits, with a dot where it lands. Other players see it too. It starts off — wire a button or an Interact Trigger to its Activate, Toggle, or Pulse to control it.", ApplyAddLaserPointer),
@@ -753,6 +754,104 @@ namespace U3D.Editor
             Selection.activeGameObject = canvasObj;
             EditorGUIUtility.PingObject(canvasObj);
             EditorUtility.SetDirty(canvasObj);
+        }
+
+        // ───────────────────────────────────────────
+        // Touch Controls
+        // ───────────────────────────────────────────
+
+        // Approved exception to U3DUIStyle (see the UI Creation Methods Reference). The hints only
+        // appear on touch devices, where the standard 18pt body text renders at about 7 CSS pixels,
+        // and they sit over the scene, so the circle is translucent white instead of an opaque fill.
+        private const float TOUCH_HINT_FONT_SIZE = 40f;
+        private static readonly Color TOUCH_HINT_CIRCLE_COLOR = new Color(1f, 1f, 1f, 0.35f);
+
+        private static void CreateTouchControlHints()
+        {
+            var existing = Object.FindAnyObjectByType<U3D.Input.U3DTouchControlHints>(FindObjectsInactive.Include);
+            if (existing != null)
+            {
+                EditorUtility.DisplayDialog("Touch Controls",
+                    "This scene already has touch control hints.\n\nFound: " + existing.gameObject.name,
+                    "OK");
+                Selection.activeGameObject = existing.gameObject;
+                EditorGUIUtility.PingObject(existing.gameObject);
+                return;
+            }
+
+            GameObject canvasObj = new GameObject("Touch Controls Canvas");
+            canvasObj.layer = LayerMask.NameToLayer("UI");
+
+            Canvas canvas = canvasObj.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            // Below Screenspace UI (10) and the menus, so every other overlay draws on top.
+            canvas.sortingOrder = -10;
+
+            CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            // No GraphicRaycaster: nothing on this canvas is interactive, and U3DSimpleTouchZones
+            // ignores any touch that begins over a raycast target. U3DTouchControlHints also forces
+            // its CanvasGroup to pass touches through, in case a raycaster is added later.
+            canvasObj.AddComponent<U3D.Input.U3DTouchControlHints>();
+
+            Sprite circleSprite = U3DUIStyle.GetFlatCircleSprite();
+
+            // These positions keep both circles outside the Interact and Jump bands (35-65% of
+            // screen width) and above the browser's Full Screen button in the lower-left corner,
+            // in portrait and landscape.
+            CreateTouchHintCircle(canvasObj.transform, "Move Hint", "Move", circleSprite,
+                new Vector2(0f, 0f), new Vector2(200f, 320f));
+            CreateTouchHintCircle(canvasObj.transform, "Look Hint", "Look", circleSprite,
+                new Vector2(1f, 0f), new Vector2(-200f, 320f));
+
+            Undo.RegisterCreatedObjectUndo(canvasObj, "Add Touch Controls");
+            Selection.activeGameObject = canvasObj;
+            EditorGUIUtility.PingObject(canvasObj);
+            EditorUtility.SetDirty(canvasObj);
+        }
+
+        private static void CreateTouchHintCircle(Transform parent, string objectName, string label, Sprite sprite, Vector2 anchor, Vector2 anchoredPosition)
+        {
+            GameObject circleObj = new GameObject(objectName, typeof(RectTransform));
+            circleObj.transform.SetParent(parent, false);
+            circleObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform circleRect = circleObj.GetComponent<RectTransform>();
+            circleRect.anchorMin = anchor;
+            circleRect.anchorMax = anchor;
+            circleRect.pivot = new Vector2(0.5f, 0.5f);
+            circleRect.sizeDelta = new Vector2(220f, 220f);
+            circleRect.anchoredPosition = anchoredPosition;
+
+            Image circleImage = circleObj.AddComponent<Image>();
+            circleImage.sprite = sprite;
+            circleImage.color = TOUCH_HINT_CIRCLE_COLOR;
+            circleImage.raycastTarget = false;
+
+            var tmpResources = new TMP_DefaultControls.Resources();
+            GameObject labelObj = TMP_DefaultControls.CreateText(tmpResources);
+            labelObj.name = "Label";
+            labelObj.transform.SetParent(circleObj.transform, false);
+            labelObj.layer = LayerMask.NameToLayer("UI");
+
+            RectTransform labelRect = labelObj.GetComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            TextMeshProUGUI labelTMP = labelObj.GetComponent<TextMeshProUGUI>();
+            if (labelTMP != null)
+            {
+                labelTMP.text = label;
+                U3DUIStyle.ApplyBodyStyle(labelTMP);
+                labelTMP.fontSize = TOUCH_HINT_FONT_SIZE;
+                labelTMP.raycastTarget = false;
+            }
         }
 
         // ───────────────────────────────────────────

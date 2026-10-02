@@ -115,6 +115,56 @@ namespace U3D.Input
 
         public static U3DSimpleTouchZones Instance { get; private set; }
 
+        /// <summary>
+        /// Raised when ShouldShowTouchHints may have changed: when this component
+        /// starts, and the frame a touch is first observed this session.
+        /// </summary>
+        public static event System.Action TouchHintsVisibilityChanged;
+
+        private static bool _touchPrimaryChecked;
+        private static bool _isTouchPrimaryDevice;
+
+        /// <summary>
+        /// True when the browser reports touch as its primary pointer, which covers
+        /// phones and tablets, including iPads that send a desktop user agent.
+        /// Read once from U3DTouchDetection.jslib. Always false in the Editor.
+        /// </summary>
+        public static bool IsTouchPrimaryDevice
+        {
+            get
+            {
+                if (!_touchPrimaryChecked)
+                {
+                    _isTouchPrimaryDevice = QueryTouchPrimaryDevice();
+                    _touchPrimaryChecked = true;
+                }
+                return _isTouchPrimaryDevice;
+            }
+        }
+
+        /// <summary>
+        /// Whether on-screen touch control hints should be visible. True once touch
+        /// controls exist, on a touch-primary device from the start, or on any device
+        /// after its first touch. Visual only: the input path still switches to touch
+        /// on the first observed touch.
+        /// </summary>
+        public static bool ShouldShowTouchHints =>
+            Instance != null && (IsTouchPrimaryDevice || Instance.IsTouchEnabled);
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern int U3D_IsTouchPrimaryDevice();
+#endif
+
+        private static bool QueryTouchPrimaryDevice()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return U3D_IsTouchPrimaryDevice() == 1;
+#else
+            return false;
+#endif
+        }
+
         private enum TouchRole { Unassigned, Move, Look, PendingInteract, PendingJump, Pinch }
 
         private class TouchData
@@ -137,6 +187,7 @@ namespace U3D.Input
             // user actually uses it.
             _isTouchEnabled = false;
             _touchObservedThisSession = false;
+            TouchHintsVisibilityChanged?.Invoke();
         }
 
         void OnEnable()
@@ -173,6 +224,7 @@ namespace U3D.Input
             {
                 _touchObservedThisSession = true;
                 _isTouchEnabled = true;
+                TouchHintsVisibilityChanged?.Invoke();
             }
 
             if (!_isTouchEnabled)
